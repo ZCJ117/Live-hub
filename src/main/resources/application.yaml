@@ -1,0 +1,54 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: hmdp
+  datasource:
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC
+    username: root
+    password: 520117
+  redis:
+    host: localhost
+    port: 6379
+    #    password: 123321
+    lettuce:
+      pool:
+        max-active: 10
+        max-idle: 10
+        min-idle: 1
+        time-between-eviction-runs: 10s
+  jackson:
+    default-property-inclusion: non_null # JSON处理时忽略非空字段
+  output:
+    ansi:
+      enabled: ALWAYS  # 确保启用ANSI颜色
+  rabbitmq:
+    host: 127.0.0.1 # IP地址
+    port: 5672 # 端口号
+    username: ZCJ # 用户名
+    password: 520117 # 密码
+    listener:
+      simple:
+        concurrency: 1
+        max-concurrency: 1
+        acknowledge-mode: manual
+        prefetch: 1
+mybatis-plus:
+  type-aliases-package: com.hmdp.entity # 别名扫描包
+logging:
+#  level:
+#    com.hmdp: debug
+#    com.hmdp.service.impl.ShopServiceImpl: DEBUG
+#    com.hmdp.config.CacheConfig: DEBUG
+#  pattern:
+#    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  pattern:
+    console: "%clr(%d{${LOG_DATEFORMAT_PATTERN:yyyy-MM-dd HH:mm:ss.SSS}}){faint} %clr(${LOG_LEVEL_PATTERN:%5p}) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION_WORD:%wEx}"
+  level:
+    com.hmdp: debug
+    com.hmdp.service.impl.ShopServiceImpl: DEBUG
+    com.hmdp.config.CacheConfig: DEBUG
+
+authorization:
+  header-name: authorization
