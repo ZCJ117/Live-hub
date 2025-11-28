@@ -48,9 +48,6 @@ import static com.hmdp.utils.RedisConstants.SHOP_GEO_KEY;
  * <p>
  *  服务实现类
  * </p>
- *
- * @author 虎哥
- * @since 2021-12-22
  */
 @Service
 public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IShopService {
@@ -61,12 +58,12 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     private StringRedisTemplate stringRedisTemplate;
 
     @Resource
-    private CacheManager cacheManager;
+    private CacheManager cacheManager;  //NOTE 用于管理缓存 spring缓存管理器
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
 
-    // 线程池用于异步缓存预热
+    // NOTE 线程池用于异步缓存预热
     private ExecutorService cacheWarmupExecutor;
 
     /**
