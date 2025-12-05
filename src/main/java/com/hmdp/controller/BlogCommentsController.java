@@ -14,4 +14,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/blog-comments")
 public class BlogCommentsController {
 
+    // NOTE 该控制器用于处理博客评论相关的请求
+    // TODO 具体的方法和逻辑待实现
 }

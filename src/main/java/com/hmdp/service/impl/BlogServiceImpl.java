@@ -35,9 +35,12 @@ import static com.hmdp.utils.RedisConstants.FEED_KEY;
  *  服务实现类
  * </p>
  *
- * @author 虎哥
- * @since 2021-12-22
+ * @author 左常健
+ * @since 2025-12-04
  */
+
+// NOTE 这个类实现了博客相关的服务，包括查询热门博客、点赞博客、保存博客等功能。
+// 它使用了MyBatis-Plus进行数据库操作，使用Redis进行缓存和点赞数据的存储。
 @Service
 public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IBlogService {
 
@@ -50,6 +53,8 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     @Resource
     private IFollowService followService;
 
+
+    // NOTE 查看热门博客
     @Override
     public Result queryHotBlog(Integer current) {
         // 根据用户查询
@@ -113,6 +118,8 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
             boolean isSuccess = update().setSql("liked = liked + 1").eq("id", id).update();
             //3.2保存用户到Redis的set集合中
             if (isSuccess) {
+                // NOTE 这里是用户点赞时，用ZSet存储点赞记录，score为时间戳
+                // NOTE ZSet 可以按照时间排序，方便后续查询最近点赞的用户
                 stringRedisTemplate.opsForZSet().add(key, userId.toString(),System.currentTimeMillis());
             }
         } else {
@@ -150,6 +157,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     }
 
+
+    // NOTE 保存博客并推送给粉丝
+    // NOTE 这里采用推送模式，写扩散 （fan-out on write）  这个模式适用于读多写少的场景
     @Override
     public Result saveBlog(Blog blog) {
         //1.获取登录用户
@@ -176,6 +186,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         return Result.ok(blog.getId());
     }
 
+    // NOTE 基于时间戳和偏移量的滚动分页查询关注的博文
     @Override
     public Result queryBlogOfFollow(Long max, Integer offset) {
         //1.获取当前用户
@@ -248,5 +259,44 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     }
 
 
-
 }
+
+
+// NOTE 高频面试题
+// NOTE 1.点赞系统中要用ZSet存储点赞用户，为什么不是Set？
+// 答：ZSet可以按照分数排序，方便查询最近点赞的用户，而Set不支持排序。
+
+// NOTE 2.在查询博客时，为什么要检查Redis键的类型？
+// 答：为了防止类型错误导致的异常，确保数据一致性和系统稳定性。
+
+// NOTE 3.推送模式和拉取模式有什么区别？为什么选择推送模式？
+// 答：推送模式在写入时将数据分发给所有相关用户，适合读多写少的场景；拉取模式在读取时才获取数据，
+// 适合写多读少的场景。这里选择推送模式是因为博客系统通常读多写少，推送模式可以提高读取效率。
+
+//NOTE 4.如何实现Feed的滚动分页查询？
+// 答：通过时间戳和偏移量实现滚动分页查询，利用ZSet的分数排序特性，按时间顺序获取数据。
+
+// NOTE 基于这段代码，面试官可以深入考察你对Spring Boot、MyBatis-Plus、Redis、分布式系统设计等核心技术的理解。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
