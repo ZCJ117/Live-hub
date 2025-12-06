@@ -314,3 +314,17 @@ public class CacheConfig {
 
     }
 }
+// NOTE 缓存架构图示意 这是一个非常优秀的企业级缓存架构设计
+//┌─────────────────────────────────────────────────────────┐
+//        │                 Spring Boot Application                  │
+//        ├─────────────────────────────────────────────────────────┤
+//        │                                                         │
+//        │  ShopServiceImpl (@Cacheable/@CacheEvict)              │
+//        │         │                                               │
+//        │         ↓                                               │
+//        │  LayeringCacheManager (二级缓存管理器)                  │
+//        │         ├── CaffeineCacheManager (本地缓存)            │
+//        │         └── RedisCacheManager (远程缓存)               │
+//        │                                                         │
+//        └─────────────────────────────────────────────────────────┘
+

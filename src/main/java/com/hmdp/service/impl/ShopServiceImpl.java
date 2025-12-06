@@ -1,4 +1,4 @@
-//    缓存预热（Cache Warm-Up）是指在系统启动或流量高峰来临前，提前将热点数据加载到缓存系统中的过程。
+// NOTE 缓存预热（Cache Warm-Up）是指在系统启动或流量高峰来临前，提前将热点数据加载到缓存系统中的过程。
 //    为啥需要缓存预热：
 //    解决冷启动问题： 新系统启动时缓存为空，首请求直接穿透到数据库，容易引发雪崩效应
 //    应对突发流量： 秒杀活动、热点新闻等场景下，瞬时高并发请求可能导致数据库过载
@@ -79,6 +79,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     /**
      * 缓存预热 - 应用启动时执行
      */
+    //NOTE 使用 @PostConstruct 注解确保该方法在服务启动后立即执行 自动预热
+    // NOTE 使用 @Async 注解使该方法异步执行，避免阻塞应用启动过程
     @PostConstruct
     @Async
     public void warmUpCacheOnStartup() {
@@ -332,6 +334,13 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
     }
 
+    //NOTE 这个方法使用了Spring Cache的@Cacheable注解来实现缓存功能
+    //NOTE value指定缓存的名称 shopCache，key指定缓存的键为店铺ID
+    //NOTE unless="#result == null"表示如果结果为null则不缓存  避免缓存穿透
+
+    //NOTE 这里自动使用二级缓存，先查一级缓存（本地缓存），再查二级缓存（Redis）
+    //NOTE @Cacheable("shopCache")->spring AOP拦截方法调用->CacheManager.getCache("shopCache")->
+    // 由于配置了LayeredCacheManager ->返回LayeredCache示例 -> 执行二级缓存逻辑
     @Override
     @Cacheable(value = "shopCache", key = "#id", unless = "#result == null")
     public Result queryById(Long id) {
@@ -352,6 +361,12 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         return Result.ok(shop);
     }
 
+
+    //NOTE 这个方法使用了Spring Cache的@CacheEvict注解来实现缓存更新功能
+    //NOTE value指定缓存的名称 shopCache，key指定要删除的缓存键为店铺ID
+    //NOTE Transactional确保数据库更新和缓存删除在同一事务中执行
+
+    //NOTE 自动清除二级缓存
     @Override
     @Transactional
     @CacheEvict(value = "shopCache", key = "#shop.id")
@@ -560,3 +575,56 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
     }
 }
+
+//NOTE 高频面试题
+//NOTE 1.什么是缓存预热，为什么需要它？
+//答： 缓存预热是指在系统启动或流量高峰来临前，提前将热点数据加载到缓存系统中的过程。
+// 它可以解决冷启动问题，应对突发流量，提升性能稳定性，优化用户体验。
+// 避免首次请求穿到数据库引发的性能问题。
+
+//NOTE 2.缓存预热有哪些实现方式
+//答： 常见的实现方式包括启动时预热、定时预热、手动触发预热和基于访问日志的动态预热。
+// 启动时预热适用于已知热点数据，定时预热适用于周期性热点数据，手动触发适用于特殊场景，动态预热适用于实时热点数据。
+
+//NOTE 3.缓存雪崩 击穿 穿透的区别及解决方案
+//答： 缓存穿透是指查询一个不存在的数据，导致请求直接落到数据库，解决方案包括使用布隆过滤器、缓存空对象等。
+// 缓存击穿是指热点数据在缓存过期时，大量请求同时访问数据库，解决方案包括互斥锁、请求排队等。
+// 缓存雪崩是指大量缓存同时过期，导致数据库压力骤增，解决方案包括缓存过期时间分散、多级缓存等。
+
+//NOTE 4.spring cache的注解原理是什么？
+//答： Spring Cache的注解原理基于AOP（面向切面编程）。 当方法被@Cacheable、@CacheEvict等注解标记时，Spring会在运行时生成代理对象，
+// 通过拦截方法调用来实现缓存逻辑。 具体流程包括：
+// 方法调用被代理拦截，检查缓存中是否存在对应的缓存项。
+// 如果存在，直接返回缓存值；如果不存在，执行目标方法并将结果存入缓存。
+// 对于@CacheEvict，方法执行后会删除指定的缓存项。
+// Spring通过CacheManager管理不同的缓存实现（如Redis、Ehcache等），
+// 使得缓存操作与具体缓存技术解耦。
+// @Cacheable:先查询缓存，缓存命中则返回缓存数据，否则执行方法并将结果缓存。
+// @CacheEvict:方法执行后删除指定缓存项。
+// @CachePut:无论缓存是否命中，都会执行方法并更新缓存。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
