@@ -31,8 +31,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.Resource;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -559,7 +559,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     /**
      * Bean销毁时关闭线程池
      */
-    @javax.annotation.PreDestroy
+    @jakarta.annotation.PreDestroy
     public void destroy() {
         if (cacheWarmupExecutor != null) {
             try {

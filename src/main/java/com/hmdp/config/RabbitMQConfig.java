@@ -15,7 +15,7 @@ import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.io.IOException;
 
 @Slf4j
@@ -59,14 +59,14 @@ public class RabbitMQConfig {
         // 设置 mandatory=true 确保消息可路由
         rabbitTemplate.setMandatory(true);
 
-        // 兼容旧版本的返回回调配置
-        rabbitTemplate.setReturnCallback((message, replyCode, replyText, exchange, routingKey) -> {
+        // 配置返回回调
+        rabbitTemplate.setReturnsCallback(returns -> {
             log.error("消息路由失败，触发 Return Callback");
-            log.debug("Exchange: {}", exchange);
-            log.debug("RoutingKey: {}", routingKey);
-            log.debug("ReplyCode: {}", replyCode);
-            log.debug("ReplyText: {}", replyText);
-            log.debug("Message: {}", new String(message.getBody()));
+            log.debug("Exchange: {}", returns.getExchange());
+            log.debug("RoutingKey: {}", returns.getRoutingKey());
+            log.debug("ReplyCode: {}", returns.getReplyCode());
+            log.debug("ReplyText: {}", returns.getReplyText());
+            log.debug("Message: {}", new String(returns.getMessage().getBody()));
         });
 
         // 配置确认回调（可选）

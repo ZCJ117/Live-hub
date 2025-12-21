@@ -17,8 +17,8 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.Resource;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import java.util.Collections;
 import java.util.concurrent.*;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -106,9 +106,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     public void createVoucherOrder(VoucherOrder voucherOrder){
         // 5.一人一单逻辑
         // 5.1.用户id
-        Long userId = voucherOrder.getId();
+        Long userId = UserHolder.getUser().getId();
 
-        int count = query().eq("user_id", userId).eq("voucher_id", voucherOrder).count();
+        Long count = query().eq("user_id", userId).eq("voucher_id", voucherOrder.getVoucherId()).count();
         // 5.2.判断是否存在
         if (count > 0) {
             // 用户已经购买过了
@@ -119,7 +119,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         //6.扣减库存
         boolean success = seckillVoucherService.update()
                 .setSql("stock= stock -1") // set stock = stock -1
-                .eq("voucher_id", voucherOrder)
+                .eq("voucher_id", voucherOrder.getVoucherId())
                 .gt("stock",0)// where id = ? and stock > 0
                 .update();
         if (!success) {

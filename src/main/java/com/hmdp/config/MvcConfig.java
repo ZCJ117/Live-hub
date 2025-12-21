@@ -7,7 +7,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 
 // NOTE 这是一个 MVC 配置类，用于注册拦截器
 //  核心功能是注册和配置两个拦截器：LoginInterceptor 和 RefreshTokenInterceptor
