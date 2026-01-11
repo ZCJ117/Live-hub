@@ -1,0 +1,46 @@
+# 服务器配置
+server:
+  port: 8081 # 网关服务端口，所有外部请求统一通过此端口进入
+
+# Spring 配置
+spring:
+  # 云服务配置
+  cloud:
+    # 网关配置
+    gateway:
+      # 路由规则配置
+      routes:
+        # 用户服务路由
+        - id: user-route # 路由唯一标识
+          uri: lb://user-service # 目标服务URI，lb://表示使用负载均衡，user-service是服务名称
+          predicates: # 路由断言，匹配条件
+            - Path=/user/**,/auth/** # 路径匹配，匹配以/user/或/auth/开头的请求
+        # 商户服务路由
+        - id: shop-route
+          uri: lb://shop-service
+          predicates:
+            - Path=/shop/**,/shop-type/** # 匹配以/shop/或/shop-type/开头的请求
+        # 优惠券服务路由
+        - id: voucher-route
+          uri: lb://voucher-service
+          predicates:
+            - Path=/voucher/** # 匹配以/voucher/开头的请求
+        # 订单服务路由
+        - id: order-route
+          uri: lb://order-service
+          predicates:
+            - Path=/order/** # 匹配以/order/开头的请求
+        # 社交服务路由
+        - id: social-route
+          uri: lb://social-service
+          predicates:
+            - Path=/blog/**,/comment/**,/follow/** # 匹配以/blog/、/comment/或/follow/开头的请求
+      # 全局跨域配置
+      globalcors:
+        add-to-simple-url-handler-mapping: true # 是否将跨域配置添加到SimpleUrlHandlerMapping
+        cors-configurations:
+          '[/**]': # 匹配所有路径
+            allowed-origins: '*' # 允许所有来源
+            allowed-headers: '*' # 允许所有请求头
+            allowed-methods: '*' # 允许所有请求方法
+            allow-credentials: true # 允许携带凭证（如Cookie）

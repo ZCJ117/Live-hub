@@ -1,0 +1,40 @@
+# Spring Boot 应用配置
+spring:
+  # 应用基本信息配置
+  application:
+    name: shop-service # 服务名称，用于服务注册和发现
+  # 云服务配置
+  cloud:
+    # Nacos 配置
+    nacos:
+      server-addr: localhost:8848 # Nacos 服务器地址，格式：ip:port
+      # Nacos 服务发现配置
+      discovery:
+        namespace: public # 服务发现命名空间，用于环境隔离
+      # Nacos 配置中心配置
+      config:
+        namespace: public # 配置中心命名空间，用于环境隔离
+        file-extension: yaml # 配置文件扩展名，支持 yaml、properties
+        import-check:
+          enabled: false # 是否启用配置导入检查，关闭后不会因配置导入失败而启动失败
+  # 配置导入配置
+  config:
+    import: optional:nacos:${spring.application.name}.yaml # 从 Nacos 导入配置，optional 表示可选，导入失败不影响启动
+
+# Seata 分布式事务配置
+seata:
+  tx-service-group: hmdp-group # 事务服务组名称，用于标识不同的事务分组
+  cluster: default # Seata 集群名称
+  service:
+    vgroup-mapping:
+      hmdp-group: default # 事务服务组与集群的映射关系
+    grouplist:
+      default: localhost:8091 # Seata Server 地址列表，格式：ip:port
+  registry:
+    type: file # 注册中心类型，此处使用文件配置
+    file:
+      name: registry.conf # 注册中心配置文件名
+  config:
+    type: file # 配置中心类型，此处使用文件配置
+    file:
+      name: file.conf # 配置中心配置文件名
