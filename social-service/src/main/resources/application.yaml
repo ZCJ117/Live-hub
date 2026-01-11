@@ -1,0 +1,36 @@
+# 服务器配置
+server:
+  port: 8085 # 服务端口，用于接收HTTP请求
+
+# Spring 配置
+spring:
+  # 数据库配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver # 数据库驱动类名，MySQL 8.x 使用 com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC # 数据库连接URL，格式：jdbc:mysql://ip:port/数据库名?参数
+    username: root # 数据库用户名
+    password: 520117 # 数据库密码
+  # Redis 配置
+  redis:
+    host: localhost  # Redis 主机地址，统一为本地地址
+    port: 6379 # Redis 端口，默认 6379
+    # Redis 连接池配置（使用 Lettuce 客户端）
+    lettuce:
+      pool:
+        max-active: 10 # 最大活跃连接数
+        max-idle: 10 # 最大空闲连接数
+        min-idle: 1 # 最小空闲连接数
+        time-between-eviction-runs: 10s # 连接池空闲连接检测周期
+  # Jackson JSON 处理配置
+  jackson:
+    default-property-inclusion: non_null # JSON序列化时忽略值为null的字段
+
+# MyBatis Plus 配置
+mybatis-plus:
+  type-aliases-package: com.hmdp.entity # 实体类别名扫描包，用于XML映射文件中简化类名
+  mapper-locations: classpath*:/mapper/**/*.xml # Mapper XML文件扫描路径
+
+# 日志配置
+logging:
+  level:
+    com.hmdp: debug # 日志级别，debug 用于开发环境，生产环境建议调整为 info 或 warn
