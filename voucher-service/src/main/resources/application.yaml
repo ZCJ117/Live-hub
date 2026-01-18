@@ -20,7 +20,7 @@ spring:
        pool:
          max-active: 10 # 最大活跃连接数
          max-idle: 10 # 最大空闲连接数
-         min-idle: 1 # 最小空闲连接数
+         min-idle: 1 # 最小空闲连接数  8907
          time-between-eviction-runs: 10s # 连接池空闲连接检测周期
   # Jackson JSON 处理配置
   jackson:
@@ -35,3 +35,61 @@ mybatis-plus:
 logging:
   level:
     com.hmdp: debug # 日志级别，debug 用于开发环境，生产环境建议调整为 info 或 warn
+
+# Seata配置
+seata:
+  enabled: true
+  application-id: ${spring.application.name}
+  tx-service-group: my_test_tx_group
+  registry:
+    type: file 
+  config:
+    type: file 
+  service:
+    vgroupMapping:
+      my_test_tx_group: default
+    grouplist:
+      default: 127.0.0.1:8091
+    disable-global-transaction: false
+  data-source-proxy-mode: AT
+  client:
+    undo:
+      log-serialization: jackson
+      log-table: undo_log
+    rm:
+      report-success-enable: true
+      table-meta-check-enable: false
+      lock:
+        retry-interval: 10
+        retry-times: 30
+        retry-policy-branch-rollback-on-conflict: true
+    tm:
+      default-global-transaction-timeout: 60000
+      interceptor-order: 2147483647
+  transport:
+    shutdown:
+      wait: 3
+    thread-factory:
+      boss-thread-prefix: NettyBoss
+      worker-thread-prefix: NettyServerNIOWorker
+      server-executor-thread-prefix: NettyServerBizHandler
+      share-boss-worker: false
+      client-selector-thread-prefix: NettyClientSelector
+      client-worker-thread-prefix: NettyClientWorkerThread
+      boss-thread-size: 1
+      worker-thread-size: default
+    type: TCP
+    server: NIO
+    heartbeat: true
+    serialization: seata
+    compressor: none
+
+# 事务监控配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: seata,health,info
+  endpoint:
+    seata:
+      enabled: true

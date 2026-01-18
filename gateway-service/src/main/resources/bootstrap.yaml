@@ -20,5 +20,8 @@ spring:
         timeout: 3000 # Nacos 连接超时时间，单位：毫秒
   # 配置导入配置
   config:
-    import: optional:nacos:${spring.application.name}.yaml # 从 Nacos 导入配置，optional 表示可选
-    add-location: classpath:application.yaml # 本地配置文件位置，设置为主要配置源
+    import:
+      - optional:nacos:${spring.application.name}.yaml # 从 Nacos 导入配置，optional 表示可选
+      - optional:classpath:application.yaml # 本地配置文件位置，设置为主要配置源
+#    import: optional:nacos:${spring.application.name}.yaml # 从 Nacos 导入配置，optional 表示可选
+#    add-location: classpath:application.yaml # 本地配置文件位置，设置为主要配置源

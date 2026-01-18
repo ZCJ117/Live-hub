@@ -8,6 +8,7 @@ import com.hmdp.order.service.IVoucherOrderService;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import io.seata.spring.annotation.GlobalTransactional;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -73,6 +74,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         return Result.ok(orderId);
     }
 
+    @GlobalTransactional(name = "createVoucherOrder", rollbackFor = Exception.class)
     @Transactional
     public void createVoucherOrder(VoucherOrder voucherOrder){
         // 5.一人一单逻辑

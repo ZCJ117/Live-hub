@@ -40,7 +40,18 @@ spring:
         add-to-simple-url-handler-mapping: true # 是否将跨域配置添加到SimpleUrlHandlerMapping
         cors-configurations:
           '[/**]': # 匹配所有路径
-            allowed-origins: '*' # 允许所有来源
+            allowed-origin-patterns: '*' # 允许所有来源（使用allowed-origin-patterns以支持通配符）
+#            allowed-origins: '*' # 允许所有来源
             allowed-headers: '*' # 允许所有请求头
             allowed-methods: '*' # 允许所有请求方法
             allow-credentials: true # 允许携带凭证（如Cookie）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always
+    gateway:
+      enabled: true
