@@ -42,19 +42,6 @@ CREATE TABLE `tb_follow` (
                              KEY `idx_follow_user_id` (`follow_user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='关注表';
 
--- undo_log 事务回滚日志表
-CREATE TABLE `undo_log` (
-                            `id` bigint NOT NULL COMMENT '主键',
-                            `branch_id` bigint NOT NULL COMMENT '分支事务ID',
-                            `xid` varchar(100) NOT NULL COMMENT '全局事务ID',
-                            `context` varchar(128) NOT NULL COMMENT '上下文',
-                            `rollback_info` longblob NOT NULL COMMENT '回滚信息',
-                            `log_status` int NOT NULL COMMENT '日志状态',
-                            `log_created` datetime NOT NULL COMMENT '创建时间',
-                            `log_modified` datetime NOT NULL COMMENT '修改时间',
-                            PRIMARY KEY (`id`),
-                            KEY `idx_xid` (`xid`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='事务回滚日志表';
 
 -- tb_voucher 优惠券表
 CREATE TABLE `tb_voucher` (
