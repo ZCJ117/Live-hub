@@ -70,6 +70,13 @@
         <dependency>
             <groupId>io.seata</groupId>
             <artifactId>seata-spring-boot-starter</artifactId>
+            <exclusions>
+                <!-- 排除有问题的Druid 1.2.6版本 -->
+                <exclusion>
+                    <groupId>com.alibaba</groupId>
+                    <artifactId>druid</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Common -->
