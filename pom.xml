@@ -35,6 +35,7 @@
         <seata.version>1.7.0</seata.version>
         <spring-boot.version>3.1.12</spring-boot.version>
         <spring.version>6.0.15</spring.version>
+        <rocketmq.version>2.2.3</rocketmq.version>
 
     </properties>
 
@@ -112,6 +113,13 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-starter-cache</artifactId>
                 <version>${spring-boot.version}</version>
+            </dependency>
+
+            <!-- RocketMQ -->
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-spring-boot-starter</artifactId>
+                <version>${rocketmq.version}</version>
             </dependency>
 
 

@@ -1,26 +1,18 @@
 package com.hmdp.order.feign;
 
 import com.hmdp.dto.Result;
+import com.hmdp.order.fallback.VoucherFeignClientFallback;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 
-/**
- * 优惠券服务Feign客户端
- */
-@FeignClient(name = "voucher-service")
+@FeignClient(name = "voucher-service", fallback = VoucherFeignClientFallback.class)
 public interface VoucherFeignClient {
 
-    /**
-     * 扣减优惠券库存
-     */
     @PutMapping("voucher/seckill/{id}/stock")
     Result deductStock(@PathVariable("id") Long voucherId);
 
-    /**
-     * 查询优惠券信息
-     */
     @GetMapping("voucher/{id}")
     Result getVoucherById(@PathVariable("id") Long voucherId);
 }

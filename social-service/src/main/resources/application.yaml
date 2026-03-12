@@ -15,6 +15,7 @@ spring:
     redis:
      host: localhost  # Redis 主机地址，统一为本地地址
      port: 6379 # Redis 端口，默认 6379
+     password: 520117 # Redis 密码
     # Redis 连接池配置（使用 Lettuce 客户端）
      lettuce:
        pool:

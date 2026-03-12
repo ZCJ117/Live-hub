@@ -15,6 +15,7 @@ spring:
     redis:
      host: localhost  # Redis 主机地址，统一为本地地址
      port: 6379 # Redis 端口，默认 6379
+     password: 520117 # Redis 密码
     # Redis 连接池配置（使用 Lettuce 客户端）
      lettuce:
       pool:
@@ -25,6 +26,14 @@ spring:
   # Jackson JSON 处理配置
   jackson:
     default-property-inclusion: non_null # JSON序列化时忽略值为null的字段
+
+# RocketMQ 配置
+rocketmq:
+  name-server: 127.0.0.1:9876
+  producer:
+    group: seckill-producer-group
+    send-message-timeout: 3000
+    retry-times-when-send-failed: 2
 
 # MyBatis Plus 配置
 mybatis-plus:
@@ -97,12 +106,25 @@ management:
   endpoints:
     web:
       exposure:
-        # 1. 移除 'seata'，因为不存在这个端点
-        # 2. 保留 'health'，Seata 的状态会显示在这里
-        include: health,info
+        include: health,info,metrics,prometheus
   endpoint:
     health:
-      # 显示详细的健康信息（可选，但推荐，以便查看 Seata 的具体状态）
       show-details: always
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: order-service
+
+# Feign配置
+feign:
+  circuitbreaker:
+    enabled: true
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 5000
+
 
 
