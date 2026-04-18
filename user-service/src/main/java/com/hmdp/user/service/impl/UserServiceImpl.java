@@ -81,12 +81,25 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             //2如果不符合，报错
             return Result.fail("手机号格式错误");
         }
-        //3 从redis获取验证码并校验
-        String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY+phone);
+        //3 验证码或密码校验
         String code = loginForm.getCode();
-        if(cacheCode == null||!cacheCode.equals(code)){
-            //不一致，报错
-            return Result.fail("验证码错误");
+        String password = loginForm.getPassword();
+        if (code != null && !code.isEmpty()) {
+            // 验证码登录
+            String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY+phone);
+            if(cacheCode == null||!cacheCode.equals(code)){
+                //不一致，报错
+                return Result.fail("验证码错误");
+            }
+            // 验证码正确，删除Redis中的验证码，确保一次失效
+            log.debug("验证码验证成功，删除验证码，phone: {}", phone);
+            stringRedisTemplate.delete(LOGIN_CODE_KEY+phone);
+            log.debug("验证码删除完成，phone: {}", phone);
+        } else if (password != null && !password.isEmpty()) {
+            // 密码登录（待实现）
+            return Result.fail("密码登录功能暂未实现");
+        } else {
+            return Result.fail("请输入验证码或密码");
         }
         //4一致，根据手机号查用户
         User user = query().eq("phone", phone).one();

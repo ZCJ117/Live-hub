@@ -90,6 +90,15 @@ Live-hub是一个基于微服务架构的仿大众点评系统，提供用户注
 - Redis存储登录会话
 - Hutool工具类处理验证码
 - 拦截器实现Token验证
+
+  拦截器配置说明：
+
+  - **RefreshTokenInterceptor**：刷新Token有效期，每次请求时更新Token的过期时间
+  - **LoginInterceptor**：验证登录状态，检查用户是否已登录
+  - **配置类**：WebMvcConfig位于common模块config包中，负责拦截器注册和路径配置
+  - **默认排除路径**：`/user/code`, `/user/login`, `/actuator/**`
+  - **自定义排除路径**：支持通过`hmdp.interceptor.excludePaths`配置项添加自定义排除路径
+
 - 分布式ID生成（雪花算法）
 
 ### 3.2 商户服务 (shop-service)

@@ -17,6 +17,25 @@ import java.util.function.Function;
 
 import static com.hmdp.utils.RedisConstants.*;
 
+/**
+ * 缓存客户端工具类
+ * 
+ * 提供通用的缓存模式实现，包括：
+ * 1. 缓存穿透防护（Cache Penetration Protection）
+ * 2. 缓存击穿防护（Cache Breakdown Protection）
+ * 3. 逻辑过期（Logical Expiration）
+ * 4. 互斥锁重建（Mutex Lock Rebuilding）
+ * 
+ * 设计模式：
+ * - 查询模板模式：通过函数式接口封装数据库查询逻辑
+ * - 降级策略：缓存失效时使用数据库查询作为fallback
+ * - 异步重建：热点数据过期后异步更新缓存
+ * 
+ * 使用场景：
+ * - 高并发查询场景下的缓存优化
+ * - 防止恶意请求导致的缓存穿透
+ * - 热点数据失效时的平滑过渡
+ */
 @Slf4j
 @Component
 public class CacheClient {
@@ -40,6 +59,26 @@ public class CacheClient {
         stringRedisTemplate.opsForValue().set(key,JSONUtil.toJsonStr(redisData));
     }
 
+    /**
+     * 缓存穿透防护查询方法
+     * 
+     * 解决缓存穿透问题的经典方案：当查询数据不存在时，缓存空值防止重复查询数据库。
+     * 流程：
+     * 1. 查询Redis缓存
+     * 2. 缓存存在且有效 → 直接返回
+     * 3. 缓存存在但为空值 → 返回null（防止穿透）
+     * 4. 缓存不存在 → 查询数据库
+     * 5. 数据库存在 → 写入缓存并返回
+     * 6. 数据库不存在 → 缓存空值并返回null
+     * 
+     * @param keyPrefix 缓存键前缀
+     * @param id 查询ID
+     * @param type 返回类型
+     * @param dbFallback 数据库查询函数（降级策略）
+     * @param time 缓存时间
+     * @param unit 时间单位
+     * @return 查询结果，可能为null
+     */
     public <R,ID> R queryWithPassThrough(String keyPrefix, ID id, Class<R> type,
                                         Function<ID,R> dbFallback,Long time,TimeUnit unit){
 
@@ -78,6 +117,30 @@ public class CacheClient {
     private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
 
 
+    /**
+     * 逻辑过期缓存查询方法
+     * 
+     * 解决缓存击穿问题的方案：缓存数据设置逻辑过期时间，过期后异步重建。
+     * 流程：
+     * 1. 查询Redis缓存
+     * 2. 缓存不存在 → 返回null（需要调用方处理）
+     * 3. 缓存存在 → 解析逻辑过期时间
+     * 4. 未过期 → 直接返回缓存数据
+     * 5. 已过期 → 获取互斥锁，异步重建缓存，返回旧数据
+     * 
+     * 特点：
+     * - 保证高并发下热点数据不会同时失效
+     * - 异步重建避免阻塞用户请求
+     * - 返回旧数据保证用户体验连续性
+     * 
+     * @param keyPrefix 缓存键前缀
+     * @param id 查询ID
+     * @param type 返回类型
+     * @param dbFallback 数据库查询函数
+     * @param time 逻辑过期时间
+     * @param unit 时间单位
+     * @return 查询结果，可能为null或过期数据
+     */
     public <R, ID> R queryWithLogicalExpire(
             String keyPrefix, ID id, Class<R> type, Function<ID, R> dbFallback, Long time, TimeUnit unit) {
         String key = keyPrefix + id;

@@ -45,9 +45,24 @@ import java.util.concurrent.TimeUnit;
 import static com.hmdp.utils.RedisConstants.SHOP_GEO_KEY;
 
 /**
- * <p>
- *  服务实现类
- * </p>
+ * 店铺服务实现类
+ * 
+ * 本服务实现了完整的二级缓存策略，包括：
+ * 1. 缓存预热（Cache Warm-Up）：应用启动时预加载热点数据
+ * 2. 缓存穿透防护：空值缓存防止恶意查询
+ * 3. 缓存击穿防护：互斥锁重建防止热点数据失效
+ * 4. 缓存一致性：更新时自动清除缓存
+ * 
+ * 缓存架构：
+ * - 使用Spring Cache抽象层，支持注解驱动的缓存操作
+ * - Redis作为二级缓存，提供分布式缓存能力
+ * - 可通过扩展支持本地一级缓存（如Caffeine）
+ * 
+ * 关键特性：
+ * - @Cacheable: 查询时自动缓存结果
+ * - @CacheEvict: 更新时自动清除缓存
+ * - 异步缓存预热：不阻塞应用启动
+ * - 缓存状态监控：提供缓存命中率等指标
  */
 @Service
 public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IShopService {
