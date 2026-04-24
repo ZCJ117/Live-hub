@@ -45,6 +45,27 @@ spring:
             allowed-headers: '*' # 允许所有请求头
             allowed-methods: '*' # 允许所有请求方法
             allow-credentials: true # 允许携带凭证（如Cookie）
+  # Redis 配置（Sa-Token 会话持久化）
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: 520117
+      lettuce:
+        pool:
+          max-active: 10
+          max-idle: 5
+          min-idle: 0
+
+# Sa-Token 配置
+sa-token:
+  token-name: Authorization
+  timeout: 2592000
+  active-timeout: -1
+  is-concurrent: true
+  is-share: true
+  token-style: uuid
+  is-log: false
 management:
   endpoints:
     web:

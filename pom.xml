@@ -36,6 +36,7 @@
         <spring-boot.version>3.1.12</spring-boot.version>
         <spring.version>6.0.15</spring.version>
         <rocketmq.version>2.2.3</rocketmq.version>
+        <sa-token.version>1.44.0</sa-token.version>
 
     </properties>
 

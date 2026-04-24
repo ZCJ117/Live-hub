@@ -36,3 +36,13 @@ mybatis-plus:
 logging:
   level:
     com.hmdp: debug # 日志级别，debug 用于开发环境，生产环境建议调整为 info 或 warn
+
+# Sa-Token 配置
+sa-token:
+  token-name: Authorization
+  timeout: 2592000
+  active-timeout: -1
+  is-concurrent: true
+  is-share: true
+  token-style: uuid
+  is-log: false

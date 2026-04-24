@@ -1,6 +1,7 @@
 package com.hmdp.user.controller;
 
 
+import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.bean.BeanUtil;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
@@ -11,12 +12,9 @@ import com.hmdp.user.service.IUserInfoService;
 import com.hmdp.user.service.IUserService;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
 /**
@@ -37,11 +35,6 @@ public class UserController {
 
     @Resource
     private IUserInfoService userInfoService;
-
-    @Autowired
-    private StringRedisTemplate stringRedisTemplate;
-
-    private static final String LOGIN_USER_KEY = "login:user:";
 
     /**
      * 发送手机验证码
@@ -67,44 +60,12 @@ public class UserController {
      * @return 无
      */
     @PostMapping("/logout")
-    public Result logout(HttpServletRequest request) {
-        // 从请求头中获取token
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader == null || authHeader.isEmpty()) {
+    public Result logout() {
+        if (!StpUtil.isLogin()) {
             return Result.fail("登出失败，未提供token");
         }
-
-        String token;
-        // 处理Bearer token格式
-        if (authHeader.startsWith("Bearer ")) {
-            token = authHeader.substring(7);
-        } else {
-            token = authHeader;
-        }
-
-        // 验证token是否有效
-        if (token == null || token.isEmpty()) {
-            return Result.fail("登出失败，无效的token");
-        }
-
-        // 构建Redis键
-        String redisKey = LOGIN_USER_KEY + token;
-
-        try {
-            // 检查键是否存在
-            Boolean hasKey = stringRedisTemplate.hasKey(redisKey);
-            if (Boolean.TRUE.equals(hasKey)) {
-                // 删除Redis中的用户信息
-                stringRedisTemplate.delete(redisKey);
-                return Result.ok("登出成功");
-            } else {
-                return Result.fail("登出失败，token无效或已过期");
-            }
-        } catch (Exception e) {
-            // 记录日志
-            log.error("登出时发生异常，token: {}", token, e);
-            return Result.fail("登出失败，系统异常");
-        }
+        StpUtil.logout();
+        return Result.ok("登出成功");
     }
 
     @GetMapping("/me")

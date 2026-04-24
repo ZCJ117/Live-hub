@@ -1,8 +1,8 @@
 package com.hmdp.user.service.impl;
 
+import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
-import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.LoginFormDTO;
@@ -23,9 +23,7 @@ import jakarta.servlet.http.HttpSession;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
@@ -110,31 +108,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             user = createUserWithPhone(phone);
         }
 
-        //7保存用户信息到redis中
-        //7.1 随机生成token 作为登录令牌
-        //NOTE 使用UUID生成一个唯一的字符串作为token
-        String token = UUID.randomUUID().toString(true);
+        //7 使用 Sa-Token 登录
+        //7.1 登录
+        StpUtil.login(user.getId());
 
-        //7.2将User转为hashMap存储，并确保所有值为String类型
-        UserDTO userDTO = BeanUtil.copyProperties(user,UserDTO.class);
-        Map<String, Object> userMap = BeanUtil.beanToMap(userDTO, new HashMap<>(),
-                CopyOptions.create()
-                        .setIgnoreNullValue(true)
-                        .setFieldValueEditor((fieldName, fieldValue) -> {
-                            if (fieldValue != null) {
-                                return fieldValue.toString();
-                            }
-                            return null;
-                        }));
+        //7.2 将 User 转为 UserDTO 存入会话
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        StpUtil.getSession().set("user", userDTO);
 
-        //7.3储存
-        String tokenKey = LOGIN_USER_KEY+token;
-        stringRedisTemplate.opsForHash().putAll(tokenKey,userMap);
-
-        //7.4设置token有效期
-        stringRedisTemplate.expire(tokenKey,LOGIN_USER_TTL,TimeUnit.MINUTES);
-
-        return Result.ok(token);
+        //7.3 返回 token
+        return Result.ok(StpUtil.getTokenValue());
     }
 
 
