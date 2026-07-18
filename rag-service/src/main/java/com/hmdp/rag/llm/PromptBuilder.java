@@ -10,8 +10,9 @@ import java.util.stream.Collectors;
 public class PromptBuilder {
 
     public String buildSystemPrompt(List<RetrievedChunk> chunks) {
+        String noInfo = "“没有找到相关信息”";
         return "你是一个美食点评平台的智能客服助手。请基于以下餐厅知识库内容回答用户问题。" +
-                "如果知识库中没有相关信息，请如实告知"没有找到相关信息"。\n\n" +
+                "如果知识库中没有相关信息，请如实告知" + noInfo + "。\n\n" +
                 "知识库参考内容：\n" + formatChunks(chunks);
     }
 
