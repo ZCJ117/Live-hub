@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: rag-service
+  cloud:
+    nacos:
+      server-addr: localhost:8848
+      discovery:
+        namespace: public
+      config:
+        namespace: public
+        file-extension: yaml
+        import-check:
+          enabled: false
+  config:
+    import: optional:nacos:${spring.application.name}.yaml

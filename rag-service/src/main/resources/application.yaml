@@ -1,0 +1,56 @@
+server:
+  port: 8087
+
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5433/rag_db
+    username: ${RAG_DB_USER:rag_user}
+    password: ${RAG_DB_PASSWORD}
+  jackson:
+    default-property-inclusion: non_null
+
+mybatis-plus:
+  type-aliases-package: com.hmdp.rag.entity
+
+glm:
+  api-key: ${GLM_API_KEY}
+  base-url: https://open.bigmodel.cn/api/paas/v4
+  llm-model: glm-4-flash
+  embedding-model: embedding-2
+  connect-timeout: 30s
+  read-timeout: 120s
+  max-retries: 3
+
+rag:
+  chunk:
+    default-size: 500
+    default-overlap: 50
+  retrieval:
+    default-top-k: 5
+    max-top-k: 20
+    rrf-k: 60
+  conversation:
+    max-history-turns: 10
+  upload:
+    dir: ${RAG_UPLOAD_DIR:./data/rag-uploads}
+    max-size: 20MB
+
+rocketmq:
+  name-server: 127.0.0.1:9876
+  consumer:
+    group: rag-doc-process-group
+    topic: rag-document-process
+
+logging:
+  level:
+    com.hmdp.rag: debug
+
+sa-token:
+  token-name: Authorization
+  timeout: 2592000
+  active-timeout: -1
+  is-concurrent: true
+  is-share: true
+  token-style: uuid
+  is-log: false

@@ -23,6 +23,7 @@
         <module>voucher-service</module>
         <module>order-service</module>
         <module>social-service</module>
+        <module>rag-service</module>
     </modules>
 
     <properties>
