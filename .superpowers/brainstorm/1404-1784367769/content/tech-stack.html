@@ -1,0 +1,131 @@
+<h2>技术选型理由 · Docker · 配置</h2>
+<p class="subtitle">最终确定的完整技术栈</p>
+
+<div class="section">
+  <h3>选型总览与理由</h3>
+  <div class="mockup">
+    <div class="mockup-body">
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <tr style="color:#888"><td style="padding:4px 10px">组件</td><td style="padding:4px 10px">选择</td><td style="padding:4px 10px">理由</td></tr>
+        <tr><td style="padding:4px 10px">向量数据库</td><td style="padding:4px 10px;color:#4caf50">PgVector</td><td style="padding:4px 10px">与 PostgreSQL 一体，向量+全文检索同一库，运维成本低；项目已有 MySQL，PG 仅用于向量场景</td></tr>
+        <tr><td style="padding:4px 10px">全文检索</td><td style="padding:4px 10px;color:#2196f3">tsvector + zhparser</td><td style="padding:4px 10px">PostgreSQL 原生，加中文分词插件即可，无需额外 ES 集群</td></tr>
+        <tr><td style="padding:4px 10px">混合检索</td><td style="padding:4px 10px;color:#ff9800">RRF（倒数排名融合）</td><td style="padding:4px 10px">简单有效，无需训练；k=60 参数可调，平衡向量和关键词贡献</td></tr>
+        <tr><td style="padding:4px 10px">LLM</td><td style="padding:4px 10px">GLM-5</td><td style="padding:4px 10px">兼容 OpenAI 协议，中文能力强，智谱 API 稳定性好</td></tr>
+        <tr><td style="padding:4px 10px">Embedding</td><td style="padding:4px 10px">GLM Embedding (1024d)</td><td style="padding:4px 10px">与 GLM-5 同生态，1024 维平衡精度与存储</td></tr>
+        <tr><td style="padding:4px 10px">文档解析</td><td style="padding:4px 10px">Apache Tika 2.9</td><td style="padding:4px 10px">Java 原生，自动格式检测，覆盖 PDF/Word/Excel/TXT/MD</td></tr>
+        <tr><td style="padding:4px 10px">异步消息</td><td style="padding:4px 10px">RocketMQ</td><td style="padding:4px 10px">项目已有，复用基础设施，下单模块已验证可靠性</td></tr>
+        <tr><td style="padding:4px 10px">HTTP 客户端</td><td style="padding:4px 10px">OkHttp 4.12</td><td style="padding:4px 10px">Spring Boot 默认，轻量高效，内置重试/超时</td></tr>
+        <tr><td style="padding:4px 10px">SSE 流式</td><td style="padding:4px 10px">Spring WebFlux + Reactor</td><td style="padding:4px 10px">原生支持 ServerSentEvent，非阻塞推送，网关需放行该路由</td></tr>
+        <tr><td style="padding:4px 10px">鉴权</td><td style="padding:4px 10px">Sa-Token（复用现有）</td><td style="padding:4px 10px">Redis 共享会话，网关统一校验，Controller 层取 UserHolder.getUserId()</td></tr>
+        <tr><td style="padding:4px 10px">API 文档</td><td style="padding:4px 10px">SpringDoc OpenAPI 2.1</td><td style="padding:4px 10px">Spring Boot 3 最佳实践，兼容 Swagger UI</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Docker Compose 新增（仅 rag-service 需要的新组件）</h3>
+  <div class="mockup">
+    <div class="mockup-header">在现有 docker-compose 中追加，下载路径 D:\Config\Docker</div>
+    <div class="mockup-body" style="font-size:13px">
+<pre style="background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:4px;margin:0">
+# PostgreSQL 16 + pgvector + zhparser（中文分词）
+postgres-rag:
+  image: pgvector/pgvector:pg16
+  container_name: postgres-rag
+  ports: ["5433:5432"]
+  environment:
+    POSTGRES_DB: rag_db
+    POSTGRES_USER: rag_user
+    POSTGRES_PASSWORD: ${RAG_DB_PASSWORD}
+  volumes:
+    - postgres_rag_data:/var/lib/postgresql/data
+    - ./sql/init-rag.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  postgres_rag_data:
+</pre>
+    </div>
+  </div>
+  <p style="font-size:13px;color:#888;margin-top:8px">
+    初始化 SQL：CREATE EXTENSION pgvector · 建表 · 建索引 · 配置 zhparser
+  </p>
+</div>
+
+<div class="section">
+  <h3>应用配置（bootstrap.yml）</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="font-size:13px">
+<pre style="background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:4px;margin:0">
+spring:
+  application:
+    name: rag-service       # 端口 8087
+  cloud:
+    nacos:
+      server-addr: localhost:8848
+      discovery.namespace: public
+      config.namespace: public
+      config.file-extension: yaml
+  config:
+    import: optional:nacos:${spring.application.name}.yaml
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>应用配置（application.yml）— 敏感信息走环境变量</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="font-size:13px">
+<pre style="background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:4px;margin:0">
+server.port: 8087
+
+spring:
+  datasource:   # PostgreSQL (rag专用)
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5433/rag_db
+    username: ${RAG_DB_USER:rag_user}
+    password: ${RAG_DB_PASSWORD}
+
+glm:
+  api-key: ${GLM_API_KEY}
+  base-url: https://open.bigmodel.cn/api/paas/v4
+  llm-model: glm-4-flash        # 可在 Nacos 覆盖
+  embedding-model: embedding-2
+  connect-timeout: 30s
+  read-timeout: 120s
+  max-retries: 3
+
+rag:
+  chunk:
+    default-size: 500
+    default-overlap: 50
+  retrieval:
+    default-top-k: 5
+    max-top-k: 20
+  conversation:
+    max-history-turns: 10
+
+rocketmq:
+  name-server: 127.0.0.1:9876
+  consumer:
+    group: rag-doc-process-group
+    topic: rag-document-process
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Nacos 远程配置（rag-service.yaml）</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="font-size:13px;line-height:1.8">
+      用于存放可动态刷新的配置（@RefreshScope）：<br>
+      · glm.llm-model — LLM 模型名可切换<br>
+      · rag.chunk.default-size — 分块大小在线调整<br>
+      · rag.retrieval.default-top-k — 检索数量<br>
+      · 日志级别调整<br>
+      · 不存敏感信息（API Key 仍在环境变量）
+    </div>
+  </div>
+</div>

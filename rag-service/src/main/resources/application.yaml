@@ -5,8 +5,8 @@ spring:
   datasource:
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://localhost:5433/rag_db
-    username: ${RAG_DB_USER:rag_user}
-    password: ${RAG_DB_PASSWORD}
+    username: ${localhost:rag_user}
+    password: ${520117}
   jackson:
     default-property-inclusion: non_null
 
@@ -14,7 +14,7 @@ mybatis-plus:
   type-aliases-package: com.hmdp.rag.entity
 
 glm:
-  api-key: ${GLM_API_KEY}
+  api-key: ${a90e04301dcc4dc68e7dd07583a1fbf4.sAoM8x95aNHF0i1K}
   base-url: https://open.bigmodel.cn/api/paas/v4
   llm-model: glm-4-flash
   embedding-model: embedding-2

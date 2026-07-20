@@ -1,0 +1,98 @@
+<h2>数据模型设计</h2>
+<p class="subtitle">PostgreSQL 数据库 · pgvector 扩展 · tsvector 全文索引</p>
+
+<div class="section">
+  <h3>ER 关系</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="font-size:14px;line-height:1.8;text-align:center">
+      rag_knowledge_base (1) ──→ (N) rag_document (1) ──→ (N) rag_document_chunk<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ vector(pgvector) + tsvector<br>
+      rag_audit_log (独立，记录所有操作)
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>rag_knowledge_base — 知识库</h3>
+  <div class="mockup">
+    <div class="mockup-header">按商户隔离，每个商户可创建多个知识库</div>
+    <div class="mockup-body">
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <tr style="color:#888"><td style="padding:2px 8px">列</td><td style="padding:2px 8px">类型</td><td style="padding:2px 8px">说明</td></tr>
+        <tr><td style="padding:2px 8px">id</td><td style="padding:2px 8px">BIGSERIAL PK</td><td style="padding:2px 8px">自增主键</td></tr>
+        <tr><td style="padding:2px 8px">merchant_id</td><td style="padding:2px 8px">BIGINT NOT NULL</td><td style="padding:2px 8px">商户 ID，权限隔离键</td></tr>
+        <tr><td style="padding:2px 8px">name</td><td style="padding:2px 8px">VARCHAR(100)</td><td style="padding:2px 8px">知识库名称</td></tr>
+        <tr><td style="padding:2px 8px">description</td><td style="padding:2px 8px">VARCHAR(500)</td><td style="padding:2px 8px"></td></tr>
+        <tr><td style="padding:2px 8px">chunk_size</td><td style="padding:2px 8px">INT DEFAULT 500</td><td style="padding:2px 8px">分块大小（字符）</td></tr>
+        <tr><td style="padding:2px 8px">chunk_overlap</td><td style="padding:2px 8px">INT DEFAULT 50</td><td style="padding:2px 8px">重叠大小</td></tr>
+        <tr><td style="padding:2px 8px">embedding_model</td><td style="padding:2px 8px">VARCHAR(100)</td><td style="padding:2px 8px">默认 GLM Embedding</td></tr>
+        <tr><td style="padding:2px 8px">created_by</td><td style="padding:2px 8px">BIGINT</td><td style="padding:2px 8px">创建者用户 ID</td></tr>
+        <tr><td style="padding:2px 8px">created_at / updated_at</td><td style="padding:2px 8px">TIMESTAMPTZ</td><td style="padding:2px 8px"></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>rag_document — 文档</h3>
+  <div class="mockup">
+    <div class="mockup-body">
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <tr style="color:#888"><td style="padding:2px 8px">列</td><td style="padding:2px 8px">类型</td><td style="padding:2px 8px">说明</td></tr>
+        <tr><td style="padding:2px 8px">id</td><td style="padding:2px 8px">BIGSERIAL PK</td><td style="padding:2px 8px"></td></tr>
+        <tr><td style="padding:2px 8px">kb_id</td><td style="padding:2px 8px">BIGINT FK</td><td style="padding:2px 8px">所属知识库</td></tr>
+        <tr><td style="padding:2px 8px">filename</td><td style="padding:2px 8px">VARCHAR(255)</td><td style="padding:2px 8px">原始文件名</td></tr>
+        <tr><td style="padding:2px 8px">file_type</td><td style="padding:2px 8px">VARCHAR(20)</td><td style="padding:2px 8px">pdf/docx/xlsx/txt/md</td></tr>
+        <tr><td style="padding:2px 8px">file_size</td><td style="padding:2px 8px">BIGINT</td><td style="padding:2px 8px">字节数</td></tr>
+        <tr><td style="padding:2px 8px">file_path</td><td style="padding:2px 8px">VARCHAR(500)</td><td style="padding:2px 8px">本地存储路径</td></tr>
+        <tr><td style="padding:2px 8px">status</td><td style="padding:2px 8px">VARCHAR(20)</td><td style="padding:2px 8px">PROCESSING / COMPLETED / FAILED</td></tr>
+        <tr><td style="padding:2px 8px">chunk_count</td><td style="padding:2px 8px">INT</td><td style="padding:2px 8px">分块数量</td></tr>
+        <tr><td style="padding:2px 8px">error_msg</td><td style="padding:2px 8px">TEXT</td><td style="padding:2px 8px">失败原因</td></tr>
+        <tr><td style="padding:2px 8px">uploaded_by</td><td style="padding:2px 8px">BIGINT</td><td style="padding:2px 8px"></td></tr>
+        <tr><td style="padding:2px 8px">created_at</td><td style="padding:2px 8px">TIMESTAMPTZ</td><td style="padding:2px 8px"></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>rag_document_chunk — 分块（核心表）</h3>
+  <div class="mockup">
+    <div class="mockup-body">
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <tr style="color:#888"><td style="padding:2px 8px">列</td><td style="padding:2px 8px">类型</td><td style="padding:2px 8px">说明</td></tr>
+        <tr><td style="padding:2px 8px">id</td><td style="padding:2px 8px">BIGSERIAL PK</td><td style="padding:2px 8px"></td></tr>
+        <tr><td style="padding:2px 8px">document_id</td><td style="padding:2px 8px">BIGINT FK</td><td style="padding:2px 8px"></td></tr>
+        <tr><td style="padding:2px 8px">kb_id</td><td style="padding:2px 8px">BIGINT FK</td><td style="padding:2px 8px">冗余，加速按知识库检索</td></tr>
+        <tr><td style="padding:2px 8px">chunk_index</td><td style="padding:2px 8px">INT</td><td style="padding:2px 8px">分块序号</td></tr>
+        <tr><td style="padding:2px 8px;color:#ff9800">content</td><td style="padding:2px 8px;color:#ff9800">TEXT</td><td style="padding:2px 8px;color:#ff9800">分块文本</td></tr>
+        <tr><td style="padding:2px 8px;color:#4caf50">embedding</td><td style="padding:2px 8px;color:#4caf50">vector(1024)</td><td style="padding:2px 8px;color:#4caf50">GLM Embedding 向量</td></tr>
+        <tr><td style="padding:2px 8px;color:#2196f3">tsv</td><td style="padding:2px 8px;color:#2196f3">tsvector</td><td style="padding:2px 8px;color:#2196f3">中文分词全文索引</td></tr>
+        <tr><td style="padding:2px 8px">metadata</td><td style="padding:2px 8px">JSONB</td><td style="padding:2px 8px">来源页码/行号等</td></tr>
+        <tr><td style="padding:2px 8px">created_at</td><td style="padding:2px 8px">TIMESTAMPTZ</td><td style="padding:2px 8px"></td></tr>
+      </table>
+    </div>
+  </div>
+  <p style="margin-top:12px;color:#888;font-size:13px">
+    索引：IVFFlat 向量索引 (lists=100) · GIN tsvector 索引 · kb_id + document_id 联合索引
+  </p>
+</div>
+
+<div class="section">
+  <h3>rag_audit_log — 审计日志</h3>
+  <div class="mockup">
+    <div class="mockup-body">
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <tr style="color:#888"><td style="padding:2px 8px">列</td><td style="padding:2px 8px">类型</td><td style="padding:2px 8px">说明</td></tr>
+        <tr><td style="padding:2px 8px">id</td><td style="padding:2px 8px">BIGSERIAL PK</td><td style="padding:2px 8px"></td></tr>
+        <tr><td style="padding:2px 8px">user_id</td><td style="padding:2px 8px">BIGINT</td><td style="padding:2px 8px">操作人</td></tr>
+        <tr><td style="padding:2px 8px">action</td><td style="padding:2px 8px">VARCHAR(50)</td><td style="padding:2px 8px">UPLOAD / DELETE / QUERY / CREATE_KB</td></tr>
+        <tr><td style="padding:2px 8px">resource_type</td><td style="padding:2px 8px">VARCHAR(50)</td><td style="padding:2px 8px">KB / DOCUMENT</td></tr>
+        <tr><td style="padding:2px 8px">resource_id</td><td style="padding:2px 8px">BIGINT</td><td style="padding:2px 8px"></td></tr>
+        <tr><td style="padding:2px 8px">detail</td><td style="padding:2px 8px">JSONB</td><td style="padding:2px 8px">操作详情（文件名、查询问题等）</td></tr>
+        <tr><td style="padding:2px 8px">ip</td><td style="padding:2px 8px">VARCHAR(45)</td><td style="padding:2px 8px"></td></tr>
+        <tr><td style="padding:2px 8px">created_at</td><td style="padding:2px 8px">TIMESTAMPTZ</td><td style="padding:2px 8px"></td></tr>
+      </table>
+    </div>
+  </div>
+</div>

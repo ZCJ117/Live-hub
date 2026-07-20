@@ -1,0 +1,42 @@
+<h2>三种架构方案对比</h2>
+<p class="subtitle">基础约束：GLM-5 · GLM Embedding · PgVector + tsvector + RRF · Apache Tika · RocketMQ 异步 · 商户级隔离</p>
+
+<div class="options">
+
+<div class="option" data-choice="a" onclick="toggleSelect(this)">
+  <div class="letter">A</div>
+  <div class="content">
+    <h3>极简直连式</h3>
+    <p>单一 Spring Boot 服务，Controller 直调 JDBC Template 操作 PgVector，无中间抽象层</p>
+    <div class="pros-cons">
+      <div class="pros"><h4>Pros</h4><ul><li>代码量最少（~15 个 Java 文件）</li><li>部署简单，无额外依赖</li><li>快速上线</li></ul></div>
+      <div class="cons"><h4>Cons</h4><ul><li>检索链路硬编码，难扩展</li><li>LLM/Embedding 切换需改代码</li><li>不符合现有服务的分层规范</li></ul></div>
+    </div>
+  </div>
+</div>
+
+<div class="option" data-choice="b" onclick="toggleSelect(this)">
+  <div class="letter">B</div>
+  <div class="content">
+    <h3>分层策略式 ⭐ 推荐</h3>
+    <p>Controller → Service → Pipeline → Strategy，每层职责单一，策略模式封装检索链路和 LLM 调用</p>
+    <div class="pros-cons">
+      <div class="pros"><h4>Pros</h4><ul><li>符合项目现有分层规范</li><li>LLM/Embedding/检索策略可配置切换</li><li>独立测试每个环节（分块/向量化/检索/生成）</li><li>扩展开关重排序只需加一个策略实现</li></ul></div>
+      <div class="cons"><h4>Cons</h4><ul><li>类数量适中（~30 个 Java 文件）</li><li>需定义清晰的接口契约</li></ul></div>
+    </div>
+  </div>
+</div>
+
+<div class="option" data-choice="c" onclick="toggleSelect(this)">
+  <div class="letter">C</div>
+  <div class="content">
+    <h3>事件驱动 CQRS</h3>
+    <p>读写模型分离，所有状态变更通过 RocketMQ 事件驱动，独立的 Embedding Worker</p>
+    <div class="pros-cons">
+      <div class="pros"><h4>Pros</h4><ul><li>极致解耦，写入和查询独立扩缩</li><li>事件溯源可完整回放</li></ul></div>
+      <div class="cons"><h4>Cons</h4><ul><li>过度设计，点评业务规模不需要</li><li>类数量多（~50+），维护成本高</li><li>与项目现有简单风格不符</li></ul></div>
+    </div>
+  </div>
+</div>
+
+</div>

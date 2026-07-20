@@ -12,8 +12,8 @@ import com.hmdp.rag.repository.DocumentChunkRepository;
 import com.hmdp.rag.repository.DocumentMapper;
 import com.hmdp.rag.repository.KnowledgeBaseMapper;
 import com.hmdp.rag.service.IDocumentService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -25,15 +25,26 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class DocumentServiceImpl implements IDocumentService {
 
     private final DocumentMapper documentMapper;
     private final KnowledgeBaseMapper kbMapper;
     private final DocumentChunkRepository chunkRepo;
-    private final DocumentProcessProducer producer;
     private final RagProperties ragProperties;
+
+    @Autowired(required = false)
+    private DocumentProcessProducer producer;
+
+    public DocumentServiceImpl(DocumentMapper documentMapper,
+                                KnowledgeBaseMapper kbMapper,
+                                DocumentChunkRepository chunkRepo,
+                                RagProperties ragProperties) {
+        this.documentMapper = documentMapper;
+        this.kbMapper = kbMapper;
+        this.chunkRepo = chunkRepo;
+        this.ragProperties = ragProperties;
+    }
 
     @Override
     public UploadResponse upload(MultipartFile file, Long kbId, Long userId) {
@@ -63,7 +74,11 @@ public class DocumentServiceImpl implements IDocumentService {
             doc.setCreatedAt(LocalDateTime.now());
             documentMapper.insert(doc);
 
-            producer.sendProcessMessage(doc.getId());
+            if (producer != null) {
+                producer.sendProcessMessage(doc.getId());
+            } else {
+                log.warn("RocketMQ unavailable, document {} stays in PROCESSING state", doc.getId());
+            }
 
             log.info("Document uploaded: id={}, name={}, kbId={}", doc.getId(), originalName, kbId);
             return new UploadResponse(doc.getId(), "PROCESSING", "文档已上传，正在处理中");

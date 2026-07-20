@@ -1,0 +1,87 @@
+<h2>REST API 接口设计</h2>
+<p class="subtitle">前缀 /api/rag · 统一返回 com.hmdp.dto.Result · Sa-Token 鉴权</p>
+
+<div class="section">
+  <h3>1. 知识库管理</h3>
+  <div class="mockup">
+    <div class="mockup-body">
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <tr style="color:#888"><td style="padding:3px 10px">方法</td><td style="padding:3px 10px">路径</td><td style="padding:3px 10px">说明</td><td style="padding:3px 10px">鉴权</td></tr>
+        <tr><td style="padding:3px 10px">POST</td><td style="padding:3px 10px">/api/rag/knowledge-bases</td><td style="padding:3px 10px">创建知识库</td><td style="padding:3px 10px">商户管理员</td></tr>
+        <tr><td style="padding:3px 10px">GET</td><td style="padding:3px 10px">/api/rag/knowledge-bases</td><td style="padding:3px 10px">商户知识库列表</td><td style="padding:3px 10px">登录用户</td></tr>
+        <tr><td style="padding:3px 10px">GET</td><td style="padding:3px 10px">/api/rag/knowledge-bases/{id}</td><td style="padding:3px 10px">知识库详情</td><td style="padding:3px 10px">登录用户</td></tr>
+        <tr><td style="padding:3px 10px">PUT</td><td style="padding:3px 10px">/api/rag/knowledge-bases/{id}</td><td style="padding:3px 10px">更新配置</td><td style="padding:3px 10px">商户管理员</td></tr>
+        <tr><td style="padding:3px 10px">DELETE</td><td style="padding:3px 10px">/api/rag/knowledge-bases/{id}</td><td style="padding:3px 10px">删除（级联文档+分块）</td><td style="padding:3px 10px">商户管理员</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>2. 文档管理</h3>
+  <div class="mockup">
+    <div class="mockup-body">
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <tr style="color:#888"><td style="padding:3px 10px">方法</td><td style="padding:3px 10px">路径</td><td style="padding:3px 10px">说明</td><td style="padding:3px 10px">鉴权</td></tr>
+        <tr><td style="padding:3px 10px">POST</td><td style="padding:3px 10px">/api/rag/knowledge-bases/{kbId}/documents</td><td style="padding:3px 10px">上传文档(multipart) → 返回 taskId</td><td style="padding:3px 10px">商户管理员</td></tr>
+        <tr><td style="padding:3px 10px">GET</td><td style="padding:3px 10px">/api/rag/knowledge-bases/{kbId}/documents</td><td style="padding:3px 10px">文档列表（分页）</td><td style="padding:3px 10px">登录用户</td></tr>
+        <tr><td style="padding:3px 10px">GET</td><td style="padding:3px 10px">/api/rag/documents/{id}/status</td><td style="padding:3px 10px">查询处理状态</td><td style="padding:3px 10px">登录用户</td></tr>
+        <tr><td style="padding:3px 10px">DELETE</td><td style="padding:3px 10px">/api/rag/documents/{id}</td><td style="padding:3px 10px">删除文档+分块</td><td style="padding:3px 10px">商户管理员</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>3. 问答（SSE 流式）</h3>
+  <div class="mockup">
+    <div class="mockup-header">POST /api/rag/qa/chat — 核心接口，返回 SSE text/event-stream</div>
+    <div class="mockup-body" style="font-size:13px">
+<pre style="background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:4px;margin:0">
+// 请求体
+{
+  "kbId": 1,
+  "question": "这家店的招牌菜是什么？",
+  "messages": [                       // 多轮历史
+    {"role": "user", "content": "..."},
+    {"role": "assistant", "content": "..."}
+  ],
+  "topK": 5,                          // 检索数量
+  "enableRerank": false               // 是否启用重排序
+}
+
+// SSE 响应流
+data: {"type":"thinking","content":"正在检索..."}
+data: {"type":"sources","chunks":[{...}]}
+data: {"type":"delta","content":"这"}
+data: {"type":"delta","content":"家"}
+data: {"type":"delta","content":"店"}
+...
+data: {"type":"done"}
+</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>4. 审计日志</h3>
+  <div class="mockup">
+    <div class="mockup-body">
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <tr style="color:#888"><td style="padding:3px 10px">方法</td><td style="padding:3px 10px">路径</td><td style="padding:3px 10px">说明</td></tr>
+        <tr><td style="padding:3px 10px">GET</td><td style="padding:3px 10px">/api/rag/audit-logs</td><td style="padding:3px 10px">分页查询（支持按 user_id/kb_id/action 筛选）</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>SSE 多轮对话设计</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="font-size:13px;line-height:1.8">
+      <strong>客户端负责维护对话上下文</strong>，每次请求带上完整 messages 数组。<br>
+      服务端取最后 N 轮（默认 10 轮）构建 Prompt，不持久化对话（简化设计）。<br>
+      后续可按需加上对话持久化（Redis + MySQL），但当前版本先不做。
+    </div>
+  </div>
+</div>

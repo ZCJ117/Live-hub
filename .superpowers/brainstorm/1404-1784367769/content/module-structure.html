@@ -1,0 +1,72 @@
+<h2>rag-service 模块结构与分层设计</h2>
+<p class="subtitle">端口 8087 · 包 com.hmdp.rag · 遵循项目现有规范</p>
+
+<div class="section">
+  <h3>包结构</h3>
+  <div class="mockup">
+    <div class="mockup-header">com.hmdp.rag</div>
+    <div class="mockup-body">
+      <table style="width:100%;font-size:14px;border-collapse:collapse">
+        <tr><td style="padding:4px 12px;color:#888">controller</td><td style="padding:4px">KnowledgeBaseController · DocumentController · QaController</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">service</td><td style="padding:4px">IKnowledgeBaseService · IDocumentService · IQaService · IAuditService</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">service/impl</td><td style="padding:4px">各 Service 实现</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">pipeline</td><td style="padding:4px">DocumentPipeline（离线） · QaPipeline（在线）</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">parser</td><td style="padding:4px">TikaDocumentParser → parse(input) → ParsedDocument</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">splitter</td><td style="padding:4px">SemanticChunkSplitter（可配置 size/overlap）</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">embedding</td><td style="padding:4px">GlmEmbeddingClient → embed(texts) → List&lt;float[]&gt;（OKHTTP + 超时重试）</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">retriever</td><td style="padding:4px">VectorRetriever · KeywordRetriever · HybridRetriever · RrfFusion</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">reranker</td><td style="padding:4px">RerankerStrategy 接口 · NoOpReranker（默认）· GlmReranker（可选）</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">llm</td><td style="padding:4px">GlmLlmClient（chat/completions，SSE 流式）</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">repository</td><td style="padding:4px">DocumentChunkRepo（PgVector JDBC）· KnowledgeBaseRepo（MyBatis Plus）</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">entity</td><td style="padding:4px">KnowledgeBase · Document · DocumentChunk · AuditLog</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">dto</td><td style="padding:4px">请求/响应 DTO，统一使用 com.hmdp.dto.Result</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">config</td><td style="padding:4px">PgVectorConfig · GlmApiConfig · RetryConfig · SwaggerConfig</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">mq</td><td style="padding:4px">DocumentProcessConsumer（RocketMQ 消费分块+向量化）</td></tr>
+        <tr><td style="padding:4px 12px;color:#888">handler</td><td style="padding:4px">GlobalExceptionHandler（同 order-service 模式）</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>关键设计决策</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">离线处理链路（异步）</div>
+      <div class="mockup-body" style="font-size:13px;line-height:1.8">
+        POST /upload<br>→ 保存文件 + 建 Document 记录(status=PROCESSING)<br>→ 发 RocketMQ 消息<br>→ 立即返回 taskId<br><br>
+        Consumer 消费：<br>
+        Tika 解析 → 清洗 → 分块 → GLM Embedding<br>→ 写入 PgVector + tsvector<br>→ 更新 status=COMPLETED<br>→ 失败则 status=FAILED + 审计日志
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">在线问答链路（同步流式）</div>
+      <div class="mockup-body" style="font-size:13px;line-height:1.8">
+        POST /qa/chat (SSE)<br>
+        1. 加载商户知识库配置<br>
+        2. HybridRetriever.retrieve()<br>
+        &nbsp;&nbsp;&nbsp;VectorRetriever (PgVector cosine)<br>
+        &nbsp;&nbsp;&nbsp;+ KeywordRetriever (tsvector @@)<br>
+        &nbsp;&nbsp;&nbsp;→ RRF 融合 Top-K<br>
+        3. [可选] Reranker.rerank()<br>
+        4. 构建 Prompt + 上下文<br>
+        5. GlmLlmClient.streamChat()<br>
+        6. SSE 逐 token 推送 + 最终返回引用来源
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>依赖关系</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="font-size:13px;line-height:2">
+      rag-service → common（共享 Result/UserHolder/BusinessException）<br>
+      rag-service → Nacos（注册发现 + 配置拉取）<br>
+      rag-service → PostgreSQL (pgvector + tsvector)<br>
+      rag-service → Redis（Sa-Token 会话校验）<br>
+      rag-service → RocketMQ（文档处理消息）<br>
+      rag-service → 智谱 API（GLM-5 + Embedding）
+    </div>
+  </div>
+</div>
