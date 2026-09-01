@@ -1,6 +1,5 @@
 package com.hmdp.agent.tool;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hmdp.agent.dto.OrderCardDTO;
 import com.hmdp.agent.feign.OrderFeignClient;
 import com.hmdp.agent.security.Desensitizer;
@@ -27,11 +26,10 @@ import java.util.Map;
 public class QueryMyOrdersTool {
 
     private final OrderFeignClient orderFeignClient;
-    private final ObjectMapper objectMapper;
 
     @AgentTool(name = "query_my_orders",
             friendlyText = "正在为您查询订单…",
-            description = "查询当前用户的优惠券订单。参数：orderId(可空,聚焦某订单), status(可空,1未支付/2已支付/3已核销/4已取消/5退款中/6已退款), days(可空,最近N天,默认7), page(可空,页码), size(可空,每页条数,默认5)")
+            description = "查询当前用户的优惠券订单。参数：orderId(可空,聚焦某订单), status(可空,1未支付/2已支付/3已核销/4已取消/5退款中/6已退款), days(可空,最近N天,默认7), page(可空,页码,每页5条,回复'下一页'即 page+1), size(内部固定5)")
     public ToolResult queryMyOrders(ToolContext ctx, Map<String, Object> args) {
         try {
             Long orderId = extractLong(args.get("orderId"));
@@ -42,12 +40,25 @@ public class QueryMyOrdersTool {
             Integer status = extractInt(args.get("status"));
             Integer days = extractInt(args.get("days"));
             Integer page = extractInt(args.get("page"));
+            // T3.7：size 强制 ≤5（>50 条强制分页，FR-05 边界）
             Integer size = extractInt(args.get("size"));
+            size = (size == null || size <= 0) ? 5 : Math.min(size, 5);
 
-            Result result = orderFeignClient.queryMyOrders(orderId, status, days, page, size);
-            if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
-                String msg = result == null ? "订单服务无响应" : result.getErrorMsg();
-                return ToolResult.fail("ORDER_QUERY_FAIL", "订单服务暂时繁忙，请稍后再试");
+            // T3.7：Feign 2s 超时/失败自动重试 1 次
+            Result result = null;
+            Exception lastError = null;
+            for (int attempt = 0; attempt < 2; attempt++) {
+                try {
+                    result = orderFeignClient.queryMyOrders(orderId, status, days, page, size);
+                    lastError = null;
+                    break;
+                } catch (Exception e) {
+                    log.warn("订单查询第 {} 次失败: orderId={}", attempt + 1, orderId, e);
+                    lastError = e;
+                }
+            }
+            if (lastError != null || result == null || !Boolean.TRUE.equals(result.getSuccess())) {
+                return ToolResult.fail("ORDER_TIMEOUT", "订单服务暂时繁忙，请稍后再试；您也可以提交工单由人工跟进");
             }
 
             @SuppressWarnings("unchecked")
@@ -57,6 +68,7 @@ public class QueryMyOrdersTool {
                 for (Map<String, Object> r : records) {
                     cards.add(OrderCardDTO.from(
                             toLong(r.get("id")),
+                            toLong(r.get("voucherId")),
                             (String) r.get("voucherTitle"),
                             toLong(r.get("payValue")),
                             toLong(r.get("actualValue")),
@@ -65,21 +77,29 @@ public class QueryMyOrdersTool {
                 }
             }
 
+            long total = result.getTotal() == null ? cards.size() : result.getTotal();
             if (cards.isEmpty()) {
                 return ToolResult.builder()
                         .success(true)
                         .data(cards)
                         .summary("未找到符合条件的订单记录")
-                        .cardPayload(Map.of("ORDER_LIST", Map.of("orders", cards, "total", 0)))
+                        .cardPayload(Map.of("ORDER_LIST", Map.of("orders", cards, "total", total)))
                         .build();
             }
 
-            String summary = Desensitizer.mask("已找到 " + cards.size() + " 条订单记录："
+            String summary = Desensitizer.mask("已找到 " + total + " 条订单记录："
                     + cards.get(0).getVoucherTitle()
-                    + "（" + cards.get(0).getStatusText() + "）" + (cards.size() > 1 ? " 等" : ""));
+                    + "（" + cards.get(0).getStatusText() + "）" + (total > 1 ? " 等" : ""));
+            // T3.7：分页指引（total 超过本页时提示"下一页"）
+            int pageNo = page == null || page < 1 ? 1 : page;
+            if (total > (long) pageNo * size) {
+                summary += "；共 " + total + " 条，当前第 " + pageNo + " 页（每页 " + size + " 条），可回复\"下一页\"查看更多";
+            }
             Map<String, Object> payload = new HashMap<>();
             payload.put("orders", cards);
-            payload.put("total", result.getTotal() == null ? cards.size() : result.getTotal());
+            payload.put("total", total);
+            payload.put("page", pageNo);
+            payload.put("pageSize", size);
 
             return ToolResult.builder()
                     .success(true)
