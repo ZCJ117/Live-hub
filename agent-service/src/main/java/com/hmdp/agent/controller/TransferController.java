@@ -1,6 +1,5 @@
 package com.hmdp.agent.controller;
 
-import com.hmdp.agent.service.AgentSessionService;
 import com.hmdp.agent.transfer.TransferService;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
@@ -27,7 +26,6 @@ import java.util.Map;
 public class TransferController {
 
     private final TransferService transferService;
-    private final AgentSessionService sessionService;
 
     @PostMapping("/{sessionId}/transfer/confirm")
     public Result confirm(@PathVariable("sessionId") Long sessionId) {
@@ -36,7 +34,6 @@ public class TransferController {
             return Result.fail("未登录，请先登录");
         }
         log.info("转人工确认: sessionId={}, userId={}", sessionId, user.getId());
-        sessionService.getOwned(sessionId, user.getId());
         TransferService.TransferOutcome o = transferService.confirmTransfer(user.getId(), sessionId);
         if (!o.success()) {
             return Result.fail(o.message());

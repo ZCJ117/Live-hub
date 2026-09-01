@@ -1,7 +1,5 @@
 package com.hmdp.agent.controller;
 
-import com.hmdp.agent.entity.AgentSession;
-import com.hmdp.agent.service.AgentSessionService;
 import com.hmdp.agent.transfer.TransferService;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
@@ -18,6 +16,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,7 +26,6 @@ import static org.mockito.Mockito.when;
 class TransferControllerTest {
 
     @Mock private TransferService transferService;
-    @Mock private AgentSessionService sessionService;
     @InjectMocks private TransferController controller;
 
     @BeforeEach
@@ -47,7 +45,7 @@ class TransferControllerTest {
         UserHolder.removeUser();
         Result r = controller.confirm(1L);
         assertTrue(!r.getSuccess());
-        verify(sessionService, never()).getOwned(1L, 100L);
+        verify(transferService, never()).confirmTransfer(any(), any());
     }
 
     @Test
@@ -57,7 +55,6 @@ class TransferControllerTest {
 
         Result r = controller.confirm(1L);
 
-        verify(sessionService).getOwned(1L, 100L);
         assertTrue(r.getSuccess());
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) r.getData();
@@ -67,7 +64,6 @@ class TransferControllerTest {
 
     @Test
     void 服务层失败_返回fail() {
-        when(sessionService.getOwned(1L, 100L)).thenReturn(new AgentSession());
         when(transferService.confirmTransfer(100L, 1L)).thenReturn(
                 new TransferService.TransferOutcome(false, "会话未处于转人工状态", null, null));
 

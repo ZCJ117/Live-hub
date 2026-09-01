@@ -39,6 +39,9 @@ public class TicketService extends ServiceImpl<AgentTicketMapper, AgentTicket> {
         this.notifyProducer = notifyProducer;
     }
 
+    /** 工单号前缀（工单号 = TK + yyyyMMdd + 6位日序号；外部幂等判定引用此常量） */
+    public static final String TICKET_NO_PREFIX = "TK";
+
     /** 工单状态机：OPEN→ROUTED→RESOLVED（非法跳转 100% 拦截，FR-14 验收口径） */
     private static final Map<String, String> TRANSITIONS = Map.of(
             "OPEN", "ROUTED",
@@ -166,7 +169,7 @@ public class TicketService extends ServiceImpl<AgentTicketMapper, AgentTicket> {
     private String nextTicketNo() {
         String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         long seq = redisson.getAtomicLong("agent:ticket:seq:" + date).incrementAndGet();
-        return "TK" + date + String.format("%06d", seq);
+        return TICKET_NO_PREFIX + date + String.format("%06d", seq);
     }
 
     private String toJson(Map<String, Object> refs) {

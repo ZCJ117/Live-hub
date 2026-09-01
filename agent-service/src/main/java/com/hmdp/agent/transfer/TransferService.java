@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hmdp.agent.config.AgentProperties;
 import com.hmdp.agent.dto.TicketRequest;
 import com.hmdp.agent.entity.AgentSession;
+import com.hmdp.agent.entity.AgentTicket;
 import com.hmdp.agent.mapper.AgentToolCallMapper;
 import com.hmdp.agent.memory.ChatMemoryService;
 import com.hmdp.agent.metrics.TrackEventService;
@@ -92,41 +93,50 @@ public class TransferService {
             // P2 工作台接入后的人工接管路径（本阶段不可达，占位保证协议完整）
             return new TransferOutcome(true, "已接入人工坐席，请稍候", null, null);
         }
-        // 一次性守卫（防双击/并发重复建单 + dedup 漂移）：占位 PENDING → 建单成功回填工单号，失败删标记允许重试
+        // 一次性守卫（防双击/并发重复建单 + dedup 漂移）：CAS 占位 PENDING → 建单成功回填工单号，失败删标记允许重试
         RBucket<String> flag = redisson.getBucket("agent:session:" + sessionId + ":transferConfirmed");
-        String previous = flag.getAndSet("PENDING");
-        if (previous != null && previous.startsWith("TK")) {
-            return new TransferOutcome(true, "转人工申请已提交，工单 " + previous + " 处理中，请勿重复提交。", previous, null);
-        }
-        if (previous != null && !"PENDING".equals(previous)) {
-            // 未知遗留值，按已处理对待（保守不重复建单）
-            return new TransferOutcome(true, "转人工申请已提交，请勿重复提交。", null, null);
-        }
+        String previous = flag.get();
         if (previous != null) {
+            if (previous.startsWith(TicketService.TICKET_NO_PREFIX)) {
+                // 幂等：不触碰标记值（保留 TK 原值），直接返回已有工单号
+                return new TransferOutcome(true, "转人工申请已提交，工单 " + previous + " 处理中，请勿重复提交。", previous, null);
+            }
+            // PENDING 或未知值：并发请求处理中（保守不重复建单）
             return new TransferOutcome(true, "转人工申请正在处理中，请稍候。", null, null);
         }
+        if (!flag.compareAndSet(null, "PENDING")) {
+            // 竞态：占位被其他请求抢先
+            return new TransferOutcome(true, "转人工申请正在处理中，请稍候。", null, null);
+        }
+        flag.expire(Duration.ofSeconds(60)); // 崩溃兜底：占位 60s 自动清除，会话可重试
         buildHandoverPackage(session); // 移交包（尽力而为，失败不阻断建单）
 
         String summary = session.getSummary() == null || session.getSummary().isBlank()
                 ? "用户申请转人工（原因：" + session.getTransferReason() + "），会话无摘要，详见移交包。"
                 : session.getSummary();
         String priority = priorityRules.fundRelated(summary) ? "HIGH" : "MEDIUM";
+        AgentTicket ticket;
         try {
-            var ticket = ticketService.create(userId, sessionId, TicketRequest.of(
+            ticket = ticketService.create(userId, sessionId, TicketRequest.of(
                     inferCategory(summary), priority, summary, Map.of()));
-            flag.set(ticket.getTicketNo(), Duration.ofDays(props.getTransfer().getHandoverTtlDays()));
-            String msg = "当前无人工坐席在线，已为您创建工单 " + ticket.getTicketNo()
-                    + "（优先级：" + ticket.getPriority() + "），预计 " + ticket.getExpectedSla()
-                    + " 内由人工跟进；等待期间您仍可继续留言，消息将随工单一并移交。";
-            sseManager.send(sessionId, "delta", Map.of("text", msg));
-            return new TransferOutcome(true, msg, ticket.getTicketNo(), ticket.getExpectedSla());
         } catch (Exception e) {
-            flag.delete(); // 建单失败允许重试
+            flag.delete(); // 仅建单失败清标记，允许重试
             log.error("无人值守建单失败: sessionId={}", sessionId, e);
             String msg = "转人工请求已受理，工单创建出现异常，客服会尽快与您联系。";
             sseManager.send(sessionId, "delta", Map.of("text", msg));
             return new TransferOutcome(true, msg, null, null);
         }
+        // 建单成功：标记回填正式工单号（此后的 SSE 失败不清标记）
+        flag.set(ticket.getTicketNo(), Duration.ofDays(props.getTransfer().getHandoverTtlDays()));
+        String msg = "当前无人工坐席在线，已为您创建工单 " + ticket.getTicketNo()
+                + "（优先级：" + ticket.getPriority() + "），预计 " + ticket.getExpectedSla()
+                + " 内由人工跟进；等待期间您仍可继续留言，消息将随工单一并移交。";
+        try {
+            sseManager.send(sessionId, "delta", Map.of("text", msg));
+        } catch (Exception e) {
+            log.warn("转人工确认话术推送失败（不影响建单）: sessionId={}", sessionId, e);
+        }
+        return new TransferOutcome(true, msg, ticket.getTicketNo(), ticket.getExpectedSla());
     }
 
     /**

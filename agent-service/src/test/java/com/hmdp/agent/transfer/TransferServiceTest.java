@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -111,7 +112,7 @@ class TransferServiceTest {
         when(sessionService.getOwned(1L, 100L)).thenReturn(s);
         lenient().when(memoryService.readRawJson(1L)).thenReturn("[]");
         lenient().when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
-        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        stubCasAcquired();
         com.hmdp.agent.entity.AgentTicket ticket = new com.hmdp.agent.entity.AgentTicket()
                 .setTicketNo("TK88").setExpectedSla("24h");
         when(ticketService.create(eq(100L), eq(1L), any())).thenReturn(ticket);
@@ -131,7 +132,7 @@ class TransferServiceTest {
         when(sessionService.getOwned(1L, 100L)).thenReturn(s);
         lenient().when(memoryService.readRawJson(1L)).thenReturn("[]");
         lenient().when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
-        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        stubCasAcquired();
         com.hmdp.agent.entity.AgentTicket ticket = new com.hmdp.agent.entity.AgentTicket()
                 .setTicketNo("TK99").setExpectedSla("24h");
         when(ticketService.create(eq(100L), eq(1L), any())).thenReturn(ticket);
@@ -160,11 +161,17 @@ class TransferServiceTest {
                 new com.hmdp.agent.entity.AgentTicket().setTicketNo("TK88").setExpectedSla("24h"));
     }
 
+    /** CAS 占位成功路径：flag.get → null，compareAndSet → true */
+    private void stubCasAcquired() {
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        when(bucket.compareAndSet(isNull(), eq("PENDING"))).thenReturn(true);
+    }
+
     @Test
     void 重复确认_返回已有工单号不重复建单() {
         when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
         when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
-        when(bucket.getAndSet("PENDING")).thenReturn("TK88");
+        when(bucket.get()).thenReturn("TK88");
 
         TransferService.TransferOutcome o = service().confirmTransfer(100L, 1L);
 
@@ -172,13 +179,29 @@ class TransferServiceTest {
         assertEquals("TK88", o.ticketNo());
         assertTrue(o.message().contains("TK88"));
         verify(ticketService, never()).create(any(), any(), any());
+        verify(bucket, never()).compareAndSet(any(), any());
+        verify(bucket, never()).expire(any(java.time.Duration.class));
     }
 
     @Test
     void 并发占位_处理中() {
         when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
         when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
-        when(bucket.getAndSet("PENDING")).thenReturn("PENDING");
+        when(bucket.get()).thenReturn("PENDING");
+
+        TransferService.TransferOutcome o = service().confirmTransfer(100L, 1L);
+
+        assertTrue(o.success());
+        assertEquals(null, o.ticketNo());
+        verify(ticketService, never()).create(any(), any(), any());
+        verify(sseManager, never()).send(any(), any(), any());
+    }
+
+    @Test
+    void compareAndSet竞态失败_返回处理中() {
+        when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        when(bucket.compareAndSet(isNull(), eq("PENDING"))).thenReturn(false);
 
         TransferService.TransferOutcome o = service().confirmTransfer(100L, 1L);
 
@@ -191,9 +214,9 @@ class TransferServiceTest {
     @Test
     void 建单失败_标记清除可重试() {
         when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
+        stubCasAcquired();
         when(memoryService.readRawJson(1L)).thenReturn("[]");
         when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
-        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
         when(ticketService.create(eq(100L), eq(1L), any()))
                 .thenThrow(new RuntimeException("db down"))
                 .thenReturn(new com.hmdp.agent.entity.AgentTicket()
@@ -201,6 +224,7 @@ class TransferServiceTest {
 
         TransferService.TransferOutcome first = service().confirmTransfer(100L, 1L);
         assertTrue(first.success());
+        verify(bucket).expire(java.time.Duration.ofSeconds(60));
         verify(bucket).delete();
 
         TransferService.TransferOutcome second = service().confirmTransfer(100L, 1L);
@@ -209,11 +233,41 @@ class TransferServiceTest {
     }
 
     @Test
+    void 无人值守确认_建单_标记回填工单号() {
+        when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
+        stubCasAcquired();
+        stubHappyCreate();
+
+        TransferService.TransferOutcome o = service().confirmTransfer(100L, 1L);
+
+        assertTrue(o.success());
+        assertEquals("TK88", o.ticketNo());
+        verify(bucket).expire(java.time.Duration.ofSeconds(60));
+        verify(bucket).set(eq("TK88"), any(java.time.Duration.class));
+    }
+
+    @Test
+    void 建单成功后SSE失败_标记保留() {
+        when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
+        stubCasAcquired();
+        stubHappyCreate();
+        org.mockito.Mockito.doThrow(new RuntimeException("sse down"))
+                .when(sseManager).send(eq(1L), eq("delta"), any());
+
+        TransferService.TransferOutcome o = service().confirmTransfer(100L, 1L);
+
+        assertTrue(o.success());
+        assertEquals("TK88", o.ticketNo());
+        verify(bucket, never()).delete();
+        verify(bucket).set(eq("TK88"), any(java.time.Duration.class));
+    }
+
+    @Test
     void 移交包Redis失败_不写snapshotUri仍建单() {
         when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
+        stubCasAcquired();
         when(memoryService.readRawJson(1L)).thenReturn("[]");
         when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
-        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
         org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
                 .doNothing().when(bucket).set(anyString(), any(java.time.Duration.class));
         when(ticketService.create(eq(100L), eq(1L), any())).thenReturn(
