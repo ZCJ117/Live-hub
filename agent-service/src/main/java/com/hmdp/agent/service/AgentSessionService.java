@@ -136,6 +136,13 @@ public class AgentSessionService extends ServiceImpl<AgentSessionMapper, AgentSe
                 .update();
     }
 
+    /** T4.9：移交包快照引用（P2 工作台按此取 Redis 移交包） */
+    public void updateSnapshotUri(Long sessionId, String snapshotUri) {
+        lambdaUpdate().eq(AgentSession::getId, sessionId)
+                .set(AgentSession::getSnapshotUri, snapshotUri)
+                .update();
+    }
+
     /** 条件流转：仅当 flowState=expect 时置为 target（防并发覆盖） */
     public void casFlowState(Long sessionId, String expect, String target) {
         lambdaUpdate().eq(AgentSession::getId, sessionId)

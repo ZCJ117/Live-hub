@@ -51,6 +51,8 @@ class ChatOrchestratorDispatchTest {
     private final RefundFlowService refundFlowService = mock(RefundFlowService.class);
     private final com.hmdp.agent.flow.ComplaintFlowService complaintFlowService =
             mock(com.hmdp.agent.flow.ComplaintFlowService.class);
+    private final com.hmdp.agent.transfer.TransferService transferService =
+            mock(com.hmdp.agent.transfer.TransferService.class);
 
     private ChatOrchestratorService service(Executor executor) {
         // 安全组件用真实实例（默认空敏感词表/规则不命中，不干扰分发用例）
@@ -62,6 +64,7 @@ class ChatOrchestratorDispatchTest {
                 mock(com.hmdp.agent.audit.ToolCallAuditService.class),
                 refundFlowService,
                 complaintFlowService,
+                transferService,
                 executor);
     }
 
@@ -223,15 +226,17 @@ class ChatOrchestratorDispatchTest {
     }
 
     @Test
-    void human_demand_tracks_transfer_and_replies() {
+    void human_demand_triggers_transfer_without_llm() {
         commonStubs();
         when(planner.plan(any(), any(), any())).thenReturn(
                 decision(PlanDecision.PlanType.HUMAN_DEMAND, Intent.HUMAN_DEMAND, List.of()));
 
         service(Runnable::run).handleChat(session(), "转人工", "token");
 
-        verify(track).track(eq("m5_transfer_human"), eq(1L), eq(10L),
-                argThat(p -> "HUMAN_DEMAND".equals(p.get("transferReason"))));
+        // T4.8：转人工收口到 TransferService（埋点/卡片在 trigger 内），不再进 LLM
+        verify(transferService).trigger(any(), eq("HUMAN_DEMAND"));
+        verify(reActEngine, never()).run(any(), any(), any(), any(), anyInt(), any(), any());
+        verify(sseManager).send(eq(1L), eq("done"), any()); // done 恰好一次
     }
 
     @Test

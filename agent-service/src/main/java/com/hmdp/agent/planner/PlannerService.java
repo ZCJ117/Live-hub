@@ -61,8 +61,9 @@ public class PlannerService {
                     "intent", result.intent().name(), "confidence", result.confidence(),
                     "clarifyRound", round, "isFallbackMenu", isMenu));
             if (isMenu) {
+                // T4.8：澄清 2 轮超限 → 转人工（替换 Phase 3 CLARIFY_MENU 降级；解析 3 败菜单保留）
                 flowStateService.resetClarify(sessionId);
-                return PlanDecision.menu(result.intent(), result.confidence(), outcome);
+                return PlanDecision.transfer(result.intent(), result.confidence(), outcome);
             }
             return new PlanDecision(PlanDecision.PlanType.CLARIFY, result.intent(), result.confidence(),
                     List.of(), clarifyText(result.intent()), null,

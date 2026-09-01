@@ -19,6 +19,7 @@ import com.hmdp.agent.security.InputPreprocessor;
 import com.hmdp.agent.security.SensitiveWordService;
 import com.hmdp.agent.sse.SseSessionManager;
 import com.hmdp.agent.tool.ToolContext;
+import com.hmdp.agent.transfer.TransferService;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -53,6 +54,7 @@ public class ChatOrchestratorService {
     private final ToolCallAuditService auditService;
     private final RefundFlowService refundFlowService;
     private final ComplaintFlowService complaintFlowService;
+    private final TransferService transferService;
 
     public ChatOrchestratorService(AgentSessionService sessionService,
                                    ChatMemoryService memoryService,
@@ -68,6 +70,7 @@ public class ChatOrchestratorService {
                                    ToolCallAuditService auditService,
                                    RefundFlowService refundFlowService,
                                    ComplaintFlowService complaintFlowService,
+                                   TransferService transferService,
                                    @Qualifier("agentSseExecutor") Executor sseExecutor) {
         this.sessionService = sessionService;
         this.memoryService = memoryService;
@@ -83,6 +86,7 @@ public class ChatOrchestratorService {
         this.auditService = auditService;
         this.refundFlowService = refundFlowService;
         this.complaintFlowService = complaintFlowService;
+        this.transferService = transferService;
         this.sseExecutor = sseExecutor;
     }
 
@@ -201,6 +205,29 @@ public class ChatOrchestratorService {
             sseManager.send(sessionId, "delta", Map.of("text", delta));
         };
 
+        // 1.4 转人工状态锁（FR-10 T4.8：触发后零 LLM 输出；消息已入历史随移交包带给人工。
+        //  落位于 onDelta 定义之后、Planner 之前——核心约束是"不进 LLM/不跑 Planner"，语义等价）
+        if ("TRANSFERRED".equals(session.getStatus())) {
+            String ack = "您的消息已记录，将随工单一并转交人工客服。";
+            memoryService.append(sessionId, "assistant", ack);
+            onDelta.accept(ack);
+            sseManager.send(sessionId, "done", Map.of("roundNo", session.getMsgCount(),
+                    "finishReason", "TRANSFERRED"));
+            log.info("TRANSFERRED 会话消息入队（零 LLM 输出）: sessionId={}", sessionId);
+            return;
+        }
+
+        // 1.7 情绪检测（FR-10 触发条件 4，R8 高置信才触发；命中直接转人工绕过 Planner）
+        if (emotionDetector.isHighlyNegative(message)) {
+            transferService.trigger(session, "NEGATIVE_EMOTION");
+            String text = "已为您转接人工客服，请确认移交信息。";
+            finishAfterTransfer(session, answer, onDelta, text);
+            memoryService.append(sessionId, "assistant", Desensitizer.mask(text));
+            sseManager.send(sessionId, "done", Map.of("roundNo", session.getMsgCount(),
+                    "finishReason", "TRANSFERRED"));
+            return;
+        }
+
         // 4. Planner 意图识别与路由（FR-03，Phase 3 主链路收口）
         PlanDecision decision = plannerService.plan(session, message, history);
         if (decision.interruptNotice() != null) {
@@ -261,6 +288,14 @@ public class ChatOrchestratorService {
                             "预算已用完，请基于已知信息简要回答用户：" + message, onDelta,
                             (event, data) -> sseManager.send(sessionId, event, data));
                 }
+                if ("TOOL_CONSECUTIVE_FAIL".equals(last.reason())) {
+                    // T4.8：连续 2 次工具失败触发转人工（ReActEngine 硬中断后接管）
+                    transferService.trigger(session, "TOOL_FAIL");
+                    finishAfterTransfer(session, answer, onDelta,
+                            "查询服务连续异常，已为您转接人工客服，请确认移交信息。");
+                    return new ReActEngine.ReactResult("TRANSFERRED", false, "TRANSFERRED",
+                            last.stepsUsed(), last.promptTokens(), last.completionTokens());
+                }
                 return last;
             }
             case REFUND -> {
@@ -293,17 +328,29 @@ public class ChatOrchestratorService {
                 return new ReActEngine.ReactResult("COMPLAINT_FLOW", false, "COMPLAINT", 0, 0, 0);
             }
             case HUMAN_DEMAND -> {
-                // T3.1：转人工桩（真实坐席分配 Phase 4 FR-10）；埋点对齐 D1.8 #9
-                trackEventService.track("m5_transfer_human", sessionId, session.getUserId(),
-                        Map.of("transferReason", "HUMAN_DEMAND"));
-                String text = "正在为您转接人工客服，请稍候。";
-                answer.append(text);
-                sseManager.send(sessionId, "delta", Map.of("text", text));
-                return new ReActEngine.ReactResult(text, false, "HUMAN_DEMAND", 0, 0, 0);
+                // T4.8：显式要求转人工（实装 FR-10）；done 由主流程统一发送（finishReason=TRANSFERRED）
+                transferService.trigger(session, "HUMAN_DEMAND");
+                finishAfterTransfer(session, answer, onDelta,
+                        "即将为您转接人工客服，请在卡片上确认移交信息。");
+                return new ReActEngine.ReactResult("TRANSFERRED", false, "TRANSFERRED", 0, 0, 0);
+            }
+            case TRANSFER -> {
+                // T4.8：澄清 2 轮超限触发转人工；done 由主流程统一发送
+                transferService.trigger(session, "CLARIFY_EXCEED");
+                finishAfterTransfer(session, answer, onDelta,
+                        "多次未能确认您的需求，已为您转接人工客服。");
+                return new ReActEngine.ReactResult("TRANSFERRED", false, "TRANSFERRED", 0, 0, 0);
             }
         }
         // switch 穷举后不可达（Java 语句 switch 需显式返回）
         return new ReActEngine.ReactResult("", false, "UNKNOWN", 0, 0, 0);
+    }
+
+    /** 转人工触发后的固定话术收口（走 onDelta 管道保证记忆/首 token 埋点一致；不进 LLM） */
+    private void finishAfterTransfer(AgentSession session, StringBuilder answer,
+                                     Consumer<String> onDelta, String text) {
+        answer.append(text);
+        onDelta.accept(text);
     }
 
     /** 摘要压缩：结果回写 agent_session.summary；失败降级仅保留最近 6 条（FR-02 边界） */

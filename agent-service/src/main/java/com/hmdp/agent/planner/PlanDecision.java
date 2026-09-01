@@ -23,11 +23,18 @@ public record PlanDecision(PlanType type, Intent intent, double confidence,
         /** 投诉要素收集（Phase 4 状态机） */
         COMPLAINT,
         /** 转人工桩（Phase 4 实装 FR-10） */
-        HUMAN_DEMAND
+        HUMAN_DEMAND,
+        /** 转人工（澄清超限，T4.8：替换 Phase 3 的 CLARIFY_MENU 降级；解析 3 败菜单保留） */
+        TRANSFER
     }
 
     static PlanDecision menu(Intent intent, double confidence, ClassifyOutcome outcome) {
         return new PlanDecision(PlanType.FALLBACK_MENU, intent, confidence, List.of(), null, null,
+                outcome.promptTokens(), outcome.completionTokens());
+    }
+
+    static PlanDecision transfer(Intent intent, double confidence, ClassifyOutcome outcome) {
+        return new PlanDecision(PlanType.TRANSFER, intent, confidence, List.of(), null, null,
                 outcome.promptTokens(), outcome.completionTokens());
     }
 }
