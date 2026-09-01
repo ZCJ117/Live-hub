@@ -57,6 +57,15 @@ agent:
     max-clarify-rounds: 2     # 最多连续澄清轮数，第 3 轮降级菜单
   message:
     max-length: 500           # 单条消息长度上限（FR-02）
+  security:
+    emotion-min-hits: 3       # 强负面词命中数阈值（R8）
+    output-filter-tail-hold: 32
+  transfer:
+    seat-online: false        # D-5：无坐席，仅无人值守路径
+    handover-ttl-days: 7
+  ticket:
+    fund-keywords: [退款失败, 重复扣款, 多扣, 少扣, 扣款, 退款未到账, 资金]
+    max-collect-rounds: 2
 
 logging:
   level:
@@ -79,6 +88,12 @@ sa-token:
   is-share: true
   token-style: uuid
   is-log: false
+
+# RocketMQ（T4.7 工单路由通知，与 order/rag 同一实例）
+rocketmq:
+  name-server: 127.0.0.1:9876
+  producer:
+    group: agent-ticket-producer-group
 
 feign:
   client:

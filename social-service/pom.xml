@@ -51,6 +51,12 @@
             <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
         </dependency>
 
+        <!-- RocketMQ（FR-09 工单通知消费，附录 B 站内信通道） -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-spring-boot-starter</artifactId>
+        </dependency>
+
         <!-- OpenFeign -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>

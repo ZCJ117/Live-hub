@@ -104,10 +104,30 @@
             <version>${sa-token.version}</version>
         </dependency>
 
+        <!-- RocketMQ（T4.7 工单路由通知） -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Sentinel Core（T4.14 工具层熔断，编程式规则，无 Dashboard） -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+        </dependency>
+
         <!-- Micrometer for metrics -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
+        </dependency>
+
+        <!-- MockWebServer（GlmClient 容灾测试） -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver</artifactId>
+            <version>4.12.0</version>
+            <scope>test</scope>
         </dependency>
 
         <!-- Test -->

@@ -37,6 +37,10 @@ public class AgentTask implements Serializable {
     private String actionId;
 
     private String payloadJson;
+
+    /** 业务订单ID（task_type=REFUND_REQUEST，同订单重复申请 O(1) 查询） */
+    private Long bizOrderId;
+
     private String confirmReason;
     private LocalDateTime expireTime;
     private Long ticketId;
