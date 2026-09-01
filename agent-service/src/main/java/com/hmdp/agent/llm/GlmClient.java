@@ -28,6 +28,9 @@ import java.util.function.Consumer;
 public class GlmClient {
 
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
+    /** 重试退避序列（指数：1s/2s/4s，PRD 4.3） */
+    private static final long[] BACKOFF_MS = {1000, 2000, 4000};
+    private static final int MAX_ATTEMPTS_PER_MODEL = 3;
     private final GlmProperties props;
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -44,16 +47,55 @@ public class GlmClient {
      * 流式对话：逐 delta 回调，最后返回完整文本与 token 统计
      * 注意：必须在非 Tomcat 工作线程调用（D1.2 §2.1 线程模型）
      */
+    /** 流式对话：逐 delta 回调。首 delta 前失败 → 重试（含备用模型）；已产出 delta 后失败 → 直接抛（防重复输出） */
     public StreamResult streamChat(LlmTypes.Request request, Consumer<String> onDelta) {
-        Map<String, Object> body = baseBody(request);
-        body.put("stream", true);
-        return executeStream(request.getModel(), body, onDelta);
+        LlmTypes.LlmException last = null;
+        for (String model : modelChain(request.getModel())) {
+            for (int attempt = 0; attempt < MAX_ATTEMPTS_PER_MODEL; attempt++) {
+                StringBuilder full = new StringBuilder();
+                long[] tokens = {0, 0};
+                try {
+                    Map<String, Object> body = baseBody(request);
+                    body.put("stream", true);
+                    body.put("model", model);
+                    executeStreamInto(body, full, tokens, onDelta);
+                    return new StreamResult(full.toString(), tokens[0], tokens[1]);
+                } catch (LlmTypes.LlmException e) {
+                    last = e;
+                    if (full.length() > 0) {
+                        // 已向下游输出过 delta：重试会导致重复内容，必须失败
+                        log.error("LLM 流式调用中途断流（不重试）: model={}", model, e);
+                        throw e;
+                    }
+                    log.warn("LLM 流式调用失败（model={}, attempt={}）: {}", model, attempt + 1, e.getMessage());
+                    sleepBackoff(attempt);
+                }
+            }
+        }
+        throw last;
     }
 
-    /** 非流式调用（意图分类 / 摘要 / 卡片参数） */
+    /** 非流式调用（意图分类 / 摘要 / 卡片参数）：3 次重试（指数退避）→ 备用模型（T4.14/PRD 4.3） */
     public LlmTypes.Response complete(LlmTypes.Request request) {
+        LlmTypes.LlmException last = null;
+        for (String model : modelChain(request.getModel())) {
+            for (int attempt = 0; attempt < MAX_ATTEMPTS_PER_MODEL; attempt++) {
+                try {
+                    return doComplete(model, request);
+                } catch (LlmTypes.LlmException e) {
+                    last = e;
+                    log.warn("LLM 调用失败（model={}, attempt={}）: {}", model, attempt + 1, e.getMessage());
+                    sleepBackoff(attempt);
+                }
+            }
+        }
+        throw last;
+    }
+
+    private LlmTypes.Response doComplete(String model, LlmTypes.Request request) {
         Map<String, Object> body = baseBody(request);
         body.put("stream", false);
+        body.put("model", model);
         Request httpRequest = buildRequest(body);
         try (Response response = httpClient.newCall(httpRequest).execute()) {
             if (!response.isSuccessful() || response.body() == null) {
@@ -108,9 +150,24 @@ public class GlmClient {
                 .build();
     }
 
-    private StreamResult executeStream(String model, Map<String, Object> body, Consumer<String> onDelta) {
-        StringBuilder full = new StringBuilder();
-        long[] tokens = {0, 0};
+    /** 模型链：请求模型 → 备用模型（main ↔ light 互换，PRD 4.3）；相同则单元素 */
+    private List<String> modelChain(String model) {
+        String main = props.getMainModel();
+        String light = props.getLightModel();
+        String alt = main.equals(model) ? light : light.equals(model) ? main : null;
+        return alt == null || alt.equals(model) ? List.of(model) : List.of(model, alt);
+    }
+
+    private void sleepBackoff(int attempt) {
+        try {
+            Thread.sleep(BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)]);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void executeStreamInto(Map<String, Object> body, StringBuilder full, long[] tokens,
+                                   Consumer<String> onDelta) {
         Request request = buildRequest(body);
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful() || response.body() == null) {
@@ -146,7 +203,6 @@ public class GlmClient {
         } catch (IOException e) {
             throw new LlmTypes.LlmException("LLM 流式调用失败", e);
         }
-        return new StreamResult(full.toString(), tokens[0], tokens[1]);
     }
 
     public record StreamResult(String content, long promptTokens, long completionTokens) {

@@ -55,6 +55,7 @@ public class ChatOrchestratorService {
     private final RefundFlowService refundFlowService;
     private final ComplaintFlowService complaintFlowService;
     private final TransferService transferService;
+    private final com.hmdp.agent.feign.RagFeignClient ragFeignClient;
 
     public ChatOrchestratorService(AgentSessionService sessionService,
                                    ChatMemoryService memoryService,
@@ -71,6 +72,7 @@ public class ChatOrchestratorService {
                                    RefundFlowService refundFlowService,
                                    ComplaintFlowService complaintFlowService,
                                    TransferService transferService,
+                                   com.hmdp.agent.feign.RagFeignClient ragFeignClient,
                                    @Qualifier("agentSseExecutor") Executor sseExecutor) {
         this.sessionService = sessionService;
         this.memoryService = memoryService;
@@ -87,6 +89,7 @@ public class ChatOrchestratorService {
         this.refundFlowService = refundFlowService;
         this.complaintFlowService = complaintFlowService;
         this.transferService = transferService;
+        this.ragFeignClient = ragFeignClient;
         this.sseExecutor = sseExecutor;
     }
 
@@ -235,7 +238,23 @@ public class ChatOrchestratorService {
             sseManager.send(sessionId, "delta", Map.of("text", decision.interruptNotice() + "\n"));
             answer.append(decision.interruptNotice()).append('\n');
         }
-        ReActEngine.ReactResult result = dispatch(decision, session, ctx, history, message, answer, onDelta);
+        ReActEngine.ReactResult result;
+        try {
+            result = dispatch(decision, session, ctx, history, message, answer, onDelta);
+        } catch (com.hmdp.agent.llm.LlmTypes.LlmException e) {
+            // T4.14：LLM 全链路失败（重试+备用模型均败）→ FAQ 直答 + 建单入口（PRD 4.3）
+            log.error("LLM 全链路失败，FAQ 降级: sessionId={}", sessionId, e);
+            trackEventService.track("m5_llm_degrade", sessionId, session.getUserId(), Map.of());
+            String faq = faqDirectAnswer(session, message);
+            answer.append(faq);
+            sseManager.send(sessionId, "delta", Map.of("text", faq));
+            sseManager.send(sessionId, "done", Map.of(
+                    "roundNo", session.getMsgCount(), "finishReason", "LLM_DEGRADED"));
+            memoryService.append(sessionId, "assistant", Desensitizer.mask(faq));
+            sessionService.addTokenCost(sessionId, decision.classifyPromptTokens(),
+                    decision.classifyCompletionTokens());
+            return;
+        }
 
         // 5. 兜底话术（空回答 / 工具连败建议建单，FR-05 边界）
         if (result.answer() == null || result.answer().isBlank()) {
@@ -350,6 +369,43 @@ public class ChatOrchestratorService {
     private void finishAfterTransfer(AgentSession session,
                                      Consumer<String> onDelta, String text) {
         onDelta.accept(text);
+    }
+
+    /** FAQ 直答：rag top1 原文（据商户资料标注）；无 shopId/无命中 → 建单入口话术（4.3 降级） */
+    private String faqDirectAnswer(AgentSession session, String message) {
+        Long shopId = extractShopId(session);
+        if (shopId != null) {
+            try {
+                com.hmdp.dto.Result r = ragFeignClient.search(Map.of(
+                        "shopId", shopId, "query", message, "topK", 1));
+                if (r != null && Boolean.TRUE.equals(r.getSuccess()) && r.getData() instanceof Map<?, ?> data) {
+                    Object hits = data.get("hits");
+                    if (hits instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Map<?, ?> hit) {
+                        Object content = hit.get("content");
+                        if (content != null && !String.valueOf(content).isBlank()) {
+                            return "据商户资料：" + content + "\n\n如未解决您的问题，可回复\"投诉\"提交工单由人工跟进。";
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("FAQ 检索失败，走建单入口: sessionId={}", session.getId(), e);
+            }
+        }
+        return "智能服务暂时遇到问题，您可以回复\"投诉\"提交工单，或稍后再试。";
+    }
+
+    /** 入口上下文中的 shopId（contextJson），无则 FAQ 不可用 */
+    private Long extractShopId(AgentSession session) {
+        if (session.getContextJson() == null) {
+            return null;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode n =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(session.getContextJson());
+            return n.path("shopId").isNumber() ? n.path("shopId").asLong() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 摘要压缩：结果回写 agent_session.summary；失败降级仅保留最近 6 条（FR-02 边界） */

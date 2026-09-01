@@ -1,5 +1,8 @@
 package com.hmdp.agent.tool;
 
+import com.alibaba.csp.sentinel.Entry;
+import com.alibaba.csp.sentinel.SphU;
+import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hmdp.agent.audit.ToolCallAuditService;
 import com.hmdp.agent.dto.SseEvent;
@@ -48,11 +51,17 @@ public class ToolExecutor {
         String summary = null;
         String errorCode = null;
         ToolResult result;
-        try {
-            result = (ToolResult) def.method().invoke(def.host(), ctx, args == null ? Map.of() : args);
+        try (Entry entry = SphU.entry(toolName)) {
+            result = invokeWithRetry(def, ctx, args);
             success = result.isSuccess();
             summary = result.getSummary();
             errorCode = result.getErrorCode();
+        } catch (BlockException e) {
+            // T4.14：Sentinel 熔断触发 → 快速失败走降级话术（计入连败 → 转人工链路）
+            log.warn("Sentinel 熔断拦截工具调用: toolName={}", toolName);
+            result = ToolResult.fail("TOOL_DEGRADE", "该查询暂时繁忙（熔断保护中），请稍后再试或转人工");
+            errorCode = "TOOL_DEGRADE";
+            summary = result.getSummary();
         } catch (Exception e) {
             log.error("工具执行异常: toolName={}", toolName, e);
             result = ToolResult.fail("TOOL_INVOKE_ERROR", "该查询暂时不可用，请稍后再试");
@@ -80,6 +89,17 @@ public class ToolExecutor {
                     "cardPayload", result.getCardPayload() == null ? Map.of() : result.getCardPayload()));
         }
         return result;
+    }
+
+    /** 统一失败重试 1 次（T4.14：泛化 Phase 3 QueryMyOrdersTool 内联重试） */
+    private ToolResult invokeWithRetry(ToolRegistry.ToolDefinition def, ToolContext ctx,
+                                       Map<String, Object> args) throws Exception {
+        ToolResult first = (ToolResult) def.method().invoke(def.host(), ctx, args == null ? Map.of() : args);
+        if (first.isSuccess()) {
+            return first;
+        }
+        log.info("工具失败重试 1 次: toolName={}, code={}", def.name(), first.getErrorCode());
+        return (ToolResult) def.method().invoke(def.host(), ctx, args == null ? Map.of() : args);
     }
 
     private String safeJson(Object args) {

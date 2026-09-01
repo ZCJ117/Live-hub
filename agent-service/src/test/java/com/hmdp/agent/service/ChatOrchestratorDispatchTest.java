@@ -65,6 +65,7 @@ class ChatOrchestratorDispatchTest {
                 refundFlowService,
                 complaintFlowService,
                 transferService,
+                mock(com.hmdp.agent.feign.RagFeignClient.class),
                 executor);
     }
 
