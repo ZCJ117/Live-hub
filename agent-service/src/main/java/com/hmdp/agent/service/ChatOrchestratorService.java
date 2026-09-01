@@ -11,7 +11,10 @@ import com.hmdp.agent.planner.PlanDecision;
 import com.hmdp.agent.planner.PlannerService;
 import com.hmdp.agent.react.ReActEngine;
 import com.hmdp.agent.security.Desensitizer;
+import com.hmdp.agent.security.EmotionDetector;
+import com.hmdp.agent.security.InjectionDetector;
 import com.hmdp.agent.security.InputPreprocessor;
+import com.hmdp.agent.security.SensitiveWordService;
 import com.hmdp.agent.sse.SseSessionManager;
 import com.hmdp.agent.tool.ToolContext;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +45,10 @@ public class ChatOrchestratorService {
     private final AgentProperties props;
     private final PlannerService plannerService;
     private final Executor sseExecutor;
+    private final InjectionDetector injectionDetector;
+    private final SensitiveWordService sensitiveWordService;
+    private final EmotionDetector emotionDetector;
+    private final ToolCallAuditService auditService;
 
     public ChatOrchestratorService(AgentSessionService sessionService,
                                    ChatMemoryService memoryService,
@@ -51,6 +58,10 @@ public class ChatOrchestratorService {
                                    GlmClient glmClient,
                                    AgentProperties props,
                                    PlannerService plannerService,
+                                   InjectionDetector injectionDetector,
+                                   SensitiveWordService sensitiveWordService,
+                                   EmotionDetector emotionDetector,
+                                   ToolCallAuditService auditService,
                                    @Qualifier("agentSseExecutor") Executor sseExecutor) {
         this.sessionService = sessionService;
         this.memoryService = memoryService;
@@ -60,6 +71,10 @@ public class ChatOrchestratorService {
         this.glmClient = glmClient;
         this.props = props;
         this.plannerService = plannerService;
+        this.injectionDetector = injectionDetector;
+        this.sensitiveWordService = sensitiveWordService;
+        this.emotionDetector = emotionDetector;
+        this.auditService = auditService;
         this.sseExecutor = sseExecutor;
     }
 
@@ -124,6 +139,24 @@ public class ChatOrchestratorService {
             return;
         }
         String message = pp.message();
+
+        // 1.5 输入安全检测（FR-11 T4.11：命中不进 LLM，固定话术 + 双留痕）
+        String injectionRule = injectionDetector.matchRule(message);
+        if (injectionRule == null && sensitiveWordService.firstHit(message).isPresent()) {
+            injectionRule = "sensitive-word";
+        }
+        if (injectionRule != null) {
+            log.warn("输入安全拦截: sessionId={}, rule={}", sessionId, injectionRule);
+            trackEventService.track("m5_input_blocked", sessionId, session.getUserId(),
+                    Map.of("rule", injectionRule));
+            auditService.recordSecurityBlock(sessionId, session.getUserId(), "INPUT:" + injectionRule);
+            String notice = "您的消息包含不太合适的内容，请换种方式描述。若属误会，可回复\"投诉\"提交申诉由人工核实。";
+            sseManager.send(sessionId, "delta", Map.of("text", notice));
+            sseManager.send(sessionId, "done", Map.of("roundNo", session.getMsgCount(), "finishReason", "INPUT_BLOCKED"));
+            memoryService.append(sessionId, "assistant", notice);
+            return;
+        }
+
         trackEventService.track("m5_msg_send", sessionId, session.getUserId(),
                 Map.of("msgLen", message.length(), "roundNo", session.getMsgCount() + 1));
 

@@ -46,8 +46,14 @@ class ChatOrchestratorDispatchTest {
     private final PlannerService planner = mock(PlannerService.class);
 
     private ChatOrchestratorService service(Executor executor) {
+        // 安全组件用真实实例（默认空敏感词表/规则不命中，不干扰分发用例）
         return new ChatOrchestratorService(sessionService, memoryService, reActEngine,
-                sseManager, track, glmClient, props, planner, executor);
+                sseManager, track, glmClient, props, planner,
+                new com.hmdp.agent.security.InjectionDetector(),
+                new com.hmdp.agent.security.SensitiveWordService(props),
+                new com.hmdp.agent.security.EmotionDetector(props),
+                mock(com.hmdp.agent.audit.ToolCallAuditService.class),
+                executor);
     }
 
     private AgentSession session() {
