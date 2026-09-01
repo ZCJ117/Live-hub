@@ -30,4 +30,7 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
      * @param size    每页条数（默认 5，上限 20）
      */
     Result queryMyOrders(Long userId, Long orderId, Integer status, Integer days, Integer page, Integer size);
+
+    /** 退款受理（FR-08 第二道闸门）：原子 UPDATE，userId 登录态强制注入 */
+    com.hmdp.dto.Result refund(Long userId, Long orderId, String reason);
 }

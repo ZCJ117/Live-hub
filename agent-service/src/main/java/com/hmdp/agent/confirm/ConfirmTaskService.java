@@ -110,6 +110,33 @@ public class ConfirmTaskService {
                 .toList();
     }
 
+    /** 已受理（ADOPTED）任务按订单定位（"已在退款中"时返回既有编号，T4.4） */
+    public Optional<AgentTask> findAdoptedByOrder(Long userId, Long orderId) {
+        return taskMapper.selectList(Wrappers.<AgentTask>lambdaQuery()
+                        .eq(AgentTask::getUserId, userId)
+                        .eq(AgentTask::getBizOrderId, orderId)
+                        .eq(AgentTask::getStatus, "ADOPTED")
+                        .orderByDesc(AgentTask::getId)
+                        .last("LIMIT 1"))
+                .stream().findFirst();
+    }
+
+    /** 退款执行失败 → 已抢到的确认回滚为 REJECTED（仅 ADOPTED 且未绑工单可回滚） */
+    public void rejectAfterAdopt(AgentTask task) {
+        taskMapper.update(null, Wrappers.<AgentTask>lambdaUpdate()
+                .eq(AgentTask::getId, task.getId())
+                .eq(AgentTask::getStatus, "ADOPTED")
+                .isNull(AgentTask::getTicketId)
+                .set(AgentTask::getStatus, "REJECTED"));
+    }
+
+    /** 回填联动复核工单（T4.5，独立于抢确认的状态更新） */
+    public void bindTicket(Long taskId, Long ticketId) {
+        taskMapper.update(null, Wrappers.<AgentTask>lambdaUpdate()
+                .eq(AgentTask::getId, taskId)
+                .set(AgentTask::getTicketId, ticketId));
+    }
+
     private String payloadOf(OrderCardDTO order) {
         try {
             return objectMapper.writeValueAsString(Map.of(

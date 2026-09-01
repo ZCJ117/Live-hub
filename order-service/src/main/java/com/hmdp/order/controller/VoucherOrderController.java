@@ -8,9 +8,12 @@ import com.hmdp.utils.UserHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.hmdp.order.dto.RefundRequest;
 
 import jakarta.annotation.Resource;
 
@@ -50,6 +53,22 @@ public class VoucherOrderController {
             return Result.fail("未登录，请先登录");
         }
         return voucherOrderService.queryMyOrders(user.getId(), orderId, status, days, page, size);
+    }
+
+    /**
+     * 退款受理（FR-08 T4.3 第二道闸门，agent-service confirm 编排调用）
+     * userId 从登录态强制注入（工具层授权红线，PRD 4.2）
+     */
+    @PostMapping("refund")
+    public Result refund(@RequestBody RefundRequest req) {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("未登录，请先登录");
+        }
+        if (req == null || req.getOrderId() == null) {
+            return Result.fail("orderId 不能为空");
+        }
+        return voucherOrderService.refund(user.getId(), req.getOrderId(), req.getReason());
     }
 
 }

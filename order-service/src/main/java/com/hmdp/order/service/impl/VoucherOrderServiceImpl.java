@@ -208,4 +208,33 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         r.setTotal(total);
         return r;
     }
+
+    /**
+     * 退款受理（FR-08 第二道闸门，T4.3/T4.4）
+     * 双闸门语义：agent confirm 接口为第一道（actionId/归属/时效），本接口独立复核为最终裁决——
+     * 原子 UPDATE ... WHERE status=2（已支付未核销）防并发漏单；影响 0 行返回具体原因
+     */
+    @Override
+    public Result refund(Long userId, Long orderId, String reason) {
+        VoucherOrder exists = getById(orderId);
+        if (exists == null || !userId.equals(exists.getUserId())) {
+            // 归属不符：与"不存在"同文案，不泄露订单存在性（FR-05 越权口径）
+            return Result.fail("订单不存在");
+        }
+        boolean updated = update(Wrappers.<VoucherOrder>lambdaUpdate()
+                .eq(VoucherOrder::getId, orderId)
+                .eq(VoucherOrder::getUserId, userId)
+                .eq(VoucherOrder::getStatus, 2)
+                .set(VoucherOrder::getStatus, 5)
+                .set(VoucherOrder::getRefundTime, LocalDateTime.now()));
+        if (!updated) {
+            VoucherOrder cur = getById(orderId);
+            if (cur != null && cur.getStatus() != null && cur.getStatus() == 5) {
+                return Result.fail("该订单已有进行中的退款申请");
+            }
+            return Result.fail("订单状态已变更，请刷新后查看");
+        }
+        log.info("退款受理成功: orderId={}, userId={}, reason={}", orderId, userId, reason);
+        return Result.ok(Map.of("orderId", orderId, "status", 5));
+    }
 }
