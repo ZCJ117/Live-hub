@@ -7,6 +7,9 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 import java.util.stream.Collectors;
 
+//NOTE 2,4, c RrfFusion负责倒数排名合并,RRF是一种不依赖原始分数的排名合并算法。
+// 它不关心向量的余弦相似度是 0.91 还是 0.65，也不关心 ts_rank 是 0.34 还是 0.01——它只关心排名。
+
 @Component
 public class RrfFusion {
 

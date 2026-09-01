@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG 问答调用链路图</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --border:#30363d; --text:#c9d1d9; --dim:#8b949e; --accent:#58a6ff; --green:#3fb950; --orange:#d2991d; --purple:#a371f7; --red:#f85149; --cyan:#39d2c0; --pink:#f778ba; --yellow:#e3b341; }
+  * { margin:0;padding:0;box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif; padding:24px; line-height:1.75; max-width:1200px; margin:0 auto; font-size:14px; }
+  h1 { text-align:center; color:var(--accent); margin-bottom:4px; font-size:24px; }
+  h2 { font-size:18px; color:var(--accent); margin:32px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+  .subtitle { text-align:center; color:var(--dim); margin-bottom:48px; font-size:13px; }
+  .chain { border-left:2px solid var(--border); margin-left:24px; padding-left:28px; }
+  .node { margin-bottom:16px; position:relative; }
+  .node::before { content:''; position:absolute; left:-28px; top:16px; width:12px; height:12px; border-radius:50%; background:var(--border); border:2px solid var(--bg); }
+  .node.step::before{background:var(--accent)} .node.retrieve::before{background:var(--purple)}
+  .node.sql::before{background:var(--green)} .node.llm::before{background:var(--orange)}
+  .node.sse::before{background:var(--pink)} .node.merge::before{background:var(--cyan)}
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px 20px; width:100%; }
+  .card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px; }
+  .card-title { font-weight:700; font-size:15px; }
+  .card.file { font-size:11px; color:var(--dim); font-family:'SF Mono',Consolas,monospace; background:rgba(255,255,255,0.04); padding:3px 10px; border-radius:4px; }
+  .card.file .line{color:var(--cyan)}
+  .card-body { font-size:13px; color:var(--dim); }
+  .card-body p { margin-bottom:8px; }
+  .card-body .why { background:rgba(210,153,29,0.06); border-left:3px solid var(--orange); padding:8px 12px; margin:10px 0; border-radius:0 6px 6px 0; color:var(--text); font-size:12px; }
+  .card-body .why::before { content:'💡 为什么要这样做：'; font-weight:600; color:var(--yellow); display:block; margin-bottom:4px; }
+  .card-body .what { background:rgba(57,210,192,0.06); border-left:3px solid var(--cyan); padding:8px 12px; margin:10px 0; border-radius:0 6px 6px 0; color:var(--text); font-size:12px; }
+  .card-body .what::before { content:'📖 大白话解释：'; font-weight:600; color:var(--cyan); display:block; margin-bottom:4px; }
+  .card-body code { color:var(--purple); background:rgba(163,113,247,0.1); padding:1px 5px; border-radius:3px; font-size:12px; }
+  .arrow { color:var(--dim); padding:3px 0 3px 20px; font-size:12px; font-family:monospace; }
+  .arrow::before{content:'├─→ '} .arrow.last::before{content:'└─→ '}
+  .method-name{color:var(--purple);font-weight:600}
+  .badge { display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600;letter-spacing:.5px; }
+  .badge.step{background:rgba(88,166,255,0.15);color:var(--accent)}
+  .badge.retrieve{background:rgba(163,113,247,0.15);color:var(--purple)}
+  .badge.sql{background:rgba(63,185,80,0.15);color:var(--green)}
+  .badge.llm{background:rgba(210,153,29,0.15);color:var(--orange)}
+  .badge.sse{background:rgba(247,119,186,0.15);color:var(--pink)}
+  .badge.merge{background:rgba(57,210,192,0.15);color:var(--cyan)}
+  .legend { display:flex;gap:20px;justify-content:center;margin-bottom:24px;flex-wrap:wrap; }
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim)}
+  .legend-dot{width:10px;height:10px;border-radius:50%}
+  .summary { background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin:36px 0; }
+  .summary h3{font-size:16px;color:var(--accent);margin-bottom:16px}
+  .summary table{width:100%;border-collapse:collapse;font-size:13px}
+  .summary th,.summary td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border)}
+  .summary th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase}
+  .flow-timeline{display:flex;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin:32px 0;flex-wrap:wrap;gap:12px}
+  .flow-timeline .phase{flex:1;min-width:120px;text-align:center}
+  .flow-timeline .phase .time{font-size:20px;font-weight:700;color:var(--accent)}
+  .flow-timeline .phase .label{font-size:11px;color:var(--dim);margin-top:4px}
+  pre.sql{color:var(--green);font-size:12px;margin-top:6px;background:rgba(63,185,80,0.04);padding:10px;border-radius:6px;overflow-x:auto}
+  pre.result{font-size:12px;margin-top:6px;background:rgba(247,119,186,0.04);padding:10px;border-radius:6px;overflow-x:auto;color:var(--pink)}
+  pre.prompt{font-size:12px;margin-top:6px;background:rgba(88,166,255,0.04);padding:10px;border-radius:6px;overflow-x:auto;color:var(--text)}
+  table.data{width:100%;font-size:12px;border-collapse:collapse;margin:8px 0}
+  table.data th{color:var(--dim);padding:4px 8px;border-bottom:1px solid var(--border);text-align:left;font-size:10px;text-transform:uppercase}
+  table.data td{padding:4px 8px;border-bottom:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<h1>RAG 智能问答服务 —— 完整调用链路</h1>
+<p class="subtitle">一次 <code>POST /api/rag/qa/chat</code> 请求，从用户输入 → 鉴权 → 检索 → 生成 → SSE 推送的代码级逐行追踪</p>
+
+<div class="legend">
+  <span class="legend-item"><span class="legend-dot" style="background:var(--accent)"></span>入口/编排</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--purple)"></span>检索分发</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--cyan)"></span>RRF融合</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span>SQL/API调用</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--orange)"></span>LLM大模型</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--pink)"></span>SSE推送前端</span>
+</div>
+
+<!-- ===== 概览 ===== -->
+<h2>📋 请求上下文</h2>
+<table class="data" style="max-width:700px">
+  <tr><td style="color:var(--dim);width:120px">请求路径</td><td><code>POST /api/rag/qa/chat</code></td></tr>
+  <tr><td style="color:var(--dim)">请求头</td><td><code>Authorization: Bearer &lt;sa-token&gt;</code> · <code>Accept: text/event-stream</code></td></tr>
+  <tr><td style="color:var(--dim)">请求体</td><td><code>{"kbId":1, "question":"招牌菜是什么？", "topK":5, "enableRerank":false, "messages":[...]}</code></td></tr>
+  <tr><td style="color:var(--dim)">当前用户</td><td>userId=1002 · merchantId=5（由网关解析 token 后注入 ThreadLocal）</td></tr>
+</table>
+
+<div class="flow-timeline">
+  <div class="phase"><div class="time">0ms</div><div class="label">请求到达网关</div></div>
+  <div class="phase"><div class="time">~5ms</div><div class="label">鉴权通过<br>UserHolder注入</div></div>
+  <div class="phase"><div class="time">~10ms</div><div class="label">Controller<br>接收请求</div></div>
+  <div class="phase"><div class="time">~400ms</div><div class="label">混合检索<br>(两路并行)</div></div>
+  <div class="phase"><div class="time">~500ms</div><div class="label">RRF融合<br>拼Prompt</div></div>
+  <div class="phase"><div class="time">~1500ms</div><div class="label">LLM首Token<br>开始流式输出</div></div>
+  <div class="phase"><div class="time">~4000ms</div><div class="label">回答完毕<br>event:done</div></div>
+</div>
+
+<!-- ===== CHAIN ===== -->
+<h2>🔗 代码级调用链</h2>
+<div class="chain">
+
+  <!-- 1 -->
+  <div class="node step">
+    <div class="card">
+      <div class="card-header"><span class="card-title">① 网关鉴权 —— Sa-Token + Redis</span><span class="card file">common/SaTokenConfig.java</span></div>
+      <div class="card-body">
+        <p>网关是所有请求的<strong>唯一入口</strong>（<code>gateway-service:8081</code>）。每个 HTTP 请求到达时，网关的 Sa-Token 全局过滤器拦截请求，从 Header 中取出 <code>Authorization</code> 字段的 token 值。</p>
+        <p>然后通过 <code>StpUtil.getLoginIdByToken(token)</code> 向 <strong>Redis</strong> 查询这个 token 对应的会话信息。Redis 中存储了登录用户的 userId、角色、权限等数据；所有微服务共享同一个 Redis 集群，所以任何服务拿到的用户信息都是一致的。</p>
+        <p>校验通过后，网关将用户信息写入请求头（如 <code>X-User-Id: 1002</code>），转发到 <code>rag-service:8087</code>。rag-service 内部的 Sa-Token 拦截器从请求头读取 userId，调用 <code>UserHolder.saveUser(userDTO)</code> 将其存入 <strong>ThreadLocal</strong>。此后当前线程的任何代码都可以通过 <code>UserHolder.getUser().getId()</code> 拿到 <code>userId=1002</code>。</p>
+        <div class="what">ThreadLocal 是 Java 提供的一个线程本地存储机制，每个线程有自己的独立副本，互不干扰。把用户信息存进 ThreadLocal，后续任何方法都不用传参就能拿到"当前用户是谁"，不需要在每个方法签名里加 userId 参数。</div>
+        <div class="why">Sa-Token 的会话数据全部存在 Redis 中（配置了 <code>sa-token-redis-jackson</code>），不是存在 JVM 内存里。这样即使 rag-service 重启，用户的登录状态也不会丢失；多个微服务实例也能共享同一份会话。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow"></div>
+
+  <!-- 2 -->
+  <div class="node step">
+    <div class="card">
+      <div class="card-header"><span class="card-title">② QaController —— 接收请求 + 异步审计</span><span class="card file">QaController.java <span class="line">:30-50</span></span></div>
+      <div class="card-body">
+        <p>请求到达 <code>QaController.chat()</code> 方法。这个方法的返回值类型是 <code>Flux&lt;String&gt;</code>（Reactor 的反应式流类型），意味着它会持续向客户端推送数据，不是一次性返回。</p>
+        <p>方法做的第一件事：<code>UserHolder.getUser().getId()</code> 从 ThreadLocal 取出 userId=1002。同时 <code>httpRequest.getRemoteAddr()</code> 获取客户端 IP。然后立即调用 <code>auditService.log()</code> 记录审计日志——这一步标注了 <code>@Async</code>，在<strong>另一个线程</strong>中执行，<strong>不阻塞主流程</strong>。即使审计写 DB 失败了，问答也照常进行。</p>
+        <p>然后调用 <code>qaPipeline.answer(question, kbId, topK, enableRerank, messages)</code>，把核心逻辑交给 Pipeline 层。返回的 <code>Flux&lt;String&gt;</code> 会经过 Controller 再拼接上 thinking 事件和 done 事件，形成完整的 SSE 流。</p>
+        <div class="what">SSE（Server-Sent Events）是一种 HTTP 长连接技术。普通 HTTP 是"请求→响应→断开"，SSE 是"请求→保持连接→服务器持续推送→推送完毕才断开"。前端可以用 EventSource API 接收。<code>Flux&lt;String&gt;</code> 是 Spring Reactor 的反应式流类型，可以理解为一个"数据管道"——生产者往里塞数据，消费者（前端）从另一端实时收到。</div>
+        <div class="why">为什么 Controller 要用 <code>Flux</code> 而不是普通 <code>String</code>？因为 LLM 生成答案需要几秒钟，如果等全部生成完毕再返回，用户看到的是白屏转圈 4 秒然后突然出现一坨文字。用 Flux 流式推送，LLM 每生成一个汉字就立刻推到前端，体验像 ChatGPT 那样逐字出现。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow"></div>
+
+  <!-- 3: QaPipeline overview -->
+  <div class="node step">
+    <div class="card">
+      <div class="card-header"><span class="card-title">③ QaPipeline.answer() —— 总指挥</span><span class="card file">QaPipeline.java <span class="line">:31-56</span></span></div>
+      <div class="card-body">
+        <p><strong>QaPipeline 是问答流程的核心编排器，本身不做检索、不调 LLM</strong>——它的职责是像指挥家一样按顺序调用各个组件。代码从第 31 行到第 56 行，26 行代码串联了 5 个子步骤：</p>
+        <p>（第34-36行）<strong>参数归一化</strong>：<code>topK = min(用户传的5, 最大允许20)</code>，防止调用方传个 topK=10000 把数据库打爆。如果没有传则用默认值 5（来自 <code>RagProperties</code> 配置类，可以 Nacos 动态刷新）。<code>enableRerank=false</code> 表示不做重排序。</p>
+        <p>（第38行）→ 调 <strong>HybridRetriever</strong> 做混合检索（下面展开④）</p>
+        <p>（第41行）→ 可选调 <strong>Reranker</strong> 重排序（下面展开⑤）</p>
+        <p>（第46行）→ 调 <strong>PromptBuilder</strong> 拼提示词（下面展开⑥）</p>
+        <p>（第48行）→ <strong>裁剪对话历史</strong>（下面展开⑦）</p>
+        <p>（第53行）→ 调 <strong>GlmLlmClient</strong> 流式生成（下面展开⑧）</p>
+        <div class="why">QaPipeline 依赖的都是<strong>接口</strong>而非具体实现（<code>ILlmClient</code> 而非 <code>GlmLlmClient</code>）。如果要换一个 LLM（比如换成 OpenAI 或 DeepSeek），只需写一个新的 <code>ILlmClient</code> 实现类并注册为 Bean，QaPipeline 的代码<strong>一行不用改</strong>。这是策略模式的核心价值。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow"></div>
+
+  <!-- 4: HybridRetriever -->
+  <div class="node retrieve">
+    <div class="card">
+      <div class="card-header"><span class="card-title">④ HybridRetriever —— 混合检索调度<span class="badge retrieve">检索</span></span><span class="card file">HybridRetriever.java <span class="line">:22-33</span></span></div>
+      <div class="card-body">
+        <p>HybridRetriever 本身<strong>不做检索</strong>，它的职责是调度两个子检索器并行工作，然后合并结果。这种模式叫"混合检索"（Hybrid Search）——同时用两种不同策略搜，再融合。</p>
+        <p>第23行：<code>fetchK = topK × 2 = 10</code>。为什么取 10 而不是 5？因为两个检索器的排名不同，取多一倍给后面的 RRF 融合留冗余——融合后会筛掉只在单路出现的结果，如果每路只取 5 条，融合出来可能只有 2-3 条是两路都命中的。</p>
+        <p>第25行：调 <span class="method-name">VectorRetriever</span>（向量检索，见④-a）。第26行：调 <span class="method-name">KeywordRetriever</span>（关键词检索，见④-b）。当前是顺序调用（可优化为 CompletableFuture 并行）。</p>
+        <p>第28行：调 <span class="method-name">RrfFusion</span> 融合两路结果（见④-c）。</p>
+        <div class="what">"混合检索"的本质：单一检索方式各有盲区——向量检索能理解"卡布奇诺"和"拿铁"都是咖啡（语义相近），但可能在精确匹配"38元"这样的数字时不准；关键词检索能精确匹配"水煮鱼"这个词，但理解不了"你们这有什么辣的鱼"和"水煮鱼"是同一回事。两路同时搜，互补盲区，RRF 合并后准确性远高于单路。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="chain">
+
+    <div class="arrow"></div>
+    <div class="node retrieve">
+      <div class="card">
+        <div class="card-header"><span class="card-title">④-a VectorRetriever —— 语义向量检索<span class="badge retrieve">检索</span></span><span class="card file">VectorRetriever.java <span class="line">:23-42</span></span></div>
+        <div class="card-body">
+          <p>向量检索的<strong>核心思想</strong>：把文字变成一组数字（向量），语义相近的文字，数字也相近。搜的不是"文字匹配"，而是"意思相近"。</p>
+          <p>它做了两件事：（1）调 Embedding API 把问题转成 1024 个浮点数（2）拿这组数字去 PgVector 数据库里找最相似的 chunk。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"></div>
+    <div class="node sql">
+      <div class="card">
+        <div class="card-header"><span class="card-title">④-a-1 GlmEmbeddingClient.embed() —— 文字→数字<span class="badge sql">API</span></span><span class="card file">GlmEmbeddingClient.java <span class="line">:42-83</span></span></div>
+        <div class="card-body">
+          <p>调用智谱的 Embedding API：</p>
+          <p><code>POST https://open.bigmodel.cn/api/paas/v4/embeddings</code></p>
+          <p>请求体：<code>{"model": "embedding-2", "input": ["招牌菜是什么？"]}</code></p>
+          <p>响应体：<code>{"data":[{"embedding":[0.0123, -0.0456, 0.0789, ...]}]}</code> —— 共 <strong>1024 个浮点数</strong></p>
+          <p>这是一个<strong>黑盒过程</strong>：GLM 的 Embedding 模型把输入的文字"投影"到了一个 1024 维的数学空间。在这个空间里，"招牌菜是什么"和"本店特色菜包括水煮鱼"这两句话的向量坐标非常接近（余弦相似度 ≈ 0.92），而"招牌菜是什么"和"营业时间周一至周日"的坐标非常远（余弦相似度 ≈ 0.15）。</p>
+          <p>代码还实现了<strong>指数退避重试</strong>：如果 API 返回 429（限流）或 5xx（服务器错误），等待 1s→2s→4s 后重试，最多 3 次。401/403 等鉴权错误不重试（重试也没用）。</p>
+          <div class="what">Embedding（嵌入）就是把文字映射到高维数字空间。可以想象成一张大地图，每个词、每句话都有一个经纬度坐标。"水煮鱼"和"麻辣鱼"的坐标挨得很近，"水煮鱼"和"结账"的坐标隔着很远。当你问"招牌菜"，系统就去地图上找离你问题最近的几个坐标点。</div>
+          <div class="why">为什么是 1024 维而不是 256 或 4096？维度越高，表达能力越强（能区分更细微的语义差异），但存储和计算成本也越高。1024 是 GLM Embedding-2 模型的固定输出维度，业界主流 Embedding 模型也多在这个范围（OpenAI text-embedding-3-large 是 3072 维，BGE-M3 是 1024 维）。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"></div>
+    <div class="node sql">
+      <div class="card">
+        <div class="card-header"><span class="card-title">④-a-2 DocumentChunkRepository.vectorSearch() —— PgVector 相似度搜索<span class="badge sql">SQL</span></span><span class="card file">DocumentChunkRepository.java <span class="line">:69-76</span></span></div>
+        <div class="card-body">
+          <p>把 1024 维向量传进 PgVector 执行余弦相似度搜索：</p>
+<pre class="sql">SELECT id, content, metadata,
+       1 - (embedding &lt;=&gt; '[0.0123,-0.0456,...]'::vector) AS similarity
+FROM rag_document_chunk
+WHERE kb_id = 1                        ← 只搜当前商户的知识库
+ORDER BY embedding &lt;=&gt; '[0.0123,...]'::vector
+LIMIT 10;</pre>
+          <p>SQL 中 <code>&lt;=&gt;</code> 是 PgVector 扩展提供的<strong>余弦距离运算符</strong>。它计算两个向量在 1024 维空间中的夹角，返回 0（完全相同）到 2（完全相反）之间的值。用 <code>1 - 距离</code> 换算成 0 到 1 的<strong>相似度分数</strong>。</p>
+          <p>搜索时使用了 <strong>IVFFlat 索引</strong>加速：预先将 1024 维空间划分为 100 个聚类（lists=100），查询时先定位到最近的几个聚类中心，只在这些聚类内做精确搜索，避免了全表扫描。万级 chunk 量级下，检索延迟约 50-100ms。</p>
+          <p><code>WHERE kb_id = 1</code> 这一行是关键——<strong>权限隔离</strong>。即使向量相似度再高，也只返回属于当前商户知识库的 chunk，不会把餐厅 A 的内部文件搜给餐厅 B 的用户看。</p>
+          <div class="what">余弦相似度 vs 欧几里得距离：欧几里得距离是两点之间的直线距离（受向量长度影响），余弦相似度只看夹角（不受长度影响）。在 NLP 领域，余弦相似度更常用，因为两段文字的长度不影响语义相似度——"水煮鱼"和"水煮鱼 38元一份 麻辣鲜香"在向量空间中方向一致，长度不同但语义高度相关。</div>
+          <div class="why">为什么不直接用 SELECT * 然后 Java 代码里算相似度？因为数据量一大（几千个 chunk），把全部数据拉到 Java 内存再排序，网络传输 + 内存开销太大。让数据库带着索引直接算好 Top-10 返回，只传 10 条数据，效率高几十倍。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow last"></div>
+    <div class="node retrieve">
+      <div class="card">
+        <div class="card-header"><span style="color:var(--purple);font-size:13px;font-weight:600">→ VectorRetriever 返回向量检索结果（Top-10，按余弦相似度降序）</span></div>
+        <div class="card-body">
+          <table class="data">
+            <tr><th style="color:var(--dim)">排名</th><th style="color:var(--dim)">chunk ID</th><th style="color:var(--dim)">内容摘要</th><th style="color:var(--dim)">余弦相似度</th></tr>
+            <tr><td>1</td><td>chunk_5</td><td>招牌菜：水煮鱼38元、宫保鸡丁28元、麻婆豆腐18元</td><td>0.912</td></tr>
+            <tr><td>2</td><td>chunk_2</td><td>推荐：水煮鱼是我们的招牌，很多人专程来吃</td><td>0.887</td></tr>
+            <tr><td>3</td><td>chunk_8</td><td>包间信息：有大小包间，大包间可容纳20人</td><td>0.754</td></tr>
+            <tr><td>4</td><td>chunk_1</td><td>本店经营川菜、湘菜，主打水煮系列</td><td>0.721</td></tr>
+            <tr><td>5</td><td>chunk_3</td><td>营业时间：周一至周日 10:00-22:00</td><td>0.653</td></tr>
+            <tr><td>6</td><td>chunk_7</td><td>优惠活动：每周三全场8折，会员日85折</td><td>0.598</td></tr>
+            <tr><td>7</td><td>chunk_4</td><td>可容纳20人包间需提前一天预订</td><td>0.542</td></tr>
+            <tr><td>8</td><td>chunk_9</td><td>宫保鸡丁是川菜经典，选用鸡腿肉</td><td>0.521</td></tr>
+            <tr><td>9</td><td>chunk_6</td><td>本店支持微信、支付宝、现金支付</td><td>0.435</td></tr>
+            <tr><td>10</td><td>chunk_10</td><td>外卖配送范围：3公里内免配送费</td><td>0.389</td></tr>
+          </table>
+          <p style="margin-top:8px;color:var(--dim);font-size:12px">注意 chunk_5 和 chunk_2 排前两名是合理的——它们直接谈论"招牌菜"和"水煮鱼"。chunk_8（包间信息）也排进了前 3，虽然不直接相关，但语义上与"餐厅提供服务信息"有关联。chunk_6（支付方式）排名靠后，与问题几乎无关。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"></div>
+    <div class="node retrieve">
+      <div class="card">
+        <div class="card-header"><span class="card-title">④-b KeywordRetriever —— 关键词全文检索<span class="badge retrieve">检索</span></span><span class="card file">KeywordRetriever.java <span class="line">:21-36</span></span></div>
+        <div class="card-body">
+          <p>和向量检索同时进行。不调任何外部 API，直接查 PostgreSQL 的 <strong>tsvector 全文索引</strong>。调用链：<code>chunkRepo.keywordSearch("招牌菜是什么？", kbId, 10)</code>。</p>
+          <p>PostgreSQL 的 <code>plainto_tsquery('chinese', '招牌菜是什么')</code> 会自动对中文分词——把一句话切成有意义的词：<code>'招牌菜' | '什么'</code>（"是"和"吗"是停用词被过滤）。然后拿这些词去 tsvector 索引里匹配。</p>
+          <p>tsvector 是怎么来的？在文档上传入库时（DocumentPipeline），每条 INSERT 都用 <code>to_tsvector('chinese', content)</code> 把中文文本预处理成倒排索引：每个词出现的位置、频率都会被记录。这是数据库自动做的，不需要额外代码。</p>
+          <div class="what">倒排索引就像书的附录索引：普通索引是"第几章讲什么"，倒排索引是"某个词出现在哪几章"。你查"水煮鱼"，倒排索引直接告诉你"它在 chunk_2 第 3 位、chunk_5 第 1 位、chunk_9 第 8 位"，不用扫描每个 chunk 的内容。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow last"></div>
+    <div class="node sql">
+      <div class="card">
+        <div class="card-header"><span class="card-title">④-b-1 DocumentChunkRepository.keywordSearch()<span class="badge sql">SQL</span></span><span class="card file">DocumentChunkRepository.java <span class="line">:73-76</span></span></div>
+        <div class="card-body">
+<pre class="sql">SELECT id, content, metadata,
+       ts_rank(tsv, plainto_tsquery('chinese', '招牌菜是什么')) AS score
+FROM rag_document_chunk
+WHERE kb_id = 1
+  AND tsv @@ plainto_tsquery('chinese', '招牌菜是什么')
+ORDER BY score DESC
+LIMIT 10;</pre>
+          <p><code>@@</code> 是 PostgreSQL 的全文匹配运算符，意思是"tsv 列里有没有这些词"。<code>ts_rank()</code> 是 TF-IDF 加权排名函数——词频越高、出现在越少文档中的词权重越大。GIN 索引让这个查询在万级数据里只需要几毫秒。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow last"></div>
+    <div class="node retrieve">
+      <div class="card">
+        <div class="card-header"><span style="color:var(--purple);font-size:13px;font-weight:600">→ KeywordRetriever 返回关键词检索结果（Top-10，按 ts_rank 降序）</span></div>
+        <div class="card-body">
+          <table class="data">
+            <tr><th style="color:var(--dim)">排名</th><th style="color:var(--dim)">chunk ID</th><th style="color:var(--dim)">内容摘要</th><th style="color:var(--dim)">ts_rank</th></tr>
+            <tr><td>1</td><td>chunk_2</td><td>推荐：水煮鱼是我们的招牌，很多人专程来吃</td><td>0.342</td></tr>
+            <tr><td>2</td><td>chunk_5</td><td>招牌菜：水煮鱼38元、宫保鸡丁28元、麻婆豆腐18元</td><td>0.318</td></tr>
+            <tr><td>3</td><td>chunk_1</td><td>本店经营川菜、湘菜，主打水煮系列</td><td>0.156</td></tr>
+            <tr><td>4</td><td>chunk_9</td><td>宫保鸡丁是川菜经典，选用鸡腿肉</td><td>0.089</td></tr>
+            <tr><td>5</td><td>chunk_4</td><td>可容纳20人包间需提前一天预订</td><td>0.045</td></tr>
+            <tr><td>6</td><td>chunk_10</td><td>外卖配送范围：3公里内免配送费</td><td>0.032</td></tr>
+            <tr><td>7</td><td>chunk_3</td><td>营业时间：周一至周日 10:00-22:00</td><td>0.028</td></tr>
+            <tr><td>8</td><td>chunk_6</td><td>本店支持微信、支付宝、现金支付</td><td>0.015</td></tr>
+            <tr><td>9</td><td>chunk_8</td><td>包间信息：有大小包间，大包间可容纳20人</td><td>0.012</td></tr>
+            <tr><td>10</td><td>chunk_7</td><td>优惠活动：每周三全场8折，会员日85折</td><td>0.008</td></tr>
+          </table>
+          <p style="margin-top:8px;color:var(--dim);font-size:12px">关键词检索的排名与向量检索<strong>明显不同</strong>：chunk_2 排第一（"水煮鱼"+"招牌"两个关键词都出现了两次），chunk_1 排进了前三（"水煮"关键词匹配）。chunk_8（包间信息）排名大幅下降，因为不包含"招牌菜"或"水煮鱼"关键词。注意 chunk_9（宫保鸡丁）上榜了，因为"川菜"、"鸡腿"等词与查询有一定关联——但这在语义上并不算高度相关，体现了纯关键词检索的局限性。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- RRF -->
+    <div class="arrow"></div>
+    <div class="node merge">
+      <div class="card">
+        <div class="card-header"><span class="card-title">④-c RrfFusion.merge() —— 倒数排名合并<span class="badge merge">融合</span></span><span class="card file">RrfFusion.java <span class="line">:16-45</span></span></div>
+        <div class="card-body">
+          <p><strong>RRF（Reciprocal Rank Fusion，倒数排名融合）</strong>是一种不依赖原始分数的排名合并算法。它不关心向量的余弦相似度是 0.91 还是 0.65，也不关心 ts_rank 是 0.34 还是 0.01——它只关心<strong>排名</strong>。</p>
+          <p>核心公式非常简洁：<code>分数 = 1 / (k + rank)</code>，其中 k=60（可配置的平滑因子），rank 从 1 开始。合并时同一 chunk 出现在两个列表里就累加。</p>
+<pre class="sql">
+        向量排名(i)     RRF分=1/(60+i+1)         关键词排名     RRF分=1/(60+j+1)      融合总分
+chunk_5  第1名   →     1/61 = 0.01639      chunk_2  第1名  →   1/61 = 0.01639
+chunk_2  第2名   →     1/62 = 0.01613      chunk_5  第2名  →   1/62 = 0.01613
+chunk_8  第3名   →     1/63 = 0.01587      chunk_1  第3名  →   1/63 = 0.01587
+chunk_1  第4名   →     1/64 = 0.01563      chunk_9  第4名  →   1/64 = 0.01563
+chunk_3  第5名   →     1/65 = 0.01538      chunk_4  第5名  →   1/65 = 0.01538
+
+                                                           ↓ 合并累加 ↓
+chunk_5: 0.01639 + 0.01613 = <strong>0.03252</strong>  ← 两路都排前，总分最高
+chunk_2: 0.01613 + 0.01639 = <strong>0.03252</strong>  ← 同样高分
+chunk_8: 0.01587 + 0.012 = <strong>0.016</strong>     ← 向量前3，关键词也有分
+chunk_1: 0.01563 + 0.01587 = <strong>0.03150</strong>  ← 两路都有，排第4
+chunk_9: 0.008 + 0.01563 = <strong>0.016</strong>      ← 关键词排前但向量靠后</pre>
+          <p>最终按融合分数降序取 Top-5：<strong>[chunk_5, chunk_2, chunk_1, chunk_8, chunk_9]</strong></p>
+          <div class="what">RRF 的精妙之处在于"去量纲"——向量的余弦相似度（0.9-0.3）和 keyword 的 ts_rank（0.3-0.01）数值范围完全不同，如果直接加权相加（如 0.6×cos + 0.4×tsrank），结果会严重偏向数值大的那一路。RRF 只看排名不看分数绝对值，完美解决了不同检索器的分数不可比问题。k=60 是经验值，k 越大排名靠后的项得到的分数越接近（平滑效果越强），k 越小头部效应越明显。</div>
+          <div class="why">如果不做融合，只靠向量检索会导致"看不见精确关键词"的问题（比如搜"38元"可能返回一些语义相关但不含价格的 chunk）；只靠关键词检索会导致"理解不了同义词"的问题（搜"辣的鱼"搜不到"水煮鱼"）。两路融合后取长补短。</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end inner chain -->
+
+  <div class="arrow"></div>
+  <div class="node merge">
+    <div class="card">
+      <div class="card-header"><span style="color:var(--cyan);font-size:13px;font-weight:600">→ HybridRetriever 返回 QaPipeline 的 chunks: [chunk_5(0.033), chunk_2(0.033), chunk_1(0.031), chunk_8(0.016), chunk_9(0.016)]</span></div>
+      <div class="card-body"><p>QaPipeline 得到这 5 个 chunk 后，进入后续步骤。</p></div>
+    </div>
+  </div>
+
+  <div class="arrow"></div>
+
+  <!-- 5: Reranker -->
+  <div class="node step">
+    <div class="card">
+      <div class="card-header"><span class="card-title">⑤ 可选重排序<span class="badge step">编排</span></span><span class="card file">QaPipeline.java <span class="line">:41-43</span> → NoOpReranker.java</span></div>
+      <div class="card-body">
+        <p>当前 enableRerank=false，走 <code>NoOpReranker</code>：不做任何精排，直接截断取前 5 条返回。</p>
+        <p>Reranker 的真正价值在于<strong>Cross-Encoder 精排</strong>。前面的向量检索用的是 Bi-Encoder（问题和文档各自独立编码再算相似度，速度快但精度有限）。Cross-Encoder 把"问题+文档"拼在一起输入模型做深度交叉比对，精度高得多但速度慢（每对都要推理一次）。实践中一般 Bi-Encoder 粗排 Top-20 → Cross-Encoder 精排 Top-5。</p>
+        <p>代码预留了 <code>IReranker</code> 接口，未来只需要实现一个 <code>CohereReranker</code> 或 <code>JinaReranker</code>（调 API 即可），QaPipeline 一行不用改。</p>
+        <div class="what">Bi-Encoder vs Cross-Encoder 的经典比喻：Bi-Encoder 像"看两个人分别的简历"，快速判断他们是否匹配；Cross-Encoder 像"让两个人面对面聊 5 分钟"，判断更准但成本高。实际工程中先 Bi-Encoder（≈50ms 筛 20 个候选），再 Cross-Encoder（≈200ms 精排 5 个）。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow"></div>
+
+  <!-- 6: PromptBuilder -->
+  <div class="node step">
+    <div class="card">
+      <div class="card-header"><span class="card-title">⑥ PromptBuilder.buildSystemPrompt() —— 拼接提示词<span class="badge step">编排</span></span><span class="card file">QaPipeline.java <span class="line">:46</span> → PromptBuilder.java <span class="line">:16-27</span></span></div>
+      <div class="card-body">
+        <p>把检索到的 5 个 chunk 拼成一段"知识参考"，再加上角色指令，组合成发给 LLM 的 <code>system prompt</code>（系统提示词）：</p>
+<pre class="prompt">你是一个美食点评平台的智能客服助手。请基于以下餐厅知识库内容回答用户问题。
+如果知识库中没有相关信息，请如实告知"没有找到相关信息"。
+
+知识库参考内容：
+【来源5】招牌菜：水煮鱼38元、宫保鸡丁28元、麻婆豆腐18元
+【来源2】推荐：水煮鱼是我们的招牌，很多人专程来吃
+【来源1】本店经营川菜、湘菜，主打水煮系列
+【来源8】包间信息：有大小包间，大包间可容纳20人
+【来源9】宫保鸡丁是川菜经典，选用鸡腿肉</pre>
+        <p>这里有几个关键设计考量：</p>
+        <p><strong>① 明确"没有找到相关信息"的边界</strong>——如果不加这句，LLM 遇到知识库不涵盖的问题时会<strong>编造答案</strong>（幻觉）。加了之后就变成了"我查了资料，没找到"。</p>
+        <p><strong>② 每个 chunk 标了来源 ID</strong>（【来源5】），不是直接拼文本。这样 LLM 生成答案后可以反向追溯到原文——实现"可溯源的 AI 回答"，用户看到答案可以验证出处。</p>
+        <p><strong>③ Prompt 是中文的</strong>——不是中英混杂。中文 Prompt 对 GLM-5 的效果优于英文 Prompt，因为 GLM 对中文语义的理解更自然。</p>
+        <div class="what">System Prompt vs User Message：System Prompt 是给 AI 的"角色设定"（你是谁、用什么语气、基于什么知识回答）。User Message 是用户直接问的问题。AI 会把 System Prompt 当作更高级别的指令来遵守——所以"没有信息时如实告知"写在 System Prompt 里比写在 User Message 里更有效。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow"></div>
+
+  <!-- 7: Trim History -->
+  <div class="node step">
+    <div class="card">
+      <div class="card-header"><span class="card-title">⑦ 裁剪多轮对话历史<span class="badge step">编排</span></span><span class="card file">QaPipeline.java <span class="line">:48-51</span></span></div>
+      <div class="card-body">
+        <p>客户端会传一个 <code>messages</code> 数组，包含之前的对话历史（多轮对话的上下文）：</p>
+        <p><code>[{"role":"user","content":"你好"}, {"role":"assistant","content":"您好！"}, ...]</code></p>
+        <p>如果历史太长，所有 message 一起塞给 LLM 会<strong>超出 token 限制</strong>（GLM-4-flash 的上下文窗口约 128K tokens，但 Prompt 越长生成越贵越慢）。代码裁掉前面的旧消息，只保留最近 <strong>10 轮</strong>（20 条消息，10 个用户消息 + 10 个 AI 回复）。</p>
+        <div class="what">Token（令牌）是 LLM 计费和处理的基本单位。中文一个字 ≈ 1.5-2 token，英文一个单词 ≈ 1-2 token。上下文窗口 128K 意味着 LLM 一次最多"记住"约 6-8 万汉字的上下文。每次 API 调用按输入+输出的 token 总数计费，所以裁剪历史 = 省钱。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow"></div>
+
+  <!-- 8: LLM -->
+  <div class="node llm">
+    <div class="card">
+      <div class="card-header"><span class="card-title">⑧ GlmLlmClient.streamChat() —— 调用大模型<span class="badge llm">LLM</span></span><span class="card file">QaPipeline.java <span class="line">:53-55</span> → GlmLlmClient.java <span class="line">:30-80</span></span></div>
+      <div class="card-body">
+        <p>这是 RAG 流程的<strong>最后一步</strong>——把拼好的 Prompt + 历史 + 用户问题发给 GLM-5，让它生成答案。走到这一步时，所有检索工作已经完成，LLM 要做的只是"阅读理解 + 根据资料写答案"。</p>
+        <p>技术要点：<code>stream: true</code> 参数告诉 API 用流式模式（SSE），不要等生成完毕再返回。API 每生成一个 token（约 1-2 个汉字），就通过 SSE 数据流推送回来。</p>
+        <p>完整请求格式（兼容 OpenAI /chat/completions 协议）：</p>
+<pre class="sql">POST https://open.bigmodel.cn/api/paas/v4/chat/completions
+{
+  "model": "glm-4-flash",
+  "messages": [
+    {"role":"system","content":"你是一个美食点评平台的智能客服助手..."},
+    {"role":"user","content":"你好"},
+    {"role":"assistant","content":"您好！有什么可以帮您的？"},
+    {"role":"user","content":"招牌菜是什么？"}
+  ],
+  "stream": true
+}</pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="chain">
+    <div class="arrow"></div>
+    <div class="node llm">
+      <div class="card">
+        <div class="card-header"><span class="card-title">⑧-a 虚拟线程 + OkHttp 阻塞式读取 SSE 数据流<span class="badge llm">并发</span></span><span class="card file">GlmLlmClient.java <span class="line">:43-78</span></span></div>
+        <div class="card-body">
+          <p>这里有一个<strong>关键的技术桥接</strong>：</p>
+          <p><strong>OkHttp 是阻塞 IO</strong>——<code>readUtf8Line()</code> 会一直等，直到收到一行新数据才返回。如果放在主线程里读，整个请求处理线程就被卡住了，无法处理其他请求。</p>
+          <p><strong>解决方案：Java 21 虚拟线程</strong>。代码 <code>Thread.startVirtualThread(() -> { ... })</code> 起一个虚拟线程，在这个虚拟线程里跑 OkHttp 的阻塞读取。虚拟线程不是操作系统线程（不占宝贵的线程池资源），可以同时创建成千上万个。每个 SSE 连接占一个虚拟线程，相互隔离，互不影响。</p>
+          <p>虚拟线程内部逐行读取 GLM API 返回的 SSE 数据流：</p>
+<pre class="sql">data: {"id":"chatcmpl-xxx","choices":[{"delta":{"content":"水"}}]}
+data: {"id":"chatcmpl-xxx","choices":[{"delta":{"content":"煮"}}]}
+data: {"id":"chatcmpl-xxx","choices":[{"delta":{"content":"鱼"}}]}
+...
+data: [DONE]</pre>
+          <p>每读到一行就解析 JSON，提取 <code>choices[0].delta.content</code>（这就是 LLM 刚生成的一个 token / 一个字）。</p>
+          <div class="what">虚拟线程（Virtual Thread）是 Java 21 引入的重大特性。传统的操作系统线程（Platform Thread）创建和切换成本很高，一个 Spring Boot 应用通常只有 200 个线程可用。虚拟线程由 JVM 管理而非操作系统管理，创建成本几乎为零。这意味着每个 SSE 长连接可以独占一个虚拟线程，同时有 1000 个用户在问问题也不会耗尽线程池。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"></div>
+    <div class="node sse">
+      <div class="card">
+        <div class="card-header"><span class="card-title">⑧-b Sinks + Reactor Flux —— 阻塞IO → 非阻塞反应式<span class="badge sse">桥接</span></span><span class="card file">GlmLlmClient.java <span class="line">:69-74</span></span></div>
+        <div class="card-body">
+          <p><strong>这是整个服务最精妙的一行代码。</strong></p>
+          <p>Spring WebFlux 的 Controller 返回 <code>Flux&lt;String&gt;</code>，意味着它期望一个非阻塞的反应式管道。但 OkHttp 是阻塞 IO。如何把这两者连起来？</p>
+          <p>答案：<strong>Sinks.Many（反应式水槽）+ 虚拟线程</strong>。Sinks.Many 就像一个"水管"——虚拟线程在管子一头往里灌水（<code>sink.emitNext("水")</code>），Reactor Flux 在管子另一头接水（前端收到 SSE 消息）。</p>
+          <div class="what">把这个类比成外卖配送：OkHttp 阻塞读 = 厨房做饭（慢，要等）；虚拟线程 = 外卖骑手（等在厨房门口，做完一个菜就取走）；Sinks.emitNext = 骑手把菜递给前台；Reactor Flux = 前台实时把菜摆上顾客的桌子。顾客（前端）看到的是一道接一道菜上桌，不需要等全部做好。</div>
+          <div class="why">为什么不直接用 WebClient（Spring 的非阻塞 HTTP 客户端）替代 OkHttp？技术上可以，但 OkHttp 的连接池管理、超时控制、重试机制更成熟。而且虚拟线程出现后，阻塞 IO 和非阻塞 IO 的性能差距已经微乎其微——虚拟线程让阻塞代码也拥有了非阻塞的并发能力。这就是"用最简单的代码达到最好的效果"。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow last"></div>
+    <div class="node sse">
+      <div class="card">
+        <div class="card-header"><span style="color:var(--pink);font-size:13px;font-weight:600">→ 用户最终看到的 SSE 数据流</span></div>
+        <div class="card-body">
+<pre class="result">
+event: thinking     →  {"type":"thinking","content":"正在检索相关知识..."}
+event: sources      →  {"type":"sources","chunks":[
+                          {"id":5,"content":"招牌菜：水煮鱼38元...","score":0.033},
+                          {"id":2,"content":"推荐：水煮鱼是我们的招牌...","score":0.033},
+                          {"id":1,"content":"本店经营川菜、湘菜...","score":0.031},
+                          {"id":8,"content":"包间信息...","score":0.016},
+                          {"id":9,"content":"宫保鸡丁是川菜经典...","score":0.016}
+                       ]}
+data:  水
+data:  煮
+data:  鱼
+data:  是
+data:  我们
+data:  的
+data:  招牌
+data:  菜
+data:  ，
+data:  价格
+data:  38
+data:  元
+data:  ，
+data:  还有
+data:  宫保
+data:  鸡丁
+...
+event: done         →  {"type":"done"}
+</pre>
+          <p>每个 <code>data:</code> 行都会被前端 JavaScript 的 EventSource API 接收并实时渲染到页面上。用户在 ~1.5 秒内就能看到第一个字，随后文字连续出现，体验流畅。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow last"></div>
+
+  <!-- 9 -->
+  <div class="node sse">
+    <div class="card">
+      <div class="card-header"><span class="card-title">⑨ QaController 组装最终 SSE 事件流<span class="badge sse">输出</span></span><span class="card file">QaController.java <span class="line">:45-49</span></span></div>
+      <div class="card-body">
+        <p>回到 QaController，最终的 Flux 由三段拼接而成：</p>
+        <p><code>Flux.just("event: thinking\n...")</code> —— 先发一个 thinking 事件，告诉前端"正在检索中"</p>
+        <p><code>.concatWith(answer)</code> —— 接上 QaPipeline 返回的 sources + LLM 流</p>
+        <p><code>.concatWith(Flux.just("event: done\ndata: {\"type\":\"done\"}\n\n"))</code> —— 最后发一个 done 事件，前端知道回答结束</p>
+        <p><code>.doOnComplete()</code> 和 <code>.doOnError()</code> 是日志钩子——问答结束或出错时记录日志，不改变数据流。</p>
+        <p>到此<strong>一次完整的 RAG 问答请求处理完毕</strong>。总耗时约 4 秒（检索 400ms + LLM 首字 1100ms + 逐字流式输出 2500ms），用户体验是 <strong>~1.5 秒看到第一个字，随后文字流畅出现</strong>。</p>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end main chain -->
+
+<div class="summary">
+  <h3>📊 完整调用链总结表</h3>
+  <table>
+    <tr><th>步骤</th><th>类</th><th>方法</th><th>核心职责</th><th>代码位置</th></tr>
+    <tr><td>①</td><td>Gateway</td><td>Sa-Token 拦截器</td><td>校验 token → Redis 查会话 → 注入 UserHolder</td><td>common/SaTokenConfig.java</td></tr>
+    <tr><td>②</td><td>QaController</td><td>chat()</td><td>接收请求 → @Async 审计日志 → 调 Pipeline</td><td>QaController.java:30</td></tr>
+    <tr><td>③</td><td>QaPipeline</td><td>answer()</td><td>总指挥：归一化参数 → 检索 → 重排 → 拼Prompt → 裁历史 → 调LLM</td><td>QaPipeline.java:31</td></tr>
+    <tr><td>④</td><td>HybridRetriever</td><td>retrieve()</td><td>调度向量+关键词两路检索</td><td>HybridRetriever.java:22</td></tr>
+    <tr><td>④-a-1</td><td>GlmEmbeddingClient</td><td>embed()</td><td>POST智谱API：文字→1024维向量</td><td>GlmEmbeddingClient.java:42</td></tr>
+    <tr><td>④-a-2</td><td>DocumentChunkRepository</td><td>vectorSearch()</td><td>PgVector余弦相似度搜索；IVFFlat索引</td><td>DocumentChunkRepository.java:69</td></tr>
+    <tr><td>④-b</td><td>DocumentChunkRepository</td><td>keywordSearch()</td><td>tsvector全文索引；中文分词+TF-IDF排名</td><td>DocumentChunkRepository.java:73</td></tr>
+    <tr><td>④-c</td><td>RrfFusion</td><td>merge()</td><td>RRF倒数排名合并两路结果；k=60</td><td>RrfFusion.java:16</td></tr>
+    <tr><td>⑤</td><td>NoOpReranker</td><td>rerank()</td><td>可选精排（当前透传）</td><td>NoOpReranker.java</td></tr>
+    <tr><td>⑥</td><td>PromptBuilder</td><td>buildSystemPrompt()</td><td>chunk→拼成中文Prompt+来源标注</td><td>PromptBuilder.java:16</td></tr>
+    <tr><td>⑦</td><td>QaPipeline</td><td>answer()</td><td>裁剪对话历史（保留10轮防超token）</td><td>QaPipeline.java:48</td></tr>
+    <tr><td>⑧</td><td>GlmLlmClient</td><td>streamChat()</td><td>POST GLM-5 API，stream=true</td><td>GlmLlmClient.java:30</td></tr>
+    <tr><td>⑧-a</td><td>GlmLlmClient</td><td>virtual-thread</td><td>虚拟线程+OkHttp阻塞读SSE流</td><td>GlmLlmClient.java:43</td></tr>
+    <tr><td>⑧-b</td><td>GlmLlmClient</td><td>sink.emitNext()</td><td>Sinks桥接：阻塞IO→Reactor Flux</td><td>GlmLlmClient.java:69</td></tr>
+    <tr><td>⑨</td><td>QaController</td><td>chat()</td><td>三段式拼接SSE：thinking+sources+LLM流+done</td><td>QaController.java:45</td></tr>
+  </table>
+</div>
+
+</body>
+</html>

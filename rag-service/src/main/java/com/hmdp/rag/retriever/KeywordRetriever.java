@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
+//NOTE 2,4,b KeywordRetriever负责关键词全文检索
+
 @Component
 @RequiredArgsConstructor
 @Slf4j

@@ -46,18 +46,23 @@ public class DocumentServiceImpl implements IDocumentService {
         this.ragProperties = ragProperties;
     }
 
+
+    //NOTE 1,3 Service 处理上传逻辑，保存文件，记录数据库，发送消息到 MQ
     @Override
     public UploadResponse upload(MultipartFile file, Long kbId, Long userId) {
-        KnowledgeBase kb = kbMapper.selectById(kbId);
+        KnowledgeBase kb = kbMapper.selectById(kbId); //检查知识库是否存在
         if (kb == null) {
             throw new BusinessException("知识库不存在");
         }
 
+        //文件类型识别 + UUID命名
         String originalName = file.getOriginalFilename();
         String fileType = getFileType(originalName);
         String storedName = UUID.randomUUID() + "_" + originalName;
 
+        //文件保存到本地磁盘
         Path uploadDir = Paths.get(ragProperties.getUpload().getDir());
+        //写数据库+发送消息到 MQ
         try {
             Files.createDirectories(uploadDir);
             Path filePath = uploadDir.resolve(storedName);
@@ -74,6 +79,7 @@ public class DocumentServiceImpl implements IDocumentService {
             doc.setCreatedAt(LocalDateTime.now());
             documentMapper.insert(doc);
 
+            //使用 RocketMQ 发送消息，producer生产者，sendProcessMessage发送消息，doc.getId()是消息内容
             if (producer != null) {
                 producer.sendProcessMessage(doc.getId());
             } else {

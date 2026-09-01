@@ -27,19 +27,24 @@ public class GlmLlmClient implements ILlmClient {
     private final ObjectMapper objectMapper = new ObjectMapper();
     public static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
+    //NOTE 2,8,a 虚拟线程 + OkHttp 阻塞式读取 SSE 数据流
+    //spring WebFlux + Reactor 实现流式聊天，使用 OkHttp 发送请求并处理 SSE（Server-Sent Events）响应。
     @Override
     public Flux<String> streamChat(String systemPrompt, List<ChatMessage> history, String userQuestion) {
         Sinks.Many<String> sink = Sinks.many().multicast().onBackpressureBuffer();
 
         Thread.startVirtualThread(() -> {
             try {
+                //NOTE 这里是构建消息列表，包括系统提示、历史消息和用户问题，然后发送到GLM API的聊天接口，并以流式方式接收响应。
                 List<Map<String, String>> messages = new ArrayList<>();
                 if (systemPrompt != null && !systemPrompt.isBlank()) {
                     messages.add(Map.of("role", "system", "content", systemPrompt));
                 }
                 if (history != null) {
                     for (ChatMessage msg : history) {
-                        messages.add(Map.of("role", msg.getRole(), "content", msg.getContent()));
+                        messages.add(Map.of("role",
+                                msg.getRole(), "content",
+                                msg.getContent()));
                     }
                 }
                 messages.add(Map.of("role", "user", "content", userQuestion));
@@ -101,6 +106,11 @@ public class GlmLlmClient implements ILlmClient {
             }
         });
 
+        //NOTE 2,8,b spring webflux的Controller返回Flux<String>,意味着它期望一个非阻塞的反应式管道。
+        // 但 OkHttp 是阻塞 IO。如何把这两者连起来？
+        // Sinks.Many（反应式水槽）+ 虚拟线程。Sinks.Many 就像一个"水管"——虚拟线程在管子一头往里灌水（sink.emitNext("水")），
+        // Reactor Flux 在管子另一头接水（前端收到 SSE 消息）。
+        //把Sinks.Many转换为Flux返回给前端
         return sink.asFlux();
     }
 }

@@ -32,6 +32,7 @@ public class DocumentPipeline {
     private final DocumentMapper documentMapper;
     private final KnowledgeBaseMapper kbMapper;
 
+    //NOTE 1,6 DocumentPipeline 负责文档处理的核心逻辑：解析、分块、生成向量、存储数据库
     public void process(Long documentId) {
         Document doc = documentMapper.selectById(documentId);
         if (doc == null) {
@@ -40,6 +41,7 @@ public class DocumentPipeline {
         }
 
         try {
+            //获取知识库配置
             KnowledgeBase kb = kbMapper.selectById(doc.getKbId());
             if (kb == null) {
                 failDocument(doc, "知识库不存在");
@@ -49,18 +51,22 @@ public class DocumentPipeline {
             int chunkSize = kb.getChunkSize() != null ? kb.getChunkSize() : 500;
             int overlap = kb.getChunkOverlap() != null ? kb.getChunkOverlap() : 50;
 
+            //解析文档内容
             String text;
             try (InputStream is = new FileInputStream(doc.getFilePath())) {
                 text = parser.parse(is, doc.getFilename());
             }
             log.info("Parsed document {}: {} chars", doc.getId(), text.length());
 
+            //语义分块
             List<String> chunks = splitter.split(text, chunkSize, overlap);
             log.info("Split into {} chunks", chunks.size());
 
+            //生成向量，一次API调用生成所有块的向量（chunks -> embeddings）
             List<float[]> embeddings = embeddingClient.embed(chunks);
             log.info("Generated {} embeddings", embeddings.size());
 
+            //写入PgVector+tsvector，批量插入
             List<DocumentChunk> chunkEntities = new ArrayList<>();
             List<String> embeddingStrs = new ArrayList<>();
             for (int i = 0; i < chunks.size(); i++) {
@@ -76,6 +82,7 @@ public class DocumentPipeline {
             }
             chunkRepo.batchInsert(chunkEntities, embeddingStrs);
 
+            //更新文档状态为已完成
             doc.setStatus("COMPLETED");
             doc.setChunkCount(chunks.size());
             documentMapper.updateById(doc);

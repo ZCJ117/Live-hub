@@ -17,6 +17,8 @@ import java.io.InputStream;
 @Slf4j
 public class TikaDocumentParser implements IDocumentParser {
 
+    //NOTE 这里使用Apache Tika来解析文档内容。把各种文档上传，Tika自动识别文档类型并提取文本。
+
     @Override
     public String parse(InputStream inputStream, String filename) throws Exception {
         AutoDetectParser parser = new AutoDetectParser();

@@ -7,10 +7,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
+//NOTE SemanticChunkSplitter ：文本分块。 chunk（块） 切的逻辑：按段落切分
+
 @Component
 @Slf4j
 public class SemanticChunkSplitter implements ITextSplitter {
 
+    //NOTE 这里使用正则表达式来匹配段落分隔符（空行），用于将文本按段落进行切分。
     private static final Pattern PARAGRAPH_SEP = Pattern.compile("\\n\\s*\\n");
 
     @Override
@@ -19,10 +22,12 @@ public class SemanticChunkSplitter implements ITextSplitter {
             return List.of();
         }
 
+        //按空行分割成段落
         String[] paragraphs = PARAGRAPH_SEP.split(text);
         List<String> chunks = new ArrayList<>();
         StringBuilder current = new StringBuilder();
 
+        //  逐段合并，超过 chunkSize 就切一刀
         for (String para : paragraphs) {
             String cleaned = para.replaceAll("\\s+", " ").trim();
             if (cleaned.isEmpty()) continue;

@@ -23,6 +23,8 @@ public class GlmEmbeddingClient implements IEmbeddingClient {
 
     public static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
+    //NOTE 2,4,a-1
+    //NOTE ClM Embedding -> 文本向量化，Embedding API的调用，把文字转为一串数字
     @Override
     public List<float[]> embed(List<String> texts) {
         List<float[]> embeddings = new ArrayList<>();

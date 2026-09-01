@@ -11,6 +11,10 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
+//NOTE 2,4,a 把问题 query 转成向量 embedding ,用PgVector 做向量检索，找最相似的10个chunk
+// 返回 RetrievedChunk 列表。
+// VectorRetriever 负责将用户的查询问题转换为向量表示，并使用向量数据库（如 PostgreSQL 的 pgvector）进行相似度搜索，从而检索出与查询最相关的文档块。
+
 @Component
 @RequiredArgsConstructor
 @Slf4j

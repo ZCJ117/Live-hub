@@ -1,10 +1,11 @@
 server:
   port: 8087
 
+#NOTE 这里向量数据库选择 PostgreSQL+pgvector(扩展),是用来存文档和向量的
 spring:
   datasource:
-    driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://localhost:5433/rag_db
+    driver-class-name: org.postgresql.Driver     # PostgreSQL 驱动
+    url: jdbc:postgresql://localhost:5433/rag_db    # PostgreSQL 驱动
     username: ${RAG_DB_USER:rag_user}
     password: ${RAG_DB_PASSWORD}
   jackson:

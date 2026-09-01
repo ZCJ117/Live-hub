@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
  *
  * 仅在 RocketMQTemplate Bean 存在时创建。
  * RocketMQ 未启动时，文档上传正常入库但不会触发异步处理。
+ *
+ * NOTE 1,4 DocumentProcessProducer 负责发送文档处理消息到 RocketMQ，触发异步处理逻辑。
  */
 @Component
 @ConditionalOnBean(RocketMQTemplate.class)

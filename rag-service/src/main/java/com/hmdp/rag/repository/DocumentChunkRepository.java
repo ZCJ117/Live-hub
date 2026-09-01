@@ -11,6 +11,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 
+//NOTE 2,4,a-2  PgVector 相似度搜索 把 1024 维向量传进 PgVector 执行余弦相似度搜索
+//NOTE tsvector是关键词全文搜索
+
 @Repository
 @RequiredArgsConstructor
 @Slf4j
@@ -18,6 +21,10 @@ public class DocumentChunkRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
+    //insert时用to_tsvector函数把中文文本转换为tsvector类型(搜索索引)
+    //NOTE SQL 中的 <=> 是 PgVector 扩展提供的余弦距离运算符。
+    // 它计算两个向量在 1024 维空间中的夹角，返回 0（完全相同）到 2（完全相反）之间的值。
+    // 用 1 - 距离 换算成 0 到 1 的相似度分数。
     private static final String INSERT_SQL =
         "INSERT INTO rag_document_chunk (document_id, kb_id, chunk_index, content, embedding, tsv, metadata) " +
         "VALUES (?, ?, ?, ?, ?::vector, to_tsvector('chinese', ?), ?::jsonb)";
@@ -57,6 +64,7 @@ public class DocumentChunkRepository {
             new ChunkWithScoreRowMapper(), embeddingStr, kbId, embeddingStr, topK);
     }
 
+    //NOTE 2,4,b-1 @@ 是 PostgreSQL 的全文匹配运算符 词频越高、出现在越少文档中的词权重越大
     public List<DocumentChunk> keywordSearch(String query, Long kbId, int topK) {
         return jdbcTemplate.query(KEYWORD_SEARCH_SQL,
             new ChunkWithScoreRowMapper(), query, kbId, query, topK);

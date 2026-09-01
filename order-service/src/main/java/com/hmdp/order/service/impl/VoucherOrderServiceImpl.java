@@ -1,7 +1,13 @@
 package com.hmdp.order.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import cn.hutool.core.bean.BeanUtil;
+import com.hmdp.order.dto.OrderQueryVO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.SeckillOrderMessage;
+import com.hmdp.entity.Voucher;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.order.feign.VoucherFeignClient;
 import com.hmdp.order.mapper.VoucherOrderMapper;
@@ -22,6 +28,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Collections;
 
 /**
@@ -148,5 +157,55 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
 
         save(voucherOrder);
+    }
+
+    /**
+     * 按 userId 批量查询订单（agent-service 客服工具调用）
+     * 归属校验：userId 由登录态强制注入；指定 orderId 非本人时返回空列表（不泄露订单存在性，PRD FR-05 验收 2）
+     */
+    @Override
+    public Result queryMyOrders(Long userId, Long orderId, Integer status, Integer days, Integer page, Integer size) {
+        int p = Math.max(page == null ? 1 : page, 1);
+        int s = Math.min(Math.max(size == null ? 5 : size, 1), 20);
+
+        LambdaQueryWrapper<VoucherOrder> wrapper = Wrappers.<VoucherOrder>lambdaQuery()
+                .eq(VoucherOrder::getUserId, userId)
+                .orderByDesc(VoucherOrder::getCreateTime);
+        if (orderId != null) {
+            wrapper.eq(VoucherOrder::getId, orderId);
+        }
+        if (status != null) {
+            wrapper.eq(VoucherOrder::getStatus, status);
+        }
+        if (days != null && days > 0) {
+            wrapper.ge(VoucherOrder::getCreateTime, LocalDateTime.now().minusDays(days));
+        }
+
+        // 项目未配置 MP 分页插件，手动分页（count + limit/offset）
+        long total = count(wrapper.clone());
+        wrapper.last("LIMIT " + s + " OFFSET " + (long) (p - 1) * s);
+        List<VoucherOrder> records = list(wrapper);
+
+        // 联查券信息，组装 VO（订单字段 + 券标题/金额），一次返回避免 agent 侧二次调用
+        List<OrderQueryVO> vos = records.stream().map(order -> {
+            OrderQueryVO vo = OrderQueryVO.of(order);
+            try {
+                Result voucherResult = voucherFeignClient.getVoucherById(order.getVoucherId());
+                if (voucherResult.getSuccess() && voucherResult.getData() != null) {
+                    Voucher voucher = BeanUtil.mapToBean((Map<?, ?>) voucherResult.getData(), Voucher.class, false, null);
+                    vo.setVoucherTitle(voucher.getTitle());
+                    vo.setPayValue(voucher.getPayValue());
+                    vo.setActualValue(voucher.getActualValue());
+                }
+            } catch (Exception e) {
+                // 券信息联查失败不阻塞订单返回（降级：仅订单字段）
+                log.warn("联查券信息失败: voucherId={}", order.getVoucherId(), e);
+            }
+            return vo;
+        }).toList();
+
+        Result r = Result.ok(vos);
+        r.setTotal(total);
+        return r;
     }
 }
