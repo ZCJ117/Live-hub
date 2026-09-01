@@ -3,6 +3,7 @@ package com.hmdp.agent.confirm;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import com.hmdp.agent.dto.OrderCardDTO;
 import com.hmdp.agent.entity.AgentSession;
 import com.hmdp.agent.entity.AgentTask;
@@ -22,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -82,11 +84,21 @@ class ConfirmTaskServiceTest {
     }
 
     @Test
-    void 条件更新抢确认_SQL带status与过期守卫() {
+    void 条件更新抢确认_捕获Wrapper验证状态与过期守卫() {
         when(taskMapper.update(any(), any(Wrapper.class))).thenReturn(1);
         assertTrue(service().tryAdopt("a1"));
         when(taskMapper.update(any(), any(Wrapper.class))).thenReturn(0);
         assertEquals(false, service().tryAdopt("a1"));
+
+        ArgumentCaptor<Wrapper<AgentTask>> captor = forClass(Wrapper.class);
+        verify(taskMapper, times(2)).update(any(), captor.capture());
+        String sql = captor.getAllValues().get(0).getSqlSegment();
+        assertTrue(sql.contains("status"), "tryAdopt 必须带状态守卫: " + sql);
+        assertTrue(sql.contains("expire_time"), "tryAdopt 必须带过期守卫: " + sql);
+        @SuppressWarnings("unchecked")
+        AbstractWrapper<AgentTask, ?, ?> wrapper = (AbstractWrapper<AgentTask, ?, ?>) captor.getAllValues().get(0);
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("PENDING_CONFIRM"));
+        assertTrue(wrapper.getParamNameValuePairs().containsValue("ADOPTED"));
     }
 
     @Test

@@ -120,6 +120,7 @@ public class ConfirmTaskService {
                     "createTime", order.getCreateTime() == null ? "" : order.getCreateTime().toString(),
                     "reasons", REFUND_REASONS));
         } catch (Exception e) {
+            log.warn("payload 序列化失败", e);
             return "{}";
         }
     }
