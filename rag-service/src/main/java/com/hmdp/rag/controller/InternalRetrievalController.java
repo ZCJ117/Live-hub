@@ -1,6 +1,5 @@
 package com.hmdp.rag.controller;
 
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hmdp.dto.Result;
 import com.hmdp.rag.dto.RetrievedChunk;
 import com.hmdp.rag.entity.KnowledgeBase;
@@ -39,11 +38,9 @@ public class InternalRetrievalController {
             if (shopId == null || query == null || query.isBlank()) {
                 return Result.ok(Map.of("hits", List.of()));
             }
-            // KB 定位约定：merchantId == shopId（无 KB 返回空，不报错）
-            KnowledgeBase kb = kbService.getOne(Wrappers.<KnowledgeBase>lambdaQuery()
-                    .eq(KnowledgeBase::getMerchantId, shopId)
-                    .orderByDesc(KnowledgeBase::getId)
-                    .last("LIMIT 1"));
+            // KB 定位约定：merchantId == shopId（取最新一个；无 KB 返回空，不报错）
+            var kbPage = kbService.listByMerchant(shopId, 1, 1);
+            KnowledgeBase kb = kbPage.getRecords().isEmpty() ? null : kbPage.getRecords().get(0);
             if (kb == null) {
                 return Result.ok(Map.of("hits", List.of()));
             }
