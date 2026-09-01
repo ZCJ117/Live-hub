@@ -9,6 +9,7 @@ import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -100,6 +101,16 @@ public class Voucher implements Serializable {
      * 更新时间
      */
     private LocalDateTime updateTime;
+
+    /**
+     * 使用门槛（满 X 元可用），NULL=规则未录入（D1.4 C2，禁止默认值编造语义）
+     */
+    private BigDecimal threshold;
+
+    /**
+     * 适用范围：店铺ID列表 JSON（如 "[1,2]"），NULL=未录入
+     */
+    private String applicableScope;
 
 
 }

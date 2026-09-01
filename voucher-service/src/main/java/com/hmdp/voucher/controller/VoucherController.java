@@ -56,6 +56,20 @@ public class VoucherController {
     }
 
     /**
+     * 查询券详情（agent-service FR-06，D1.4 C2）
+     * @param id 券id
+     * @return 券详情（含 threshold/applicableScope，未录入为 null）
+     */
+    @GetMapping("/{id}")
+    public Result queryVoucherById(@PathVariable("id") Long id) {
+        Voucher voucher = voucherService.getById(id);
+        if (voucher == null) {
+            return Result.fail("券不存在");
+        }
+        return Result.ok(voucher);
+    }
+
+    /**
      * 扣减优惠券库存
      * @param voucherId 优惠券id
      * @return 扣减结果
