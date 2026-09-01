@@ -1,11 +1,9 @@
 package com.hmdp.agent.flow;
 
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hmdp.agent.confirm.ConfirmTaskService;
 import com.hmdp.agent.dto.OrderCardDTO;
 import com.hmdp.agent.entity.AgentSession;
 import com.hmdp.agent.entity.AgentTask;
-import com.hmdp.agent.mapper.AgentTaskMapper;
 import com.hmdp.agent.metrics.TrackEventService;
 import com.hmdp.agent.sse.SseSessionManager;
 import com.hmdp.agent.tool.QueryMyOrdersTool;
@@ -18,6 +16,8 @@ import org.springframework.stereotype.Service;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * 退款流程编排（FR-08 T4.2）
@@ -35,10 +35,9 @@ public class RefundFlowService {
     private final ConfirmTaskService confirmTaskService;
     private final TrackEventService trackEventService;
     private final SseSessionManager sseManager;
-    private final AgentTaskMapper taskMapper;
 
-    /** REFUND 分支主入口（由 ChatOrchestratorService.dispatch 调用） */
-    public void handle(AgentSession session, ToolContext ctx) {
+    /** REFUND 分支主入口（由 ChatOrchestratorService.dispatch 调用，话术统一经 onDelta 流出） */
+    public void handle(AgentSession session, ToolContext ctx, StringBuilder answer, Consumer<String> onDelta) {
         Long sessionId = session.getId();
         ToolResult result;
         try {
@@ -48,64 +47,64 @@ public class RefundFlowService {
             result = ToolResult.fail("ORDER_TIMEOUT", "订单服务暂时繁忙");
         }
         if (result == null || !result.isSuccess()) {
-            say(sessionId, "订单服务暂时繁忙，请稍后再试；您也可以回复\"转人工\"由客服跟进。");
+            say(answer, onDelta, "订单服务暂时繁忙，请稍后再试；您也可以回复\"转人工\"由客服跟进。");
             return;
         }
         List<OrderCardDTO> cards = result.getData() instanceof List<?> list
                 ? list.stream().map(o -> (OrderCardDTO) o).toList()
                 : List.of();
         List<OrderCardDTO> eligible = cards.stream()
-                .filter(c -> c.getStatusCode() != null && c.getStatusCode() == 2)
+                .filter(c -> c.getStatusCode() != null && c.getStatusCode() == 2) // 2=已支付（唯一可退状态，FR-08）
                 .toList();
 
         if (eligible.isEmpty()) {
             // PRD 边界：订单已核销/已完成 → 卡片不可生成，说明不可退原因
-            say(sessionId, cards.isEmpty()
+            say(answer, onDelta, cards.isEmpty()
                     ? "未查询到您的订单记录。仅\"已支付\"状态且未核销的订单支持申请退款。"
                     : "您近期的订单均不是\"已支付\"状态（已核销/已取消/已退款等），不符合退款条件，无法发起退款申请。");
             return;
         }
         if (eligible.size() > 1) {
             // PRD：多单让用户选择 → 复用 ORDER_LIST 卡片（点选后带 context.orderId 下一轮进入）
-            say(sessionId, "您有多笔已支付订单，请点选要退款的订单：");
+            say(answer, onDelta, "您有多笔已支付订单，请点选要退款的订单：");
             sseManager.send(sessionId, "card", Map.of(
                     "cardType", "ORDER_LIST",
                     "payload", Map.of("orders", eligible, "total", eligible.size())));
             return;
         }
         OrderCardDTO order = eligible.get(0);
-        createOrReuseCard(session, order);
+        createOrReuseCard(session, order, answer, onDelta);
     }
 
     /** 生成或复用该订单的确认卡片（T4.4：同订单重复申请拦截） */
-    private void createOrReuseCard(AgentSession session, OrderCardDTO order) {
+    private void createOrReuseCard(AgentSession session, OrderCardDTO order, StringBuilder answer, Consumer<String> onDelta) {
         Long sessionId = session.getId();
-        List<AgentTask> active = taskMapper.selectList(Wrappers.<AgentTask>lambdaQuery()
-                .eq(AgentTask::getUserId, session.getUserId())
-                .eq(AgentTask::getBizOrderId, order.getOrderId())
-                .in(AgentTask::getStatus, "PENDING_CONFIRM", "ADOPTED")
-                .orderByDesc(AgentTask::getId)
-                .last("LIMIT 1"));
+        Optional<AgentTask> existingOpt = confirmTaskService
+                .findActiveByOrder(session.getUserId(), order.getOrderId(), null)
+                .stream().findFirst();
 
-        if (!active.isEmpty()) {
-            AgentTask existing = active.get(0);
-            if ("ADOPTED".equals(existing.getStatus())) {
-                say(sessionId, "该订单已有一笔退款申请，受理编号 RF" + existing.getId()
-                        + "，请耐心等待处理，勿重复提交。");
+        if (existingOpt.isPresent()) {
+            AgentTask existing = existingOpt.get();
+            if (!confirmTaskService.expireIfOverdue(existing)) {
+                if ("ADOPTED".equals(existing.getStatus())) {
+                    say(answer, onDelta, "该订单已有一笔退款申请，受理编号 RF" + existing.getId()
+                            + "，请耐心等待处理，勿重复提交。");
+                    return;
+                }
+                // PENDING_CONFIRM：重发既有卡片（不新建，actionId 不变保证幂等）
+                pushConfirmCard(sessionId, existing, order);
+                trackEventService.track("m5_refund_card_show", sessionId, session.getUserId(),
+                        Map.of("orderId", order.getOrderId(), "actionId", existing.getActionId(), "reused", true));
+                say(answer, onDelta, "您有一笔待确认的退款申请（10 分钟内有效），请在卡片上确认提交或取消。");
                 return;
             }
-            // PENDING_CONFIRM：重发既有卡片（不新建，actionId 不变保证幂等）
-            pushConfirmCard(sessionId, existing, order);
-            trackEventService.track("m5_refund_card_show", sessionId, session.getUserId(),
-                    Map.of("orderId", order.getOrderId(), "actionId", existing.getActionId(), "reused", true));
-            say(sessionId, "您有一笔待确认的退款申请（10 分钟内有效），请在卡片上确认提交或取消。");
-            return;
+            // 已过期 → 落到下方新建分支
         }
         AgentTask task = confirmTaskService.createRefundTask(session, order);
         pushConfirmCard(sessionId, task, order);
         trackEventService.track("m5_refund_card_show", sessionId, session.getUserId(),
                 Map.of("orderId", order.getOrderId(), "actionId", task.getActionId()));
-        say(sessionId, "已为您生成退款申请（10 分钟内有效）。请在卡片上确认提交或取消，"
+        say(answer, onDelta, "已为您生成退款申请（10 分钟内有效）。请在卡片上确认提交或取消，"
                 + "预计 1-3 个工作日原路退回。");
     }
 
@@ -125,7 +124,9 @@ public class RefundFlowService {
                         "notice", "预计 1-3 个工作日原路退回")));
     }
 
-    private void say(Long sessionId, String text) {
-        sseManager.send(sessionId, "delta", Map.of("text", text));
+    /** 话术统一经 orchestrator 的 onDelta 流出（delta 事件 + answer 累积 + 首 token 埋点） */
+    private void say(StringBuilder answer, Consumer<String> onDelta, String text) {
+        answer.append(text);
+        onDelta.accept(text);
     }
 }

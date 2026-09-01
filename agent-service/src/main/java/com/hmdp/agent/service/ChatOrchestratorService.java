@@ -261,7 +261,7 @@ public class ChatOrchestratorService {
             }
             case REFUND -> {
                 // T4.2：退款编排 → 确认卡片（替换 Phase 3 "即将开放"桩）
-                refundFlowService.handle(session, ctx);
+                refundFlowService.handle(session, ctx, answer, onDelta);
                 return new ReActEngine.ReactResult("REFUND_FLOW", false, "REFUND_FLOW", 0, 0, 0);
             }
             case CHAT_DIRECT -> {
