@@ -48,6 +48,8 @@ class ChatOrchestratorDispatchTest {
     private final AgentProperties props = new AgentProperties();
     private final PlannerService planner = mock(PlannerService.class);
     private final RefundFlowService refundFlowService = mock(RefundFlowService.class);
+    private final com.hmdp.agent.flow.ComplaintFlowService complaintFlowService =
+            mock(com.hmdp.agent.flow.ComplaintFlowService.class);
 
     private ChatOrchestratorService service(Executor executor) {
         // 安全组件用真实实例（默认空敏感词表/规则不命中，不干扰分发用例）
@@ -58,6 +60,7 @@ class ChatOrchestratorDispatchTest {
                 new com.hmdp.agent.security.EmotionDetector(props),
                 mock(com.hmdp.agent.audit.ToolCallAuditService.class),
                 refundFlowService,
+                complaintFlowService,
                 executor);
     }
 

@@ -4,6 +4,7 @@ import com.hmdp.agent.audit.ToolCallAuditService;
 import com.hmdp.agent.config.AgentProperties;
 import com.hmdp.agent.config.AgentTokenHolder;
 import com.hmdp.agent.entity.AgentSession;
+import com.hmdp.agent.flow.ComplaintFlowService;
 import com.hmdp.agent.flow.RefundFlowService;
 import com.hmdp.agent.llm.GlmClient;
 import com.hmdp.agent.memory.ChatMemoryService;
@@ -51,6 +52,7 @@ public class ChatOrchestratorService {
     private final EmotionDetector emotionDetector;
     private final ToolCallAuditService auditService;
     private final RefundFlowService refundFlowService;
+    private final ComplaintFlowService complaintFlowService;
 
     public ChatOrchestratorService(AgentSessionService sessionService,
                                    ChatMemoryService memoryService,
@@ -65,6 +67,7 @@ public class ChatOrchestratorService {
                                    EmotionDetector emotionDetector,
                                    ToolCallAuditService auditService,
                                    RefundFlowService refundFlowService,
+                                   ComplaintFlowService complaintFlowService,
                                    @Qualifier("agentSseExecutor") Executor sseExecutor) {
         this.sessionService = sessionService;
         this.memoryService = memoryService;
@@ -79,6 +82,7 @@ public class ChatOrchestratorService {
         this.emotionDetector = emotionDetector;
         this.auditService = auditService;
         this.refundFlowService = refundFlowService;
+        this.complaintFlowService = complaintFlowService;
         this.sseExecutor = sseExecutor;
     }
 
@@ -284,11 +288,9 @@ public class ChatOrchestratorService {
                 return new ReActEngine.ReactResult("请选择您需要的服务", false, "FALLBACK_MENU", 0, 0, 0);
             }
             case COMPLAINT -> {
-                // Phase 4 要素收集状态机；本阶段安抚 + 引导描述问题
-                String text = "非常抱歉给您带来不便。请描述具体问题（涉及订单号/店铺、发生时间、您的诉求），我会为您登记工单由人工跟进。";
-                answer.append(text);
-                sseManager.send(sessionId, "delta", Map.of("text", text));
-                return new ReActEngine.ReactResult(text, false, "COMPLAINT_GUIDE", 0, 0, 0);
+                // T4.6：要素收集状态机（替换安抚桩）
+                complaintFlowService.handle(session, message);
+                return new ReActEngine.ReactResult("COMPLAINT_FLOW", false, "COMPLAINT", 0, 0, 0);
             }
             case HUMAN_DEMAND -> {
                 // T3.1：转人工桩（真实坐席分配 Phase 4 FR-10）；埋点对齐 D1.8 #9
