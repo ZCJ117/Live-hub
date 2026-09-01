@@ -1,0 +1,92 @@
+server:
+  port: 8088 # agent-service 端口（8081~8087 已占用）
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 独立 schema agent_service，复用既有 MySQL 实例（PRD 4.4）
+    url: jdbc:mysql://127.0.0.1:3306/agent_service?useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: 520117
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: 520117
+      lettuce:
+        pool:
+          max-active: 10
+          max-idle: 5
+          min-idle: 1
+  jackson:
+    default-property-inclusion: non_null
+
+mybatis-plus:
+  type-aliases-package: com.hmdp.agent.entity
+  mapper-locations: classpath*:/mapper/**/*.xml
+
+# LLM 配置（OpenAI 协议兼容，复用 GLM 生态；密钥走环境变量，禁止硬编码）
+glm:
+  api-key: ${GLM_API_KEY:}
+  base-url: https://open.bigmodel.cn/api/paas/v4
+  # 主模型（查询类回答生成，T3.13）与轻量模型（意图分类/CHAT 直答/摘要/ReAct 决策步）
+  main-model: glm-5.3-flash
+  light-model: glm-4-flash
+  connect-timeout: 10s
+  read-timeout: 120s
+
+agent:
+  sse:
+    # 异步线程池：并发会话目标 50（PRD 4.1），核心 = 50*2
+    core-pool-size: 100
+    max-pool-size: 200
+    queue-capacity: 200
+    emitter-timeout-ms: 60000
+    heartbeat-interval-ms: 15000
+  session:
+    idle-close-minutes: 30    # 空闲自动关闭（FR-01）
+    memory-ttl-minutes: 30    # Redis 短期记忆 TTL（FR-02）
+    max-history-rounds: 10    # 超过触发摘要压缩（FR-02）
+    degraded-history-rounds: 6 # 摘要失败降级保留轮数
+    max-daily-sessions: 20    # 单用户日会话数上限（FR-11，服务端部分）
+    max-msg-count: 100        # 单会话消息数上限
+  react:
+    max-steps: 8              # ReAct 最大步数（附录 A）
+  planner:
+    clarify-threshold: 0.6    # 澄清阈值（FR-03：confidence < 0.6 → 澄清）
+    max-clarify-rounds: 2     # 最多连续澄清轮数，第 3 轮降级菜单
+  message:
+    max-length: 500           # 单条消息长度上限（FR-02）
+
+logging:
+  level:
+    com.hmdp: debug
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: agent-service
+
+sa-token:
+  token-name: Authorization
+  timeout: 2592000
+  active-timeout: -1
+  is-concurrent: true
+  is-share: true
+  token-style: uuid
+  is-log: false
+
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 500
+        # 工具调用 Feign 超时上限 2s（PRD 4.1 / R6）
+        readTimeout: 2000
+      rag-service:            # kb_search 向量检索较慢（C4）
+        connectTimeout: 1000
+        readTimeout: 5000
