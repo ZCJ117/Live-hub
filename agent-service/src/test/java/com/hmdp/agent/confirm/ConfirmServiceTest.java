@@ -106,8 +106,36 @@ class ConfirmServiceTest {
         ConfirmOutcome o = service().confirm(100L, 1L, req);
         assertTrue(o.success());
         verify(confirmTaskService).reject(task);
-        verify(flowStateService).setFlowState(1L, "IDLE");
+        verify(flowStateService).resetRefundingIfNeeded(1L);
         verify(orderFeignClient, never()).refund(any());
+    }
+
+    @Test
+    void 已ADOPTED后取消_拒绝并返回受理编号() {
+        when(sessionService.getOwned(1L, 100L)).thenReturn(session());
+        AgentTask task = pendingTask().setStatus("ADOPTED");
+        when(confirmTaskService.findByActionId(100L, "a1")).thenReturn(Optional.of(task));
+        ConfirmRequest req = confirmReq();
+        req.setDecision("CANCEL");
+        ConfirmOutcome o = service().confirm(100L, 1L, req);
+        assertFalse(o.success(), "已受理不可取消，不能返回虚假成功");
+        assertTrue(o.message().contains("不可取消"));
+        assertTrue(o.message().contains("RF9"));
+        verify(confirmTaskService, never()).reject(any());
+        verify(orderFeignClient, never()).refund(any());
+    }
+
+    @Test
+    void 已过期卡取消_懒过期后提示() {
+        when(sessionService.getOwned(1L, 100L)).thenReturn(session());
+        AgentTask task = pendingTask();
+        when(confirmTaskService.findByActionId(100L, "a1")).thenReturn(Optional.of(task));
+        when(confirmTaskService.expireIfOverdue(task)).thenReturn(true);
+        ConfirmRequest req = confirmReq();
+        req.setDecision("CANCEL");
+        ConfirmOutcome o = service().confirm(100L, 1L, req);
+        assertFalse(o.success());
+        assertTrue(o.message().contains("过期"));
     }
 
     @Test
@@ -128,7 +156,7 @@ class ConfirmServiceTest {
         assertEquals("RF9", o.refundNo());
         assertEquals("TK9", o.ticketNo());
         verify(confirmTaskService).bindTicket(9L, 77L);
-        verify(flowStateService).setFlowState(1L, "IDLE");
+        verify(flowStateService).resetRefundingIfNeeded(1L);
         ArgumentCaptor<Map<String, Object>> body = ArgumentCaptor.forClass(Map.class);
         verify(orderFeignClient).refund(body.capture());
         assertEquals(200L, body.getValue().get("orderId"));
@@ -218,6 +246,6 @@ class ConfirmServiceTest {
         assertEquals("RF9", o.refundNo());
         assertEquals(null, o.ticketNo());
         assertTrue(o.message().contains("复核工单"));
-        verify(flowStateService).setFlowState(1L, "IDLE");
+        verify(flowStateService).resetRefundingIfNeeded(1L);
     }
 }

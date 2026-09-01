@@ -10,6 +10,7 @@ import com.hmdp.agent.planner.FlowStateService;
 import com.hmdp.agent.service.AgentSessionService;
 import com.hmdp.agent.ticket.TicketPriorityRules;
 import com.hmdp.agent.ticket.TicketService;
+import com.hmdp.dto.RefundMessages;
 import com.hmdp.dto.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -54,19 +55,26 @@ public class ConfirmService {
             return new ConfirmOutcome(false, "确认请求无效或已失效", null, null, null);
         }
 
-        // 3. CANCEL：卡片收起，对话继续（不建单不留待办）
+        // 3. 懒过期（10 分钟，CONFIRM/CANCEL 一视同仁）
+        if (confirmTaskService.expireIfOverdue(task)) {
+            return new ConfirmOutcome(false, "确认卡片已过期（10 分钟有效），请重新发起退款申请", null, null, null);
+        }
+
+        // 4. CANCEL：卡片收起，对话继续（不建单不留待办）
         if ("CANCEL".equalsIgnoreCase(req.getDecision())) {
-            confirmTaskService.reject(task);
-            flowStateService.setFlowState(sessionId, "IDLE");
-            return new ConfirmOutcome(true, "已取消退款申请", null, null, null);
+            if ("ADOPTED".equals(task.getStatus())) {
+                // 已受理不可取消：不能返回虚假成功让用户误以为已取消
+                return new ConfirmOutcome(false, "退款已受理，不可取消，受理编号 RF" + task.getId(), null, null, null);
+            }
+            if ("PENDING_CONFIRM".equals(task.getStatus())) {
+                confirmTaskService.reject(task);
+                flowStateService.resetRefundingIfNeeded(sessionId);
+                return new ConfirmOutcome(true, "已取消退款申请", null, null, null);
+            }
+            return new ConfirmOutcome(false, "该卡片已作废，请重新发起", null, null, null);
         }
         if (!"CONFIRM".equalsIgnoreCase(req.getDecision())) {
             return new ConfirmOutcome(false, "decision 仅支持 CONFIRM/CANCEL", null, null, null);
-        }
-
-        // 4. 懒过期（10 分钟）
-        if (confirmTaskService.expireIfOverdue(task)) {
-            return new ConfirmOutcome(false, "确认卡片已过期（10 分钟有效），请重新发起退款申请", null, null, null);
         }
 
         // 5. 已 ADOPTED → 幂等返回相同受理编号
@@ -105,17 +113,19 @@ public class ConfirmService {
                     "reason", confirmReason == null ? "" : confirmReason));
         } catch (Exception e) {
             log.error("退款 Feign 调用失败: taskId={}", task.getId(), e);
+            // 不确定态：order 可能已受理（对账兜底），T4.15 用 sql/phase4-reconciliation.sql 核对
             refundResult = Result.fail("退款服务暂时繁忙，请稍后重试或转人工");
         }
         if (refundResult == null || !Boolean.TRUE.equals(refundResult.getSuccess())) {
             String reason = refundResult == null ? "退款服务无响应" : refundResult.getErrorMsg();
             // "已在退款中" → 定位既有受理（对账兜底场景）
-            if (reason != null && reason.contains("已有进行中的退款申请")) {
+            if (reason != null && reason.contains(RefundMessages.ALREADY_PENDING)) {
                 Optional<AgentTask> adopted = confirmTaskService.findAdoptedByOrder(userId, task.getBizOrderId());
                 if (adopted.isPresent()) {
                     return adoptedOutcome(adopted.get(), "该订单已有一笔退款申请");
                 }
             }
+            // 不确定态：order 可能已受理（对账兜底），T4.15 用 sql/phase4-reconciliation.sql 核对
             confirmTaskService.rejectAfterAdopt(task); // 卡片作废
             return new ConfirmOutcome(false, reason, null, null, null);
         }
@@ -135,7 +145,7 @@ public class ConfirmService {
             log.error("复核工单创建失败（已重试）: taskId={}", task.getId(), e);
             linkNote = "；复核工单登记失败，将由人工补录（受理编号已生效）";
         }
-        flowStateService.setFlowState(sessionId, "IDLE");
+        flowStateService.resetRefundingIfNeeded(sessionId);
         String msg = "退款申请已受理，受理编号 " + refundNo + "，预计 1-3 个工作日原路退回"
                 + (ticketNo == null ? linkNote : "，复核工单 " + ticketNo + "（预计 " + sla + " 内处理）");
         return new ConfirmOutcome(true, msg, refundNo, ticketNo, sla);

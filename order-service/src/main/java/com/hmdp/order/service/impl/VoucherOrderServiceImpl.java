@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import cn.hutool.core.bean.BeanUtil;
 import com.hmdp.order.dto.OrderQueryVO;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.RefundMessages;
 import com.hmdp.dto.SeckillOrderMessage;
 import com.hmdp.entity.Voucher;
 import com.hmdp.entity.VoucherOrder;
@@ -230,7 +231,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (!updated) {
             VoucherOrder cur = getById(orderId);
             if (cur != null && cur.getStatus() != null && cur.getStatus() == 5) {
-                return Result.fail("该订单已有进行中的退款申请");
+                return Result.fail(RefundMessages.ALREADY_PENDING);
             }
             return Result.fail("订单状态已变更，请刷新后查看");
         }

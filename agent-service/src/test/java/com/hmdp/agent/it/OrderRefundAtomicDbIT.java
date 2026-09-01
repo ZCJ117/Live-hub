@@ -44,7 +44,7 @@ class OrderRefundAtomicDbIT {
         Assumptions.assumeTrue(conn != null, "MySQL 离线，跳过退款原子性 db-it");
         orderId = System.currentTimeMillis();
         Statement st = conn.createStatement();
-        st.execute("INSERT INTO tb_voucher_order(id, user_id, voucher_id, status, create_time) "
+        st.execute("INSERT IGNORE INTO tb_voucher_order(id, user_id, voucher_id, status, create_time) "
                 + "VALUES (" + orderId + ", 999999, 1, 2, NOW())");
     }
 

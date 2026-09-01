@@ -136,6 +136,14 @@ public class AgentSessionService extends ServiceImpl<AgentSessionMapper, AgentSe
                 .update();
     }
 
+    /** 条件流转：仅当 flowState=expect 时置为 target（防并发覆盖） */
+    public void casFlowState(Long sessionId, String expect, String target) {
+        lambdaUpdate().eq(AgentSession::getId, sessionId)
+                .eq(AgentSession::getFlowState, expect)
+                .set(AgentSession::getFlowState, target)
+                .update();
+    }
+
     /** Phase 3：会话 token 成本累加（T3.13/R5），单位=token 数 */
     public void addTokenCost(Long sessionId, long promptTokens, long completionTokens) {
         if (promptTokens + completionTokens <= 0) {

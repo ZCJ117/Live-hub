@@ -64,4 +64,9 @@ public class FlowStateService {
     public void setFlowState(Long sessionId, String state) {
         sessionService.updateFlowState(sessionId, state);
     }
+
+    /** 仅当当前为 REFUNDING 时复位 IDLE（confirm 长事务期间防覆盖 Planner 新流转） */
+    public void resetRefundingIfNeeded(Long sessionId) {
+        sessionService.casFlowState(sessionId, "REFUNDING", "IDLE");
+    }
 }
