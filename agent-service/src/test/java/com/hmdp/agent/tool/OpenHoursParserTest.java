@@ -21,6 +21,15 @@ class OpenHoursParserTest {
     }
 
     @Test
+    void boundary_inclusive_at_open_and_close() {
+        // 边界为闭区间：开门瞬间与打烊瞬间均视为营业中
+        assertEquals("营业中", OpenHoursParser.status("09:00-22:00", at(9, 1, 9, 0)));
+        assertEquals("营业中", OpenHoursParser.status("09:00-22:00", at(9, 1, 22, 0)));
+        assertEquals("已打烊", OpenHoursParser.status("09:00-22:00", at(9, 1, 8, 59)));
+        assertEquals("已打烊", OpenHoursParser.status("09:00-22:00", at(9, 1, 22, 1)));
+    }
+
+    @Test
     void closed_outside_normal_hours() {
         assertEquals("已打烊", OpenHoursParser.status("09:00-22:00", at(9, 1, 23, 0)));
     }

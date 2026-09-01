@@ -4,6 +4,7 @@ import com.hmdp.agent.feign.ShopFeignClient;
 import com.hmdp.dto.Result;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,8 +42,10 @@ class ShopToolsTest {
         assertEquals("星巴克", data.get("name"));
         assertEquals("xx路1号", data.get("address"));
         assertEquals(45, data.get("score"));
-        // 营业状态由工具层推导（12 点在 09:00-22:00 内 → 营业中）
-        assertEquals("营业中", data.get("businessStatus"));
+        // 营业状态由工具层按 openHours 推导：期望值用同一 parser 按当前时刻动态计算，
+        // 避免断言依赖"运行时刻恰好落在营业时间内"（否则 22:00 后必挂）
+        assertEquals(OpenHoursParser.status("09:00-22:00", LocalDateTime.now()),
+                data.get("businessStatus"));
     }
 
     @Test
