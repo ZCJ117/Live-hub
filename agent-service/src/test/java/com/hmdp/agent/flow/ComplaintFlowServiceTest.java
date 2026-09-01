@@ -1,6 +1,7 @@
 package com.hmdp.agent.flow;
 
 import com.hmdp.agent.config.AgentProperties;
+import com.hmdp.agent.config.GlmProperties;
 import com.hmdp.agent.dto.TicketRequest;
 import com.hmdp.agent.entity.AgentSession;
 import com.hmdp.agent.entity.AgentTicket;
@@ -9,7 +10,7 @@ import com.hmdp.agent.llm.LlmTypes;
 import com.hmdp.agent.metrics.TrackEventService;
 import com.hmdp.agent.planner.FlowStateService;
 import com.hmdp.agent.service.AgentSessionService;
-import com.hmdp.agent.sse.SseSessionManager;
+import com.hmdp.agent.ticket.TicketPriorityRules;
 import com.hmdp.agent.ticket.TicketService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,12 +21,14 @@ import org.redisson.api.RBucket;
 import org.redisson.api.RedissonClient;
 
 import java.time.Duration;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -42,13 +45,14 @@ class ComplaintFlowServiceTest {
     @Mock private FlowStateService flowStateService;
     @Mock private AgentSessionService sessionService;
     @Mock private TrackEventService trackEventService;
-    @Mock private SseSessionManager sseManager;
     @Mock private RedissonClient redisson;
     @Mock private RBucket<String> draftBucket;
 
     private ComplaintFlowService service() {
         return new ComplaintFlowService(glmClient, ticketService, flowStateService,
-                sessionService, trackEventService, sseManager, redisson, new AgentProperties());
+                sessionService, trackEventService, redisson,
+                new AgentProperties(), new GlmProperties(),
+                new TicketPriorityRules(new AgentProperties()));
     }
 
     private AgentSession session() {
@@ -64,14 +68,33 @@ class ComplaintFlowServiceTest {
         return LlmTypes.Response.builder().content(content).promptTokens(10L).completionTokens(10L).build();
     }
 
+    /** 话术经 answer 累积 + onDelta 流出（与 orchestrator 一致） */
+    private record Sink(StringBuilder answer, List<String> deltas) {
+        static Sink create() {
+            List<String> deltas = new ArrayList<>();
+            StringBuilder answer = new StringBuilder();
+            return new Sink(answer, deltas);
+        }
+
+        Consumer<String> onDelta() {
+            return deltas::add;
+        }
+
+        String text() {
+            return answer.toString();
+        }
+    }
+
     @Test
     void 首轮要素不全_追问不建单() {
         stubBucket();
         when(glmClient.complete(any(LlmTypes.Request.class))).thenReturn(
                 resp("{\"demand\":\"态度差\"}"));
-        service().handle(session(), "这家店态度太差");
+        Sink sink = Sink.create();
+        service().handle(session(), "这家店态度太差", sink.answer(), sink.onDelta());
         verify(ticketService, never()).create(any(), any(), any(TicketRequest.class));
-        verify(sseManager).send(eq(1L), eq("delta"), any());
+        assertEquals(1, sink.deltas().size());
+        assertTrue(sink.text().contains("请补充"));
         verify(draftBucket).set(anyString(), any(Duration.class));
     }
 
@@ -85,13 +108,13 @@ class ComplaintFlowServiceTest {
                 .setPriority("MEDIUM").setExpectedSla("24h");
         when(ticketService.create(eq(100L), eq(1L), any(TicketRequest.class))).thenReturn(ticket);
 
-        service().handle(session(), "1号店店员今天态度很差，我要投诉要求道歉");
+        Sink sink = Sink.create();
+        service().handle(session(), "1号店店员今天态度很差，我要投诉要求道歉", sink.answer(), sink.onDelta());
 
         ArgumentCaptor<TicketRequest> captor = ArgumentCaptor.forClass(TicketRequest.class);
         verify(ticketService).create(eq(100L), eq(1L), captor.capture());
         assertEquals("MERCHANT_SERVICE", captor.getValue().getCategory());
-        verify(sseManager).send(eq(1L), eq("delta"),
-                argThat(d -> String.valueOf(((Map<?, ?>) d).get("text")).contains("TK20260901000001")));
+        assertTrue(sink.text().contains("TK20260901000001"));
         verify(flowStateService).setFlowState(1L, "IDLE");
     }
 
@@ -104,7 +127,8 @@ class ComplaintFlowServiceTest {
         AgentTicket ticket = new AgentTicket().setTicketNo("TK1").setCategory("ORDER").setPriority("HIGH").setExpectedSla("4h");
         when(ticketService.create(eq(100L), eq(1L), any(TicketRequest.class))).thenReturn(ticket);
 
-        service().handle(session(), "我的订单退款失败，一直不到账");
+        Sink sink = Sink.create();
+        service().handle(session(), "我的订单退款失败，一直不到账", sink.answer(), sink.onDelta());
 
         ArgumentCaptor<TicketRequest> captor = ArgumentCaptor.forClass(TicketRequest.class);
         verify(ticketService).create(eq(100L), eq(1L), captor.capture());
@@ -124,7 +148,8 @@ class ComplaintFlowServiceTest {
         AgentTicket ticket = new AgentTicket().setTicketNo("TK2").setCategory("OTHER").setPriority("MEDIUM").setExpectedSla("72h");
         when(ticketService.create(eq(100L), eq(1L), any(TicketRequest.class))).thenReturn(ticket);
 
-        service().handle(session(), "算了你看着办");
+        Sink sink = Sink.create();
+        service().handle(session(), "算了你看着办", sink.answer(), sink.onDelta());
 
         ArgumentCaptor<TicketRequest> captor = ArgumentCaptor.forClass(TicketRequest.class);
         verify(ticketService).create(eq(100L), eq(1L), captor.capture());
@@ -140,16 +165,17 @@ class ComplaintFlowServiceTest {
         AgentTicket ticket = new AgentTicket().setTicketNo("TK3").setCategory("ORDER").setPriority("HIGH").setExpectedSla("4h");
         when(ticketService.create(eq(100L), eq(1L), any(TicketRequest.class))).thenReturn(ticket);
 
-        service().handle(session(), "退款失败");
+        Sink sink = Sink.create();
+        service().handle(session(), "退款失败", sink.answer(), sink.onDelta());
 
         ArgumentCaptor<TicketRequest> captor = ArgumentCaptor.forClass(TicketRequest.class);
         verify(ticketService).create(eq(100L), eq(1L), captor.capture());
         String summary = captor.getValue().getSummary();
-        org.junit.jupiter.api.Assertions.assertTrue(summary != null && !summary.isBlank() && summary.contains("退款"));
+        assertTrue(summary != null && !summary.isBlank() && summary.contains("退款"));
     }
 
     @Test
-    void 建单失败_重试一次后转人工话术_不静默丢失() {
+    void 建单失败_重试一次后转人工话术_清理草稿与状态() {
         stubBucket();
         when(glmClient.complete(any(LlmTypes.Request.class)))
                 .thenReturn(resp("{\"category\":\"ORDER\",\"demand\":\"退款失败\"}"))
@@ -158,11 +184,48 @@ class ComplaintFlowServiceTest {
                 .thenThrow(new RuntimeException("db down"))
                 .thenThrow(new RuntimeException("db down again"));
 
-        service().handle(session(), "退款失败");
+        Sink sink = Sink.create();
+        service().handle(session(), "退款失败", sink.answer(), sink.onDelta());
 
         verify(ticketService, times(2)).create(any(), any(), any());
         verify(sessionService).markTransferred(eq(1L), eq("TICKET_FAIL"));
-        verify(sseManager).send(eq(1L), eq("delta"),
-                argThat(d -> String.valueOf(((Map<?, ?>) d).get("text")).contains("人工")));
+        assertTrue(sink.text().contains("人工"));
+        // 建单失败残留清理：flowState 复位 + 本服务创建的草稿自删
+        verify(flowStateService).setFlowState(1L, "IDLE");
+        verify(draftBucket).delete();
+    }
+
+    @Test
+    void 草稿JSON损坏_重新收集() {
+        stubBucket();
+        when(draftBucket.get()).thenReturn("not-json");
+        when(glmClient.complete(any(LlmTypes.Request.class))).thenReturn(
+                resp("{\"demand\":\"态度差\"}"));
+        Sink sink = Sink.create();
+        service().handle(session(), "这家店态度太差", sink.answer(), sink.onDelta());
+
+        // 行为等同新草稿：首轮追问（要素仍不全），不建单
+        verify(ticketService, never()).create(any(), any(), any(TicketRequest.class));
+        assertTrue(sink.text().contains("请补充"));
+        ArgumentCaptor<String> saved = ArgumentCaptor.forClass(String.class);
+        verify(draftBucket).set(saved.capture(), any(Duration.class));
+        assertTrue(saved.getValue().contains("\"rounds\":1"));
+    }
+
+    @Test
+    void 抽取连续失败_按空要素追问() {
+        stubBucket();
+        when(glmClient.complete(any(LlmTypes.Request.class)))
+                .thenThrow(new LlmTypes.LlmException("e1"))
+                .thenThrow(new LlmTypes.LlmException("e2"))
+                .thenThrow(new LlmTypes.LlmException("e3"));
+        Sink sink = Sink.create();
+        service().handle(session(), "哼", sink.answer(), sink.onDelta());
+
+        // 连续 3 次失败 → 空要素 → 首轮追问话术，不建单
+        verify(glmClient, times(3)).complete(any(LlmTypes.Request.class));
+        verify(ticketService, never()).create(any(), any(), any(TicketRequest.class));
+        assertTrue(sink.text().contains("请补充"));
+        assertTrue(sink.text().contains("诉求"));
     }
 }

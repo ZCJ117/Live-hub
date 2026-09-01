@@ -288,8 +288,8 @@ public class ChatOrchestratorService {
                 return new ReActEngine.ReactResult("请选择您需要的服务", false, "FALLBACK_MENU", 0, 0, 0);
             }
             case COMPLAINT -> {
-                // T4.6：要素收集状态机（替换安抚桩）
-                complaintFlowService.handle(session, message);
+                // T4.6：要素收集状态机（替换安抚桩，话术经 onDelta 流出）
+                complaintFlowService.handle(session, message, answer, onDelta);
                 return new ReActEngine.ReactResult("COMPLAINT_FLOW", false, "COMPLAINT", 0, 0, 0);
             }
             case HUMAN_DEMAND -> {

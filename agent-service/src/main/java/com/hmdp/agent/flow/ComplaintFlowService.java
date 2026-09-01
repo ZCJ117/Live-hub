@@ -1,6 +1,7 @@
 package com.hmdp.agent.flow;
 
 import com.hmdp.agent.config.AgentProperties;
+import com.hmdp.agent.config.GlmProperties;
 import com.hmdp.agent.dto.TicketRequest;
 import com.hmdp.agent.entity.AgentSession;
 import com.hmdp.agent.entity.AgentTicket;
@@ -9,7 +10,6 @@ import com.hmdp.agent.llm.LlmTypes;
 import com.hmdp.agent.metrics.TrackEventService;
 import com.hmdp.agent.planner.FlowStateService;
 import com.hmdp.agent.service.AgentSessionService;
-import com.hmdp.agent.sse.SseSessionManager;
 import com.hmdp.agent.ticket.TicketPriorityRules;
 import com.hmdp.agent.ticket.TicketService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * 投诉要素收集状态机（FR-09 T4.6）
@@ -43,12 +44,13 @@ public class ComplaintFlowService {
     private final FlowStateService flowStateService;
     private final AgentSessionService sessionService;
     private final TrackEventService trackEventService;
-    private final SseSessionManager sseManager;
     private final RedissonClient redisson;
     private final AgentProperties props;
+    private final GlmProperties glmProps;
+    private final TicketPriorityRules priorityRules;
 
-    /** COMPLAINT 分支主入口 */
-    public void handle(AgentSession session, String message) {
+    /** COMPLAINT 分支主入口（话术统一经 orchestrator 的 onDelta 流出） */
+    public void handle(AgentSession session, String message, StringBuilder answer, Consumer<String> onDelta) {
         Long sessionId = session.getId();
         ComplaintDraft draft = loadDraft(sessionId);
 
@@ -59,7 +61,7 @@ public class ComplaintFlowService {
         boolean complete = draft.getCategory() != null && draft.getDemand() != null;
         if (!complete && draft.getRounds() <= props.getTicket().getMaxCollectRounds()) {
             saveDraft(sessionId, draft);
-            say(sessionId, askMissing(draft));
+            say(answer, onDelta, askMissing(draft));
             return;
         }
         if (draft.getCategory() == null) {
@@ -68,27 +70,28 @@ public class ComplaintFlowService {
         if (draft.getDemand() == null) {
             draft.setDemand(message);
         }
-        finalizeTicket(session, draft);
+        finalizeTicket(session, draft, answer, onDelta);
     }
 
-    private void finalizeTicket(AgentSession session, ComplaintDraft draft) {
+    private void finalizeTicket(AgentSession session, ComplaintDraft draft, StringBuilder answer, Consumer<String> onDelta) {
         Long sessionId = session.getId();
-        TicketPriorityRules rules = new TicketPriorityRules(props);
-        String priority = rules.fundRelated(draft.getDemand()) ? "HIGH" : null; // null → TicketService 默认规则
+        String priority = priorityRules.fundRelated(draft.getDemand()) ? "HIGH" : null; // null → TicketService 默认规则
         String summary = buildSummary(draft);
         try {
             AgentTicket ticket = createWithRetry(session, draft, priority, summary);
             trackEventService.track("m5_ticket_create", sessionId, session.getUserId(), Map.of(
                     "category", ticket.getCategory(), "priority", ticket.getPriority(),
                     "ticketNo", ticket.getTicketNo()));
-            say(sessionId, "已为您登记工单 " + ticket.getTicketNo()
+            say(answer, onDelta, "已为您登记工单 " + ticket.getTicketNo()
                     + "，预计 " + ticket.getExpectedSla() + " 内由人工跟进处理，您可在\"我的-客服记录\"查看进度。");
         } catch (Exception e) {
             log.error("工单创建失败（已重试）: sessionId={}", sessionId, e);
             trackEventService.track("m5_ticket_create_fail", sessionId, session.getUserId(), Map.of());
             // FR-09 边界：建单失败 → 记录诉求 + 转人工，绝不静默丢失
             sessionService.markTransferred(sessionId, "TICKET_FAIL");
-            say(sessionId, "工单登记暂时失败，您的诉求已完整记录，将由人工客服直接跟进，请稍候。");
+            say(answer, onDelta, "工单登记暂时失败，您的诉求已完整记录，将由人工客服直接跟进，请稍候。");
+            flowStateService.setFlowState(sessionId, "IDLE");
+            redisson.<String>getBucket(draftKey(sessionId)).delete();
             return;
         }
         flowStateService.setFlowState(sessionId, "IDLE");
@@ -117,7 +120,7 @@ public class ComplaintFlowService {
                     + "不含主观评价与情绪词，只输出摘要正文。\n"
                     + "要素：" + toJson(draft);
             LlmTypes.Response r = glmClient.complete(LlmTypes.Request.builder()
-                    .model("glm-4-flash")
+                    .model(glmProps.getLightModel())
                     .messages(List.of(LlmTypes.Message.user(prompt)))
                     .temperature(0.2)
                     .build());
@@ -154,7 +157,7 @@ public class ComplaintFlowService {
         for (int i = 0; i <= EXTRACT_RETRIES; i++) {
             try {
                 LlmTypes.Response r = glmClient.complete(LlmTypes.Request.builder()
-                        .model("glm-4-flash")
+                        .model(glmProps.getLightModel())
                         .messages(List.of(LlmTypes.Message.user(prompt)))
                         .jsonMode(true)
                         .temperature(0.1)
@@ -169,6 +172,7 @@ public class ComplaintFlowService {
     }
 
     private void merge(ComplaintDraft draft, ComplaintElementParser.Element e) {
+        // 合并策略：refs 只增合并（多轮补充信息不覆盖）；category/time/demand 为 last-writer-wins（多轮纠正由 LLM 抽取最新诉求覆盖）
         if (e.category() != null) {
             draft.setCategory(e.category());
         }
@@ -230,8 +234,10 @@ public class ComplaintFlowService {
         return "agent:session:" + sessionId + ":complaintDraft";
     }
 
-    private void say(Long sessionId, String text) {
-        sseManager.send(sessionId, "delta", Map.of("text", text));
+    /** 话术统一经 orchestrator 的 onDelta 流出（delta 事件 + answer 累积 + 首 token 埋点） */
+    private void say(StringBuilder answer, Consumer<String> onDelta, String text) {
+        answer.append(text);
+        onDelta.accept(text);
     }
 
     /** 供测试与状态机共用 */

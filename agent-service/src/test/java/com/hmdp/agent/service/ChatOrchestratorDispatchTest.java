@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
@@ -170,6 +171,27 @@ class ChatOrchestratorDispatchTest {
         assertTrue(mem.getValue().contains("退款申请"));
         assertFalse(mem.getValue().contains("REFUND_FLOW"));
         assertFalse(mem.getValue().contains("退款申请尚未提交"));
+    }
+
+    @Test
+    void complaint_flow_speaks_through_on_delta_and_persists_real_prompt_to_memory() {
+        commonStubs();
+        when(planner.plan(any(), any(), any())).thenReturn(
+                decision(PlanDecision.PlanType.COMPLAINT, Intent.COMPLAINT, List.of()));
+        doAnswer(inv -> {
+            ((StringBuilder) inv.getArgument(2)).append("非常抱歉给您带来不便。为了准确登记工单，请补充：");
+            ((Consumer<String>) inv.getArgument(3)).accept("非常抱歉给您带来不便。为了准确登记工单，请补充：");
+            return null;
+        }).when(complaintFlowService).handle(any(), anyString(), any(StringBuilder.class), any());
+
+        service(Runnable::run).handleChat(session(), "我要投诉", "token");
+
+        verify(complaintFlowService).handle(any(), eq("我要投诉"), any(StringBuilder.class), any());
+        verify(reActEngine, never()).run(any(), any(), any(), any(), anyInt(), any(), any());
+        ArgumentCaptor<String> mem = ArgumentCaptor.forClass(String.class);
+        verify(memoryService).append(eq(1L), eq("assistant"), mem.capture());
+        assertTrue(mem.getValue().contains("请补充"));
+        assertFalse(mem.getValue().contains("COMPLAINT_FLOW"));
     }
 
     @Test
