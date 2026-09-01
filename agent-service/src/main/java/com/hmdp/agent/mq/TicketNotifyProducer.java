@@ -4,7 +4,7 @@ import com.hmdp.agent.entity.AgentTicket;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -13,9 +13,12 @@ import java.util.Map;
 /**
  * 工单路由通知生产者（FR-09 T4.7）
  * 仅在 RocketMQTemplate 存在时生效（MQ 离线 → 工单创建不受影响，notify_status 保持 PENDING，P4-R5 解耦原则）
+ * 用 @ConditionalOnProperty 而非 @ConditionalOnBean(RocketMQTemplate.class)：普通 @Component 的 condition
+ * 先于自动配置注册 bean 定义被评估，@ConditionalOnBean 可能恒为 false → producer 静默缺失、通知永久失效；
+ * name-server 属性正是 RocketMQTemplate 的创建条件，二者判定来源一致，不受评估顺序影响。
  */
 @Component
-@ConditionalOnBean(RocketMQTemplate.class)
+@ConditionalOnProperty(prefix = "rocketmq", name = "name-server")
 @Slf4j
 @RequiredArgsConstructor
 public class TicketNotifyProducer {

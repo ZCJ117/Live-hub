@@ -32,9 +32,16 @@ public class TicketNotifyConsumer implements RocketMQListener<Map> {
             log.warn("工单通知消息缺关键字段，丢弃: {}", message);
             return;
         }
-        long userId = Long.parseLong(String.valueOf(message.get("userId")));
-        long ticketId = message.get("ticketId") == null ? 0L
-                : Long.parseLong(String.valueOf(message.get("ticketId")));
+        long userId;
+        long ticketId;
+        try {
+            userId = Long.parseLong(String.valueOf(message.get("userId")));
+            ticketId = message.get("ticketId") == null ? 0L
+                    : Long.parseLong(String.valueOf(message.get("ticketId")));
+        } catch (NumberFormatException e) {
+            log.warn("工单通知消息字段格式非法，丢弃: {}", message);
+            return;
+        }
         String ticketNo = String.valueOf(message.get("ticketNo"));
         String priority = String.valueOf(message.get("priority"));
         String sla = String.valueOf(message.get("expectedSla"));
