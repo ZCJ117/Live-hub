@@ -4,6 +4,7 @@ import com.hmdp.agent.audit.ToolCallAuditService;
 import com.hmdp.agent.config.AgentProperties;
 import com.hmdp.agent.config.AgentTokenHolder;
 import com.hmdp.agent.entity.AgentSession;
+import com.hmdp.agent.flow.RefundFlowService;
 import com.hmdp.agent.llm.GlmClient;
 import com.hmdp.agent.memory.ChatMemoryService;
 import com.hmdp.agent.metrics.TrackEventService;
@@ -49,6 +50,7 @@ public class ChatOrchestratorService {
     private final SensitiveWordService sensitiveWordService;
     private final EmotionDetector emotionDetector;
     private final ToolCallAuditService auditService;
+    private final RefundFlowService refundFlowService;
 
     public ChatOrchestratorService(AgentSessionService sessionService,
                                    ChatMemoryService memoryService,
@@ -62,6 +64,7 @@ public class ChatOrchestratorService {
                                    SensitiveWordService sensitiveWordService,
                                    EmotionDetector emotionDetector,
                                    ToolCallAuditService auditService,
+                                   RefundFlowService refundFlowService,
                                    @Qualifier("agentSseExecutor") Executor sseExecutor) {
         this.sessionService = sessionService;
         this.memoryService = memoryService;
@@ -75,6 +78,7 @@ public class ChatOrchestratorService {
         this.sensitiveWordService = sensitiveWordService;
         this.emotionDetector = emotionDetector;
         this.auditService = auditService;
+        this.refundFlowService = refundFlowService;
         this.sseExecutor = sseExecutor;
     }
 
@@ -234,7 +238,7 @@ public class ChatOrchestratorService {
                                              StringBuilder answer, Consumer<String> onDelta) {
         Long sessionId = session.getId();
         switch (decision.type()) {
-            case REACT, REFUND -> {
+            case REACT -> {
                 List<String> subtasks = decision.subtasks().isEmpty() ? List.of(message) : decision.subtasks();
                 int budget = props.getReact().getMaxSteps();
                 ReActEngine.ReactResult last = null;
@@ -253,13 +257,12 @@ public class ChatOrchestratorService {
                             "预算已用完，请基于已知信息简要回答用户：" + message, onDelta,
                             (event, data) -> sseManager.send(sessionId, event, data));
                 }
-                if (decision.type() == PlanDecision.PlanType.REFUND) {
-                    // T3.5：退款流程提示框架（提交能力 Phase 4 接入）
-                    String suffix = "\n\n您的退款申请尚未提交。退款提交功能即将开放，您也可以回复\"转人工\"由客服跟进。";
-                    answer.append(suffix);
-                    sseManager.send(sessionId, "delta", Map.of("text", suffix));
-                }
                 return last;
+            }
+            case REFUND -> {
+                // T4.2：退款编排 → 确认卡片（替换 Phase 3 "即将开放"桩）
+                refundFlowService.handle(session, ctx);
+                return new ReActEngine.ReactResult("REFUND_FLOW", false, "REFUND_FLOW", 0, 0, 0);
             }
             case CHAT_DIRECT -> {
                 // T3.6/T3.13：寒暄/闲聊/超范围免工具直答（light 档，超范围引导在 system prompt 硬约束 6）

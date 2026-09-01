@@ -19,6 +19,7 @@ import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -44,6 +45,7 @@ class ChatOrchestratorDispatchTest {
     private final GlmClient glmClient = mock(GlmClient.class);
     private final AgentProperties props = new AgentProperties();
     private final PlannerService planner = mock(PlannerService.class);
+    private final com.hmdp.agent.flow.RefundFlowService refundFlowService = mock(com.hmdp.agent.flow.RefundFlowService.class);
 
     private ChatOrchestratorService service(Executor executor) {
         // 安全组件用真实实例（默认空敏感词表/规则不命中，不干扰分发用例）
@@ -53,6 +55,7 @@ class ChatOrchestratorDispatchTest {
                 new com.hmdp.agent.security.SensitiveWordService(props),
                 new com.hmdp.agent.security.EmotionDetector(props),
                 mock(com.hmdp.agent.audit.ToolCallAuditService.class),
+                refundFlowService,
                 executor);
     }
 
@@ -121,37 +124,34 @@ class ChatOrchestratorDispatchTest {
     }
 
     @Test
-    void refund_decision_appends_pending_notice() {
+    void refund_decision_dispatches_to_refund_flow_without_react() {
         commonStubs();
         when(planner.plan(any(), any(), any())).thenReturn(
                 decision(PlanDecision.PlanType.REFUND, Intent.REFUND,
                         List.of("查询用户订单，定位可退款的订单")));
-        when(reActEngine.run(any(), any(), any(), any(), anyInt(), any(Consumer.class), any()))
-                .thenReturn(reactResult("已定位您的订单"));
 
         service(Runnable::run).handleChat(session(), "我要退款", "token");
 
-        ArgumentCaptor<Object> texts = ArgumentCaptor.forClass(Object.class);
-        verify(sseManager, atLeastOnce()).send(eq(1L), eq("delta"), texts.capture());
-        boolean hasNotice = texts.getAllValues().stream()
-                .anyMatch(d -> String.valueOf(((Map<?, ?>) d).get("text")).contains("退款申请尚未提交"));
-        assertTrue(hasNotice); // T3.5 提示框架
+        // T4.2：REFUND 不再走 ReAct + "即将开放"后缀，改为退款编排服务
+        verify(refundFlowService).handle(any(), any());
+        verify(reActEngine, never()).run(any(), any(), any(), any(), anyInt(), any(), any());
+        verify(sseManager, never()).send(eq(1L), eq("delta"),
+                argThat(d -> String.valueOf(((Map<?, ?>) d).get("text")).contains("退款申请尚未提交")));
     }
 
     @Test
-    void refund_notice_is_persisted_to_assistant_memory() {
+    void refund_flow_result_is_accounted_without_answer_tokens() {
         commonStubs();
         when(planner.plan(any(), any(), any())).thenReturn(
-                decision(PlanDecision.PlanType.REFUND, Intent.REFUND,
-                        List.of("查询用户订单，定位可退款的订单")));
-        when(reActEngine.run(any(), any(), any(), any(), anyInt(), any(Consumer.class), any()))
-                .thenReturn(reactResult("已定位您的订单"));
+                decision(PlanDecision.PlanType.REFUND, Intent.REFUND, List.of()));
 
         service(Runnable::run).handleChat(session(), "我要退款", "token");
 
+        // 分类 token 记账（回答/完成 token 为 0），无 suffix 话术入记忆
+        verify(sessionService).addTokenCost(eq(1L), eq(0L), eq(120L));
         ArgumentCaptor<String> mem = ArgumentCaptor.forClass(String.class);
         verify(memoryService).append(eq(1L), eq("assistant"), mem.capture());
-        assertTrue(mem.getValue().contains("退款申请尚未提交")); // 后缀进记忆，下一轮分类器可见
+        assertFalse(mem.getValue().contains("退款申请尚未提交"));
     }
 
     @Test
