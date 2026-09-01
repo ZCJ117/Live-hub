@@ -68,12 +68,10 @@ class ComplaintFlowServiceTest {
         return LlmTypes.Response.builder().content(content).promptTokens(10L).completionTokens(10L).build();
     }
 
-    /** 话术经 answer 累积 + onDelta 流出（与 orchestrator 一致） */
-    private record Sink(StringBuilder answer, List<String> deltas) {
+    /** 话术经 onDelta 统一流出（answer 累积由 orchestrator 的 onDelta 负责，勿手动 append） */
+    private record Sink(List<String> deltas) {
         static Sink create() {
-            List<String> deltas = new ArrayList<>();
-            StringBuilder answer = new StringBuilder();
-            return new Sink(answer, deltas);
+            return new Sink(new ArrayList<>());
         }
 
         Consumer<String> onDelta() {
@@ -81,7 +79,7 @@ class ComplaintFlowServiceTest {
         }
 
         String text() {
-            return answer.toString();
+            return String.join("", deltas);
         }
     }
 
@@ -91,10 +89,12 @@ class ComplaintFlowServiceTest {
         when(glmClient.complete(any(LlmTypes.Request.class))).thenReturn(
                 resp("{\"demand\":\"态度差\"}"));
         Sink sink = Sink.create();
-        service().handle(session(), "这家店态度太差", sink.answer(), sink.onDelta());
+        service().handle(session(), "这家店态度太差", sink.onDelta());
         verify(ticketService, never()).create(any(), any(), any(TicketRequest.class));
         assertEquals(1, sink.deltas().size());
         assertTrue(sink.text().contains("请补充"));
+        // 防回归：话术只经 onDelta 流出一次，answer 中不得双写
+        assertEquals(sink.text().indexOf("请补充"), sink.text().lastIndexOf("请补充"));
         verify(draftBucket).set(anyString(), any(Duration.class));
     }
 
@@ -109,7 +109,7 @@ class ComplaintFlowServiceTest {
         when(ticketService.create(eq(100L), eq(1L), any(TicketRequest.class))).thenReturn(ticket);
 
         Sink sink = Sink.create();
-        service().handle(session(), "1号店店员今天态度很差，我要投诉要求道歉", sink.answer(), sink.onDelta());
+        service().handle(session(), "1号店店员今天态度很差，我要投诉要求道歉", sink.onDelta());
 
         ArgumentCaptor<TicketRequest> captor = ArgumentCaptor.forClass(TicketRequest.class);
         verify(ticketService).create(eq(100L), eq(1L), captor.capture());
@@ -128,7 +128,7 @@ class ComplaintFlowServiceTest {
         when(ticketService.create(eq(100L), eq(1L), any(TicketRequest.class))).thenReturn(ticket);
 
         Sink sink = Sink.create();
-        service().handle(session(), "我的订单退款失败，一直不到账", sink.answer(), sink.onDelta());
+        service().handle(session(), "我的订单退款失败，一直不到账", sink.onDelta());
 
         ArgumentCaptor<TicketRequest> captor = ArgumentCaptor.forClass(TicketRequest.class);
         verify(ticketService).create(eq(100L), eq(1L), captor.capture());
@@ -149,7 +149,7 @@ class ComplaintFlowServiceTest {
         when(ticketService.create(eq(100L), eq(1L), any(TicketRequest.class))).thenReturn(ticket);
 
         Sink sink = Sink.create();
-        service().handle(session(), "算了你看着办", sink.answer(), sink.onDelta());
+        service().handle(session(), "算了你看着办", sink.onDelta());
 
         ArgumentCaptor<TicketRequest> captor = ArgumentCaptor.forClass(TicketRequest.class);
         verify(ticketService).create(eq(100L), eq(1L), captor.capture());
@@ -166,7 +166,7 @@ class ComplaintFlowServiceTest {
         when(ticketService.create(eq(100L), eq(1L), any(TicketRequest.class))).thenReturn(ticket);
 
         Sink sink = Sink.create();
-        service().handle(session(), "退款失败", sink.answer(), sink.onDelta());
+        service().handle(session(), "退款失败", sink.onDelta());
 
         ArgumentCaptor<TicketRequest> captor = ArgumentCaptor.forClass(TicketRequest.class);
         verify(ticketService).create(eq(100L), eq(1L), captor.capture());
@@ -185,7 +185,7 @@ class ComplaintFlowServiceTest {
                 .thenThrow(new RuntimeException("db down again"));
 
         Sink sink = Sink.create();
-        service().handle(session(), "退款失败", sink.answer(), sink.onDelta());
+        service().handle(session(), "退款失败", sink.onDelta());
 
         verify(ticketService, times(2)).create(any(), any(), any());
         verify(sessionService).markTransferred(eq(1L), eq("TICKET_FAIL"));
@@ -202,7 +202,7 @@ class ComplaintFlowServiceTest {
         when(glmClient.complete(any(LlmTypes.Request.class))).thenReturn(
                 resp("{\"demand\":\"态度差\"}"));
         Sink sink = Sink.create();
-        service().handle(session(), "这家店态度太差", sink.answer(), sink.onDelta());
+        service().handle(session(), "这家店态度太差", sink.onDelta());
 
         // 行为等同新草稿：首轮追问（要素仍不全），不建单
         verify(ticketService, never()).create(any(), any(), any(TicketRequest.class));
@@ -220,7 +220,7 @@ class ComplaintFlowServiceTest {
                 .thenThrow(new LlmTypes.LlmException("e2"))
                 .thenThrow(new LlmTypes.LlmException("e3"));
         Sink sink = Sink.create();
-        service().handle(session(), "哼", sink.answer(), sink.onDelta());
+        service().handle(session(), "哼", sink.onDelta());
 
         // 连续 3 次失败 → 空要素 → 首轮追问话术，不建单
         verify(glmClient, times(3)).complete(any(LlmTypes.Request.class));

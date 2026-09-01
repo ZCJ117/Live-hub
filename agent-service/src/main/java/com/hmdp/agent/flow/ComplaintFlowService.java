@@ -49,8 +49,8 @@ public class ComplaintFlowService {
     private final GlmProperties glmProps;
     private final TicketPriorityRules priorityRules;
 
-    /** COMPLAINT 分支主入口（话术统一经 orchestrator 的 onDelta 流出） */
-    public void handle(AgentSession session, String message, StringBuilder answer, Consumer<String> onDelta) {
+    /** COMPLAINT 分支主入口（话术经 onDelta 统一流出，勿手动 append answer） */
+    public void handle(AgentSession session, String message, Consumer<String> onDelta) {
         Long sessionId = session.getId();
         ComplaintDraft draft = loadDraft(sessionId);
 
@@ -61,7 +61,7 @@ public class ComplaintFlowService {
         boolean complete = draft.getCategory() != null && draft.getDemand() != null;
         if (!complete && draft.getRounds() <= props.getTicket().getMaxCollectRounds()) {
             saveDraft(sessionId, draft);
-            say(answer, onDelta, askMissing(draft));
+            say(onDelta, askMissing(draft));
             return;
         }
         if (draft.getCategory() == null) {
@@ -70,10 +70,10 @@ public class ComplaintFlowService {
         if (draft.getDemand() == null) {
             draft.setDemand(message);
         }
-        finalizeTicket(session, draft, answer, onDelta);
+        finalizeTicket(session, draft, onDelta);
     }
 
-    private void finalizeTicket(AgentSession session, ComplaintDraft draft, StringBuilder answer, Consumer<String> onDelta) {
+    private void finalizeTicket(AgentSession session, ComplaintDraft draft, Consumer<String> onDelta) {
         Long sessionId = session.getId();
         String priority = priorityRules.fundRelated(draft.getDemand()) ? "HIGH" : null; // null → TicketService 默认规则
         String summary = buildSummary(draft);
@@ -82,14 +82,14 @@ public class ComplaintFlowService {
             trackEventService.track("m5_ticket_create", sessionId, session.getUserId(), Map.of(
                     "category", ticket.getCategory(), "priority", ticket.getPriority(),
                     "ticketNo", ticket.getTicketNo()));
-            say(answer, onDelta, "已为您登记工单 " + ticket.getTicketNo()
+            say(onDelta, "已为您登记工单 " + ticket.getTicketNo()
                     + "，预计 " + ticket.getExpectedSla() + " 内由人工跟进处理，您可在\"我的-客服记录\"查看进度。");
         } catch (Exception e) {
             log.error("工单创建失败（已重试）: sessionId={}", sessionId, e);
             trackEventService.track("m5_ticket_create_fail", sessionId, session.getUserId(), Map.of());
             // FR-09 边界：建单失败 → 记录诉求 + 转人工，绝不静默丢失
             sessionService.markTransferred(sessionId, "TICKET_FAIL");
-            say(answer, onDelta, "工单登记暂时失败，您的诉求已完整记录，将由人工客服直接跟进，请稍候。");
+            say(onDelta, "工单登记暂时失败，您的诉求已完整记录，将由人工客服直接跟进，请稍候。");
             flowStateService.setFlowState(sessionId, "IDLE");
             redisson.<String>getBucket(draftKey(sessionId)).delete();
             return;
@@ -234,9 +234,8 @@ public class ComplaintFlowService {
         return "agent:session:" + sessionId + ":complaintDraft";
     }
 
-    /** 话术统一经 orchestrator 的 onDelta 流出（delta 事件 + answer 累积 + 首 token 埋点） */
-    private void say(StringBuilder answer, Consumer<String> onDelta, String text) {
-        answer.append(text);
+    /** 话术经 onDelta 统一流出（delta 事件 + answer 累积 + 首 token 埋点），勿手动 append answer */
+    private void say(Consumer<String> onDelta, String text) {
         onDelta.accept(text);
     }
 

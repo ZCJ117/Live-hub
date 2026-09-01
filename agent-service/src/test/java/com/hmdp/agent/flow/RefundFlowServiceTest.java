@@ -18,6 +18,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -68,7 +70,7 @@ class RefundFlowServiceTest {
         when(confirmTaskService.findActiveByOrder(anyLong(), anyLong(), any())).thenReturn(List.of());
         when(confirmTaskService.createRefundTask(any(), any())).thenReturn(task);
 
-        service().handle(session(), ctx(), new StringBuilder(), s -> { });
+        service().handle(session(), ctx(), s -> { });
 
         verify(sseManager).send(eq(1L), eq("card"),
                 argThat(d -> "REFUND_CONFIRM".equals(((Map<?, ?>) d).get("cardType"))));
@@ -79,7 +81,7 @@ class RefundFlowServiceTest {
     @Test
     void 多单可退_推送订单选择卡片_不生成任务() {
         stubOrders(paid(200L, "券A"), paid(201L, "券B"), paid(202L, "券C"));
-        service().handle(session(), ctx(), new StringBuilder(), s -> { });
+        service().handle(session(), ctx(), s -> { });
         verify(confirmTaskService, never()).createRefundTask(any(), any());
         verify(sseManager).send(eq(1L), eq("card"),
                 argThat(d -> "ORDER_LIST".equals(((Map<?, ?>) d).get("cardType"))));
@@ -91,7 +93,7 @@ class RefundFlowServiceTest {
         // 全部已核销（status=3）
         OrderCardDTO used = OrderCardDTO.from(200L, 300L, "已用券", 5000L, 10000L, 3, LocalDateTime.now());
         stubOrders(used);
-        service().handle(session(), ctx(), new StringBuilder(), s -> { });
+        service().handle(session(), ctx(), s -> { });
         verify(confirmTaskService, never()).createRefundTask(any(), any());
         verify(sseManager, never()).send(eq(1L), eq("card"), any());
     }
@@ -101,7 +103,7 @@ class RefundFlowServiceTest {
         stubOrders(paid(200L, "券A"));
         when(confirmTaskService.findActiveByOrder(anyLong(), anyLong(), any())).thenReturn(List.of(
                 new AgentTask().setId(5L).setStatus("ADOPTED").setBizOrderId(200L)));
-        service().handle(session(), ctx(), new StringBuilder(), s -> { });
+        service().handle(session(), ctx(), s -> { });
         verify(confirmTaskService, never()).createRefundTask(any(), any());
         verify(sseManager, never()).send(eq(1L), eq("card"), any());
     }
@@ -114,7 +116,7 @@ class RefundFlowServiceTest {
                 .setExpireTime(LocalDateTime.now().plusMinutes(3));
         when(confirmTaskService.findActiveByOrder(anyLong(), anyLong(), any())).thenReturn(List.of(pending));
         when(confirmTaskService.expireIfOverdue(pending)).thenReturn(false);
-        service().handle(session(), ctx(), new StringBuilder(), s -> { });
+        service().handle(session(), ctx(), s -> { });
         verify(confirmTaskService, never()).createRefundTask(any(), any());
         verify(sseManager).send(eq(1L), eq("card"),
                 argThat(d -> "REFUND_CONFIRM".equals(((Map<?, ?>) d).get("cardType"))));
@@ -133,7 +135,7 @@ class RefundFlowServiceTest {
                 .setStatus("PENDING_CONFIRM").setBizOrderId(200L);
         when(confirmTaskService.createRefundTask(any(), any())).thenReturn(fresh);
 
-        service().handle(session(), ctx(), new StringBuilder(), s -> { });
+        service().handle(session(), ctx(), s -> { });
 
         verify(confirmTaskService).createRefundTask(any(), any());
         verify(sseManager).send(eq(1L), eq("card"),
@@ -145,7 +147,12 @@ class RefundFlowServiceTest {
     void 查询工具失败_降级话术() {
         when(queryTool.queryMyOrders(any(), anyMap())).thenReturn(
                 ToolResult.fail("ORDER_TIMEOUT", "订单服务暂时繁忙"));
-        service().handle(session(), ctx(), new StringBuilder(), s -> { });
+        List<String> deltas = new java.util.ArrayList<>();
+        service().handle(session(), ctx(), deltas::add);
+        String text = String.join("", deltas);
+        assertTrue(text.contains("订单服务暂时繁忙"));
+        // 防回归：话术只经 onDelta 流出一次，answer 中不得双写
+        assertEquals(text.indexOf("订单服务暂时繁忙"), text.lastIndexOf("订单服务暂时繁忙"));
         verify(sseManager, never()).send(eq(1L), eq("card"), any());
     }
 }

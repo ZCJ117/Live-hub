@@ -138,17 +138,16 @@ class ChatOrchestratorDispatchTest {
         when(planner.plan(any(), any(), any())).thenReturn(
                 decision(PlanDecision.PlanType.REFUND, Intent.REFUND,
                         List.of("查询用户订单，定位可退款的订单")));
-        // 退款编排话术经 onDelta 流出（orchestrator 会 append 进 answer）
+        // 退款编排话术经 onDelta 统一流出（delta 事件 + answer 累积），勿手动 append answer
         doAnswer(inv -> {
-            ((StringBuilder) inv.getArgument(2)).append("已为您生成退款申请（10 分钟内有效）。");
-            ((Consumer<String>) inv.getArgument(3)).accept("已为您生成退款申请（10 分钟内有效）。");
+            ((Consumer<String>) inv.getArgument(2)).accept("已为您生成退款申请（10 分钟内有效）。");
             return null;
-        }).when(refundFlowService).handle(any(), any(), any(StringBuilder.class), any());
+        }).when(refundFlowService).handle(any(), any(), any());
 
         service(Runnable::run).handleChat(session(), "我要退款", "token");
 
         // T4.2：REFUND 不再走 ReAct + "即将开放"后缀，改为退款编排服务（话术经 onDelta）
-        verify(refundFlowService).handle(any(), any(), any(StringBuilder.class), any());
+        verify(refundFlowService).handle(any(), any(), any());
         verify(reActEngine, never()).run(any(), any(), any(), any(), anyInt(), any(), any());
         verify(sseManager, never()).send(eq(1L), eq("delta"),
                 argThat(d -> String.valueOf(((Map<?, ?>) d).get("text")).contains("退款申请尚未提交")));
@@ -160,10 +159,9 @@ class ChatOrchestratorDispatchTest {
         when(planner.plan(any(), any(), any())).thenReturn(
                 decision(PlanDecision.PlanType.REFUND, Intent.REFUND, List.of()));
         doAnswer(inv -> {
-            ((StringBuilder) inv.getArgument(2)).append("已为您生成退款申请（10 分钟内有效）。");
-            ((Consumer<String>) inv.getArgument(3)).accept("已为您生成退款申请（10 分钟内有效）。");
+            ((Consumer<String>) inv.getArgument(2)).accept("已为您生成退款申请（10 分钟内有效）。");
             return null;
-        }).when(refundFlowService).handle(any(), any(), any(StringBuilder.class), any());
+        }).when(refundFlowService).handle(any(), any(), any());
 
         service(Runnable::run).handleChat(session(), "我要退款", "token");
 
@@ -172,6 +170,8 @@ class ChatOrchestratorDispatchTest {
         ArgumentCaptor<String> mem = ArgumentCaptor.forClass(String.class);
         verify(memoryService).append(eq(1L), eq("assistant"), mem.capture());
         assertTrue(mem.getValue().contains("退款申请"));
+        // 防回归：话术只经 onDelta 累积一次，记忆中不得双写
+        assertEquals(mem.getValue().indexOf("退款申请"), mem.getValue().lastIndexOf("退款申请"));
         assertFalse(mem.getValue().contains("REFUND_FLOW"));
         assertFalse(mem.getValue().contains("退款申请尚未提交"));
     }
@@ -182,18 +182,19 @@ class ChatOrchestratorDispatchTest {
         when(planner.plan(any(), any(), any())).thenReturn(
                 decision(PlanDecision.PlanType.COMPLAINT, Intent.COMPLAINT, List.of()));
         doAnswer(inv -> {
-            ((StringBuilder) inv.getArgument(2)).append("非常抱歉给您带来不便。为了准确登记工单，请补充：");
-            ((Consumer<String>) inv.getArgument(3)).accept("非常抱歉给您带来不便。为了准确登记工单，请补充：");
+            ((Consumer<String>) inv.getArgument(2)).accept("非常抱歉给您带来不便。为了准确登记工单，请补充：");
             return null;
-        }).when(complaintFlowService).handle(any(), anyString(), any(StringBuilder.class), any());
+        }).when(complaintFlowService).handle(any(), anyString(), any());
 
         service(Runnable::run).handleChat(session(), "我要投诉", "token");
 
-        verify(complaintFlowService).handle(any(), eq("我要投诉"), any(StringBuilder.class), any());
+        verify(complaintFlowService).handle(any(), eq("我要投诉"), any());
         verify(reActEngine, never()).run(any(), any(), any(), any(), anyInt(), any(), any());
         ArgumentCaptor<String> mem = ArgumentCaptor.forClass(String.class);
         verify(memoryService).append(eq(1L), eq("assistant"), mem.capture());
         assertTrue(mem.getValue().contains("请补充"));
+        // 防回归：话术只经 onDelta 累积一次，记忆中不得双写
+        assertEquals(mem.getValue().indexOf("请补充"), mem.getValue().lastIndexOf("请补充"));
         assertFalse(mem.getValue().contains("COMPLAINT_FLOW"));
     }
 

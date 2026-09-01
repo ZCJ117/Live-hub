@@ -221,7 +221,7 @@ public class ChatOrchestratorService {
         if (emotionDetector.isHighlyNegative(message)) {
             transferService.trigger(session, "NEGATIVE_EMOTION");
             String text = "已为您转接人工客服，请确认移交信息。";
-            finishAfterTransfer(session, answer, onDelta, text);
+            finishAfterTransfer(session, onDelta, text);
             memoryService.append(sessionId, "assistant", Desensitizer.mask(text));
             sseManager.send(sessionId, "done", Map.of("roundNo", session.getMsgCount(),
                     "finishReason", "TRANSFERRED"));
@@ -291,7 +291,7 @@ public class ChatOrchestratorService {
                 if ("TOOL_CONSECUTIVE_FAIL".equals(last.reason())) {
                     // T4.8：连续 2 次工具失败触发转人工（ReActEngine 硬中断后接管）
                     transferService.trigger(session, "TOOL_FAIL");
-                    finishAfterTransfer(session, answer, onDelta,
+                    finishAfterTransfer(session, onDelta,
                             "查询服务连续异常，已为您转接人工客服，请确认移交信息。");
                     return new ReActEngine.ReactResult("TRANSFERRED", false, "TRANSFERRED",
                             last.stepsUsed(), last.promptTokens(), last.completionTokens());
@@ -300,7 +300,7 @@ public class ChatOrchestratorService {
             }
             case REFUND -> {
                 // T4.2：退款编排 → 确认卡片（替换 Phase 3 "即将开放"桩）
-                refundFlowService.handle(session, ctx, answer, onDelta);
+                refundFlowService.handle(session, ctx, onDelta);
                 return new ReActEngine.ReactResult("REFUND_FLOW", false, "REFUND_FLOW", 0, 0, 0);
             }
             case CHAT_DIRECT -> {
@@ -324,20 +324,20 @@ public class ChatOrchestratorService {
             }
             case COMPLAINT -> {
                 // T4.6：要素收集状态机（替换安抚桩，话术经 onDelta 流出）
-                complaintFlowService.handle(session, message, answer, onDelta);
+                complaintFlowService.handle(session, message, onDelta);
                 return new ReActEngine.ReactResult("COMPLAINT_FLOW", false, "COMPLAINT", 0, 0, 0);
             }
             case HUMAN_DEMAND -> {
                 // T4.8：显式要求转人工（实装 FR-10）；done 由主流程统一发送（finishReason=TRANSFERRED）
                 transferService.trigger(session, "HUMAN_DEMAND");
-                finishAfterTransfer(session, answer, onDelta,
+                finishAfterTransfer(session, onDelta,
                         "即将为您转接人工客服，请在卡片上确认移交信息。");
                 return new ReActEngine.ReactResult("TRANSFERRED", false, "TRANSFERRED", 0, 0, 0);
             }
             case TRANSFER -> {
                 // T4.8：澄清 2 轮超限触发转人工；done 由主流程统一发送
                 transferService.trigger(session, "CLARIFY_EXCEED");
-                finishAfterTransfer(session, answer, onDelta,
+                finishAfterTransfer(session, onDelta,
                         "多次未能确认您的需求，已为您转接人工客服。");
                 return new ReActEngine.ReactResult("TRANSFERRED", false, "TRANSFERRED", 0, 0, 0);
             }
@@ -346,10 +346,9 @@ public class ChatOrchestratorService {
         return new ReActEngine.ReactResult("", false, "UNKNOWN", 0, 0, 0);
     }
 
-    /** 转人工触发后的固定话术收口（走 onDelta 管道保证记忆/首 token 埋点一致；不进 LLM） */
-    private void finishAfterTransfer(AgentSession session, StringBuilder answer,
+    /** 转人工触发后的固定话术收口（话术经 onDelta 统一流出：delta 事件 + answer 累积 + 首 token 埋点，勿手动 append answer；不进 LLM） */
+    private void finishAfterTransfer(AgentSession session,
                                      Consumer<String> onDelta, String text) {
-        answer.append(text);
         onDelta.accept(text);
     }
 
