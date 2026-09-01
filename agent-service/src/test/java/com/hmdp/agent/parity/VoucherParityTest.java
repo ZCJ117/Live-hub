@@ -5,6 +5,7 @@ import com.hmdp.agent.tool.ToolContext;
 import com.hmdp.agent.tool.ToolResult;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -20,6 +21,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 @SpringBootTest
 @Tag("parity")
+@EnabledIf(value = "com.hmdp.agent.parity.ParityTestBase#middlewareReachable",
+        disabledReason = "Nacos 未启动，跳过对拍（待环境）")
 class VoucherParityTest extends ParityTestBase {
 
     @Autowired private QueryVoucherTool tool;

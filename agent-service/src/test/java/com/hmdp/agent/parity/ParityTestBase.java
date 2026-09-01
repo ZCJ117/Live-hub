@@ -34,6 +34,15 @@ public abstract class ParityTestBase {
 
     protected static Connection biz;
 
+    /** 中间件探活（供子类 @EnabledIf 守卫：Nacos 未启动时在 Spring 上下文启动前跳过） */
+    public static boolean middlewareReachable() {
+        try (java.net.Socket s = new java.net.Socket("127.0.0.1", 8848)) {
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     @BeforeAll
     static void initBizDb() {
         try {
