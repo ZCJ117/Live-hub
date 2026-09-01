@@ -140,7 +140,17 @@ public class ChatOrchestratorService {
         }
         String message = pp.message();
 
-        // 1.5 输入安全检测（FR-11 T4.11：命中不进 LLM，固定话术 + 双留痕）
+        // 1.2 消息数频控（单会话 100 条，FR-11）——置于安全检测之前，被拦截消息也计入会话消息数
+        try {
+            sessionService.checkAndIncrMsg(session);
+        } catch (Exception e) {
+            sseManager.send(sessionId, "error", Map.of(
+                    "code", "MSG_LIMIT", "friendlyText", e.getMessage()));
+            sseManager.send(sessionId, "done", Map.of("finishReason", "MSG_LIMIT"));
+            return;
+        }
+
+        // 1.6 输入安全检测（FR-11 T4.11：命中不进 LLM，固定话术 + 双留痕）
         String injectionRule = injectionDetector.matchRule(message);
         if (injectionRule == null && sensitiveWordService.firstHit(message).isPresent()) {
             injectionRule = "sensitive-word";
@@ -158,17 +168,7 @@ public class ChatOrchestratorService {
         }
 
         trackEventService.track("m5_msg_send", sessionId, session.getUserId(),
-                Map.of("msgLen", message.length(), "roundNo", session.getMsgCount() + 1));
-
-        // 2. 消息数频控（单会话 100 条，FR-11）
-        try {
-            sessionService.checkAndIncrMsg(session);
-        } catch (Exception e) {
-            sseManager.send(sessionId, "error", Map.of(
-                    "code", "MSG_LIMIT", "friendlyText", e.getMessage()));
-            sseManager.send(sessionId, "done", Map.of("finishReason", "MSG_LIMIT"));
-            return;
-        }
+                Map.of("msgLen", message.length(), "roundNo", session.getMsgCount()));
 
         // 3. 短期记忆组装（system prompt + 摘要 + 最近 10 轮 + 当前消息）
         List<ChatMemoryService.LlmTypesMsg> history = memoryService.loadHistory(sessionId);

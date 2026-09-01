@@ -96,6 +96,8 @@ class InjectionDetectorTest {
         assertFalse(detector.isInjection("优惠券怎么用"));
         assertFalse(detector.isInjection("昨天客服回复我的话我没看懂，能再解释下退款流程吗"));
         assertFalse(detector.isInjection("店铺几点营业"));
+        assertFalse(detector.isInjection("你现在是不是会员"));
+        assertFalse(detector.isInjection("你现在是几点营业"));
     }
 
     @Test

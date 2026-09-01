@@ -31,7 +31,8 @@ public class InjectionDetector {
             new Rule("cn-no-longer", Pattern.compile("你不再是(客服|智能|AI|机器人|助手)")),
             new Rule("cn-not-bound", Pattern.compile("(除了规则|规则之外)?你什么都不用遵守")),
             // —— 角色劫持
-            new Rule("cn-role-now", Pattern.compile("你(现在|从现在起|从现在开始|马上)(就)?是(一个)?")),
+            // 要求"是"后跟量词(一个/个)以降低误伤（如"你现在是不是会员"）；允许其间空格/标点，攻击集中"你现在是(一个/个)X"变体仍全部覆盖
+            new Rule("cn-role-now", Pattern.compile("你(现在|从现在起|从现在开始|马上)(就)?是\\s*[,，、]?\\s*(一个|个)")),
             new Rule("cn-role-from-now", Pattern.compile("从现在(起|开始)[,，]?你(就)?是(一个)?")),
             new Rule("cn-role-play", Pattern.compile("(新|新)的?(角色|人设)(设定|扮演)")),
             new Rule("cn-role-play2", Pattern.compile("扮演(一个)?(没有|不受|可以越狱|无)")),
