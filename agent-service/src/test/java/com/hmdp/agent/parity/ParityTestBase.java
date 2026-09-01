@@ -1,0 +1,90 @@
+package com.hmdp.agent.parity;
+
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+/**
+ * 对拍基座（T3.14）：业务库探活 + JDBC 直查 + 登录辅助
+ * 环境不可达 → 跳过（如实记录在报告，不虚构一致率）
+ */
+public abstract class ParityTestBase {
+
+    protected static final String BIZ_URL =
+            "jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=Asia/Shanghai";
+    protected static final String DB_USER = "root";
+    protected static final String DB_PWD = "520117";
+    protected static final String GATEWAY = "http://127.0.0.1:8081";
+
+    protected static Connection biz;
+
+    @BeforeAll
+    static void initBizDb() {
+        try {
+            biz = DriverManager.getConnection(BIZ_URL, DB_USER, DB_PWD);
+            biz.createStatement().executeQuery("SELECT 1");
+        } catch (Exception e) {
+            biz = null;
+        }
+        assumeTrue(biz != null, "业务库 hmdp 不可达，跳过对拍测试（待环境）");
+    }
+
+    @AfterAll
+    static void closeBizDb() throws Exception {
+        if (biz != null) {
+            biz.close();
+        }
+    }
+
+    /** JDBC 直查（期望值来源） */
+    protected static List<Map<String, Object>> rows(String sql) throws Exception {
+        try (Statement st = biz.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+            List<Map<String, Object>> list = new ArrayList<>();
+            ResultSetMetaData md = rs.getMetaData();
+            while (rs.next()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                for (int i = 1; i <= md.getColumnCount(); i++) {
+                    row.put(md.getColumnLabel(i).toLowerCase(), rs.getObject(i));
+                }
+                list.add(row);
+            }
+            return list;
+        }
+    }
+
+    /** 经网关的 HTTP 调用（登录用） */
+    protected static String httpPost(String path, String jsonBody) throws Exception {
+        HttpRequest req = HttpRequest.newBuilder(URI.create(GATEWAY + path))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody == null ? "" : jsonBody))
+                .build();
+        return HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString()).body();
+    }
+
+    protected static String httpGet(String path) throws Exception {
+        HttpRequest req = HttpRequest.newBuilder(URI.create(GATEWAY + path)).GET().build();
+        return HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString()).body();
+    }
+
+    /** 字段断言（null 完全等价比较，不做默认值兜底） */
+    protected static void assertFieldEquals(Object actual, Object expected, String field, Object rowId) {
+        assertEquals(String.valueOf(expected), String.valueOf(actual),
+                "字段不一致: " + field + " (行 " + rowId + ") 期望=" + expected + " 实际=" + actual);
+    }
+}
