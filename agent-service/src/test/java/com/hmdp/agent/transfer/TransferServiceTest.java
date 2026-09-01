@@ -46,7 +46,10 @@ class TransferServiceTest {
     @Mock private RBucket<String> bucket;
 
     private TransferService service() {
-        AgentProperties props = new AgentProperties();
+        return service(new AgentProperties());
+    }
+
+    private TransferService service(AgentProperties props) {
         return new TransferService(sessionService, flowStateService, memoryService,
                 toolCallMapper, ticketService, trackEventService, sseManager, redisson,
                 props, new TicketPriorityRules(props));
@@ -59,13 +62,23 @@ class TransferServiceTest {
     @Test
     void 触发_状态TRANSFERRED_埋点_卡片() {
         AgentSession s = active();
-        lenient().when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        when(sessionService.markTransferred(1L, "HUMAN_DEMAND")).thenReturn(true);
         service().trigger(s, "HUMAN_DEMAND");
-        verify(sessionService).markTransferred(1L, "HUMAN_DEMAND");
         verify(flowStateService).setFlowState(1L, "IDLE");
         verify(trackEventService).track(eq("m5_transfer_human"), eq(1L), eq(100L), any());
         verify(sseManager).send(eq(1L), eq("card"), any());
         assertEquals("TRANSFERRED", s.getStatus(), "本地状态须同步，防本轮后续误判");
+    }
+
+    @Test
+    void 并发败者_CAS失败不推卡() {
+        AgentSession s = active();
+        when(sessionService.markTransferred(1L, "HUMAN_DEMAND")).thenReturn(false);
+        service().trigger(s, "HUMAN_DEMAND");
+        verify(trackEventService, never()).track(any(), any(), any(), any());
+        verify(flowStateService, never()).setFlowState(any(), any());
+        verify(sseManager, never()).send(any(), any(), any());
+        assertEquals("TRANSFERRED", s.getStatus(), "败者也同步本地状态，本轮后续按锁语义走");
     }
 
     @Test
@@ -130,5 +143,111 @@ class TransferServiceTest {
                 org.mockito.ArgumentCaptor.forClass(com.hmdp.agent.dto.TicketRequest.class);
         verify(ticketService).create(eq(100L), eq(1L), captor.capture());
         assertTrue(captor.getValue().getSummary().contains("转人工"));
+    }
+
+    // ===== T4.9 加固：一次性确认守卫 / 移交包健壮性 / 占位分支 =====
+
+    private AgentSession transferred() {
+        return active().setStatus("TRANSFERRED").setTransferReason("HUMAN_DEMAND")
+                .setSummary("用户申请转人工：订单退款问题");
+    }
+
+    private void stubHappyCreate() {
+        when(memoryService.readRawJson(1L)).thenReturn("[]");
+        when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        when(ticketService.create(eq(100L), eq(1L), any())).thenReturn(
+                new com.hmdp.agent.entity.AgentTicket().setTicketNo("TK88").setExpectedSla("24h"));
+    }
+
+    @Test
+    void 重复确认_返回已有工单号不重复建单() {
+        when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        when(bucket.getAndSet("PENDING")).thenReturn("TK88");
+
+        TransferService.TransferOutcome o = service().confirmTransfer(100L, 1L);
+
+        assertTrue(o.success());
+        assertEquals("TK88", o.ticketNo());
+        assertTrue(o.message().contains("TK88"));
+        verify(ticketService, never()).create(any(), any(), any());
+    }
+
+    @Test
+    void 并发占位_处理中() {
+        when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        when(bucket.getAndSet("PENDING")).thenReturn("PENDING");
+
+        TransferService.TransferOutcome o = service().confirmTransfer(100L, 1L);
+
+        assertTrue(o.success());
+        assertEquals(null, o.ticketNo());
+        verify(ticketService, never()).create(any(), any(), any());
+        verify(sseManager, never()).send(any(), any(), any());
+    }
+
+    @Test
+    void 建单失败_标记清除可重试() {
+        when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
+        when(memoryService.readRawJson(1L)).thenReturn("[]");
+        when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        when(ticketService.create(eq(100L), eq(1L), any()))
+                .thenThrow(new RuntimeException("db down"))
+                .thenReturn(new com.hmdp.agent.entity.AgentTicket()
+                        .setTicketNo("TK77").setExpectedSla("24h"));
+
+        TransferService.TransferOutcome first = service().confirmTransfer(100L, 1L);
+        assertTrue(first.success());
+        verify(bucket).delete();
+
+        TransferService.TransferOutcome second = service().confirmTransfer(100L, 1L);
+        assertTrue(second.success());
+        assertEquals("TK77", second.ticketNo());
+    }
+
+    @Test
+    void 移交包Redis失败_不写snapshotUri仍建单() {
+        when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
+        when(memoryService.readRawJson(1L)).thenReturn("[]");
+        when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
+                .doNothing().when(bucket).set(anyString(), any(java.time.Duration.class));
+        when(ticketService.create(eq(100L), eq(1L), any())).thenReturn(
+                new com.hmdp.agent.entity.AgentTicket().setTicketNo("TK66").setExpectedSla("24h"));
+
+        TransferService.TransferOutcome o = service().confirmTransfer(100L, 1L);
+
+        assertTrue(o.success());
+        assertEquals("TK66", o.ticketNo());
+        verify(sessionService, never()).updateSnapshotUri(any(), any());
+    }
+
+    @Test
+    void seatOnline占位分支_不建单不写移交包() {
+        AgentProperties props = new AgentProperties();
+        props.getTransfer().setSeatOnline(true);
+        when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
+
+        TransferService.TransferOutcome o = service(props).confirmTransfer(100L, 1L);
+
+        assertTrue(o.success());
+        assertTrue(o.message().contains("坐席"));
+        verify(ticketService, never()).create(any(), any(), any());
+        verify(redisson, never()).getBucket(anyString());
+        verify(memoryService, never()).readRawJson(any());
+    }
+
+    @Test
+    void 非TRANSFERRED状态拒绝() {
+        when(sessionService.getOwned(1L, 100L)).thenReturn(active());
+
+        TransferService.TransferOutcome o = service().confirmTransfer(100L, 1L);
+
+        assertTrue(!o.success());
+        verify(ticketService, never()).create(any(), any(), any());
     }
 }

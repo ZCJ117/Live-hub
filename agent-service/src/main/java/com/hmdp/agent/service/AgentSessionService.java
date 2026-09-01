@@ -113,12 +113,14 @@ public class AgentSessionService extends ServiceImpl<AgentSessionMapper, AgentSe
         sseSessionManager.complete(sessionId);
     }
 
-    /** 触发转人工状态锁（Phase 4 使用，本阶段预留状态流转） */
-    public void markTransferred(Long sessionId, String transferReason) {
-        AgentSession session = getById(sessionId);
-        if (session == null) return;
-        session.setStatus("TRANSFERRED").setTransferReason(transferReason);
-        updateById(session);
+    /** 触发转人工状态锁（CAS：仅 ACTIVE→TRANSFERRED，防并发双触发；@return 是否本次胜出） */
+    public boolean markTransferred(Long sessionId, String transferReason) {
+        return lambdaUpdate()
+                .eq(AgentSession::getId, sessionId)
+                .eq(AgentSession::getStatus, "ACTIVE")
+                .set(AgentSession::getStatus, "TRANSFERRED")
+                .set(AgentSession::getTransferReason, transferReason)
+                .update();
     }
 
     public void updateSummary(Long sessionId, String summary) {
