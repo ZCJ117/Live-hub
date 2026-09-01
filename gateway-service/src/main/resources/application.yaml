@@ -34,7 +34,7 @@ spring:
         - id: social-route
           uri: lb://social-service
           predicates:
-            - Path=/blog/**,/comment/**,/follow/** # 匹配以/blog/、/comment/或/follow/开头的请求
+            - Path=/blog/**,/comment/**,/follow/**,/notification/** # 匹配以/blog/、/comment/、/follow/或/notification/开头的请求
         # RAG知识库服务路由
         - id: rag-route
           uri: lb://rag-service
