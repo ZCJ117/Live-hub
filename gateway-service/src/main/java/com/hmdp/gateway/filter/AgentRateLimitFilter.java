@@ -51,7 +51,7 @@ public class AgentRateLimitFilter implements GlobalFilter, Ordered {
         }
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
-        response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        response.getHeaders().setContentType(new MediaType(MediaType.APPLICATION_JSON, StandardCharsets.UTF_8));
         DataBuffer buffer = response.bufferFactory().wrap(RATE_LIMIT_BODY.getBytes(StandardCharsets.UTF_8));
         return response.writeWith(Mono.just(buffer));
     }
