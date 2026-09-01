@@ -6,9 +6,10 @@ import com.hmdp.agent.dto.TicketRequest;
 import com.hmdp.agent.entity.AgentTicket;
 import com.hmdp.agent.exception.BusinessException;
 import com.hmdp.agent.mapper.AgentTicketMapper;
-import lombok.RequiredArgsConstructor;
+import com.hmdp.agent.mq.TicketNotifyProducer;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -26,10 +27,17 @@ import java.util.TreeMap;
  */
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class TicketService extends ServiceImpl<AgentTicketMapper, AgentTicket> {
 
     private final RedissonClient redisson;
+    /** MQ 生产者缺席时（RocketMQ 离线）为 null，工单创建不受影响（P4-R5 解耦） */
+    private final TicketNotifyProducer notifyProducer;
+
+    public TicketService(RedissonClient redisson,
+                         @Autowired(required = false) TicketNotifyProducer notifyProducer) {
+        this.redisson = redisson;
+        this.notifyProducer = notifyProducer;
+    }
 
     /** 工单状态机：OPEN→ROUTED→RESOLVED（非法跳转 100% 拦截，FR-14 验收口径） */
     private static final Map<String, String> TRANSITIONS = Map.of(
@@ -77,6 +85,17 @@ public class TicketService extends ServiceImpl<AgentTicketMapper, AgentTicket> {
                 .setExpectedSla(sla)
                 .setNotifyStatus("PENDING");
         save(ticket);
+        // T4.7：路由通知（工单创建与通知解耦；失败仅记 notify_status，不回滚工单）
+        if (notifyProducer != null) {
+            boolean sent;
+            try {
+                sent = notifyProducer.sendRouteNotify(ticket);
+            } catch (Exception e) {
+                sent = false;
+            }
+            ticket.setNotifyStatus(sent ? "SENT" : "FAILED");
+            updateById(ticket);
+        }
         log.info("工单创建: ticketNo={}, category={}, priority={}, group={}",
                 ticket.getTicketNo(), ticket.getCategory(), priority, assigneeGroup);
         return ticket;

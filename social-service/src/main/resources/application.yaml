@@ -46,3 +46,9 @@ sa-token:
   is-share: true
   token-style: uuid
   is-log: false
+
+# RocketMQ（FR-09 工单通知消费）
+rocketmq:
+  name-server: 127.0.0.1:9876
+  producer:
+    group: social-notify-producer-group
