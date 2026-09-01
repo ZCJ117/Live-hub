@@ -36,7 +36,9 @@ class ReActEngineTest {
     private final TrackEventService track = mock(TrackEventService.class);
     private final AgentProperties props = new AgentProperties();
     private final GlmProperties glmProps = new GlmProperties();
-    private final ReActEngine engine = new ReActEngine(glmClient, toolRegistry, toolExecutor, props, glmProps, track);
+    private final ReActEngine engine = new ReActEngine(glmClient, toolRegistry, toolExecutor, props, glmProps, track,
+            new com.hmdp.agent.security.OutputFilter(
+                    new com.hmdp.agent.security.SensitiveWordService(props), props));
 
     private final ToolContext ctx = ToolContext.builder().sessionId(1L).userId(10L).build();
 

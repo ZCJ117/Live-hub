@@ -91,7 +91,8 @@ public class ChatOrchestratorService {
                 sseManager.send(session.getId(), "session", Map.of(
                         "sessionId", String.valueOf(session.getId()),
                         "status", session.getStatus(),
-                        "reused", Boolean.TRUE.equals(ctx.reused())));
+                        "reused", Boolean.TRUE.equals(ctx.reused()),
+                        "aiNotice", "本服务由 AI 提供，内容由人工智能生成"));
                 // 欢迎语流式输出（能力提示，FR-01 交互 3）
                 for (String part : InputPreprocessor.WELCOME_MESSAGE.split("\n")) {
                     sseManager.send(session.getId(), "delta", Map.of("text", part + "\n"));

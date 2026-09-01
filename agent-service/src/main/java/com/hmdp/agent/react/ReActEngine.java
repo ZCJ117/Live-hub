@@ -9,6 +9,7 @@ import com.hmdp.agent.llm.LlmTypes;
 import com.hmdp.agent.memory.ChatMemoryService;
 import com.hmdp.agent.metrics.TrackEventService;
 import com.hmdp.agent.security.Desensitizer;
+import com.hmdp.agent.security.OutputFilter;
 import com.hmdp.agent.tool.ToolContext;
 import com.hmdp.agent.tool.ToolExecutor;
 import com.hmdp.agent.tool.ToolRegistry;
@@ -37,25 +38,37 @@ public class ReActEngine {
     private static final Pattern STATUS_ASSERTION = Pattern.compile(
             "已取消|已退款|退款中|已核销|未支付|已支付|营业中|已打烊|满\\d+减\\d+|可退|不可退|暂未录入");
 
+    /** 输出敏感词二次命中的兜底话术（T4.12：重生成 1 次仍命中 → 兜底 + 建议转人工） */
+    static final String OUTPUT_BLOCKED_FALLBACK =
+            "抱歉，本次回复内容涉及不太合适的表述，已为您过滤。您可以换个说法再问，或回复\"转人工\"由人工客服为您解答。";
+
     private final GlmClient glmClient;
     private final ToolRegistry toolRegistry;
     private final ToolExecutor toolExecutor;
     private final AgentProperties props;
     private final GlmProperties glmProps;
     private final TrackEventService trackEventService;
+    private final OutputFilter outputFilter;
 
     public ReActEngine(GlmClient glmClient, ToolRegistry toolRegistry, ToolExecutor toolExecutor,
-                       AgentProperties props, GlmProperties glmProps, TrackEventService trackEventService) {
+                       AgentProperties props, GlmProperties glmProps, TrackEventService trackEventService,
+                       OutputFilter outputFilter) {
         this.glmClient = glmClient;
         this.toolRegistry = toolRegistry;
         this.toolExecutor = toolExecutor;
         this.props = props;
         this.glmProps = glmProps;
         this.trackEventService = trackEventService;
+        this.outputFilter = outputFilter;
     }
 
     public record ReactResult(String answer, boolean needTicketFallback, String reason,
-                              int stepsUsed, long promptTokens, long completionTokens) {
+                              int stepsUsed, long promptTokens, long completionTokens,
+                              boolean outputBlocked) {
+        public ReactResult(String answer, boolean needTicketFallback, String reason,
+                           int stepsUsed, long promptTokens, long completionTokens) {
+            this(answer, needTicketFallback, reason, stepsUsed, promptTokens, completionTokens, false);
+        }
     }
 
     /**
@@ -80,12 +93,12 @@ public class ReActEngine {
             JsonNode actionNode = parseAction(decision);
             if (actionNode == null) {
                 log.warn("ReAct 决策解析失败，降级直答: sessionId={}", ctx.getSessionId());
-                return finish(ctx, streamAnswer(messages, observations, userMessage, onDelta),
-                        false, "ACTION_PARSE_FAIL", stepsUsed, observations);
+                return answerWithGuard(ctx, messages, observations, userMessage, onDelta,
+                        false, "ACTION_PARSE_FAIL", stepsUsed);
             }
             if ("__ANSWER__".equals(actionNode.path("tool").asText())) {
-                return finish(ctx, streamAnswer(messages, observations, userMessage, onDelta),
-                        false, null, stepsUsed, observations);
+                return answerWithGuard(ctx, messages, observations, userMessage, onDelta,
+                        false, null, stepsUsed);
             }
 
             String toolName = actionNode.path("tool").asText("");
@@ -101,33 +114,113 @@ public class ReActEngine {
                 if (consecutiveFailures >= 2) {
                     // 连续 2 次失败 → 硬中断（FR-10 转人工触发条件之一，Phase 4 接入）
                     log.warn("连续 2 次工具失败，中断 ReAct: sessionId={}", ctx.getSessionId());
-                    return finish(ctx, streamAnswer(messages, observations, userMessage, onDelta),
-                            true, "TOOL_CONSECUTIVE_FAIL", stepsUsed, observations);
+                    return answerWithGuard(ctx, messages, observations, userMessage, onDelta,
+                            true, "TOOL_CONSECUTIVE_FAIL", stepsUsed);
                 }
             }
         }
 
         log.info("ReAct 达到最大步数，强制收敛: sessionId={}", ctx.getSessionId());
-        return finish(ctx, streamAnswer(messages, observations, userMessage, onDelta),
-                false, "MAX_STEPS", stepsUsed, observations);
+        return answerWithGuard(ctx, messages, observations, userMessage, onDelta,
+                false, "MAX_STEPS", stepsUsed);
     }
 
     /** CHAT 直答（T3.6/T3.13：免工具、light 档；超范围引导由 system prompt 硬约束 6 保证） */
     public ReactResult chatDirect(List<ChatMemoryService.LlmTypesMsg> history, String summary,
                                   String userMessage, Consumer<String> onDelta) {
         List<LlmTypes.Message> messages = buildMessages(history, summary, userMessage);
+        OutputFilter.FilteredStream fs = outputFilter.stream(onDelta);
         GlmClient.StreamResult sr = glmClient.streamChat(LlmTypes.Request.builder()
                 .model(glmProps.getLightModel())
                 .messages(messages)
                 .temperature(0.5)
-                .build(), onDelta);
+                .build(), fs::accept);
+        fs.flush();
+        if (fs.isBlocked()) {
+            StringBuilder buf = new StringBuilder();
+            GlmClient.StreamResult retry = glmClient.streamChat(LlmTypes.Request.builder()
+                    .model(glmProps.getLightModel())
+                    .messages(messages)
+                    .temperature(0.6)
+                    .build(), buf::append);
+            if (retry.content() != null && outputFilter.firstHit(retry.content()).isEmpty()) {
+                onDelta.accept(retry.content());
+                return new ReactResult(retry.content(), false, null, 0,
+                        sr.promptTokens() + retry.promptTokens(), retry.completionTokens(), false);
+            }
+            onDelta.accept(OUTPUT_BLOCKED_FALLBACK);
+            return new ReactResult(OUTPUT_BLOCKED_FALLBACK, false, "OUTPUT_BLOCKED", 0,
+                    sr.promptTokens() + retry.promptTokens(), retry.completionTokens(), true);
+        }
         return new ReactResult(sr.content(), false, null, 0, sr.promptTokens(), sr.completionTokens());
+    }
+
+    /** 过滤式流式：返回底层 StreamResult + 是否被阻断（阻断时已批准前缀外的内容未流出） */
+    private record FilteredAnswer(GlmClient.StreamResult sr, boolean blocked) {
+    }
+
+    private FilteredAnswer streamAnswerFiltered(List<LlmTypes.Message> baseMessages,
+                                                List<ToolResult> observations,
+                                                String userMessage, Consumer<String> onDelta) {
+        OutputFilter.FilteredStream fs = outputFilter.stream(onDelta);
+        GlmClient.StreamResult sr = streamChat(baseMessages, observations, userMessage, fs::accept);
+        fs.flush();
+        return new FilteredAnswer(sr, fs.isBlocked());
+    }
+
+    private GlmClient.StreamResult streamChat(List<LlmTypes.Message> baseMessages,
+                                              List<ToolResult> observations,
+                                              String userMessage, Consumer<String> onDelta) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(baseMessages.get(0).getContent()).append("\n\n[DATA]\n")
+                .append(renderObservations(observations)).append("\n[/DATA]\n\n")
+                .append("用户问题：").append(userMessage);
+        return glmClient.streamChat(LlmTypes.Request.builder()
+                .model(glmProps.getMainModel())
+                .messages(List.of(LlmTypes.Message.user(sb.toString())))
+                .temperature(0.5)
+                .build(), onDelta);
+    }
+
+    /** 重生成请求（同上下文，temperature 提高以跳出重复命中） */
+    private LlmTypes.Request retryRequest(List<LlmTypes.Message> baseMessages,
+                                          List<ToolResult> observations, String userMessage) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(baseMessages.get(0).getContent()).append("\n\n[DATA]\n")
+                .append(renderObservations(observations)).append("\n[/DATA]\n\n")
+                .append("用户问题：").append(userMessage);
+        return LlmTypes.Request.builder()
+                .model(glmProps.getMainModel())
+                .messages(List.of(LlmTypes.Message.user(sb.toString())))
+                .temperature(0.6)
+                .build();
+    }
+
+    /** 带输出防护的最终回答：命中 → 整段重生成 1 次 → 再命中兜底话术（T4.12） */
+    private ReactResult answerWithGuard(ToolContext ctx, List<LlmTypes.Message> messages,
+                                        List<ToolResult> observations, String userMessage,
+                                        Consumer<String> onDelta, boolean needTicketFallback,
+                                        String reason, int stepsUsed) {
+        FilteredAnswer first = streamAnswerFiltered(messages, observations, userMessage, onDelta);
+        if (!first.blocked()) {
+            return finish(ctx, first.sr(), needTicketFallback, reason, stepsUsed, observations, false);
+        }
+        log.warn("输出敏感词命中，丢弃重生成: sessionId={}", ctx.getSessionId());
+        StringBuilder buf = new StringBuilder();
+        GlmClient.StreamResult retry = glmClient.streamChat(retryRequest(messages, observations, userMessage), buf::append);
+        if (retry.content() != null && outputFilter.firstHit(retry.content()).isEmpty()) {
+            onDelta.accept(retry.content());
+            return finish(ctx, retry, needTicketFallback, reason, stepsUsed, observations, false);
+        }
+        onDelta.accept(OUTPUT_BLOCKED_FALLBACK);
+        return new ReactResult(OUTPUT_BLOCKED_FALLBACK, needTicketFallback, reason, stepsUsed,
+                retry.promptTokens(), retry.completionTokens(), true);
     }
 
     /** 汇总返回：幻觉嫌疑检测（无成功工具数据却含状态断言 → 埋点标记，不拦截） */
     private ReactResult finish(ToolContext ctx, GlmClient.StreamResult sr,
                                boolean needTicketFallback, String reason, int stepsUsed,
-                               List<ToolResult> observations) {
+                               List<ToolResult> observations, boolean outputBlocked) {
         if (sr.content() != null && !sr.content().isBlank()
                 && observations.stream().noneMatch(ToolResult::isSuccess)
                 && STATUS_ASSERTION.matcher(sr.content()).find()) {
@@ -135,7 +228,7 @@ public class ReActEngine {
                     Map.of("reason", reason == null ? "ANSWER" : reason));
         }
         return new ReactResult(sr.content(), needTicketFallback, reason, stepsUsed,
-                sr.promptTokens(), sr.completionTokens());
+                sr.promptTokens(), sr.completionTokens(), outputBlocked);
     }
 
     /** 决策调用：lightModel + JSON mode 输出 action 或 ANSWER 指令；末两步注入收敛提示 */
@@ -183,23 +276,6 @@ public class ReActEngine {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    /** 最终回答：mainModel 流式生成（T3.13 查询类走主模型），Observation 以 [DATA] 注入 */
-    private GlmClient.StreamResult streamAnswer(List<LlmTypes.Message> baseMessages,
-                                                List<ToolResult> observations,
-                                                String userMessage, Consumer<String> onDelta) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(baseMessages.get(0).getContent()).append("\n\n[DATA]\n")
-                .append(renderObservations(observations)).append("\n[/DATA]\n\n")
-                .append("用户问题：").append(userMessage);
-
-        return glmClient.streamChat(LlmTypes.Request.builder()
-                        .model(glmProps.getMainModel())
-                        .messages(List.of(LlmTypes.Message.user(sb.toString())))
-                        .temperature(0.5)
-                        .build(),
-                onDelta);
     }
 
     /** system prompt 硬约束（T3.12/R1，加固版） */

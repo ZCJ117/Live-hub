@@ -42,5 +42,6 @@ public final class InputPreprocessor {
     }
 
     public static final String WELCOME_MESSAGE =
-            "您好，我是 LiveHub 智能客服～\n我可以帮您：\n· 查询订单（如：我上周抢的券怎么还没到）\n· 咨询优惠券使用规则\n· 申请退款、提交投诉\n· 随时转接人工客服";
+            "本服务由 AI 提供，内容由人工智能生成。\n"
+            + "您好，我是 LiveHub 智能客服～\n我可以帮您：\n· 查询订单（如：我上周抢的券怎么还没到）\n· 咨询优惠券使用规则\n· 申请退款、提交投诉\n· 随时转接人工客服";
 }
