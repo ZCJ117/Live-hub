@@ -43,8 +43,8 @@ class VoucherParityTest extends ParityTestBase {
             Map<String, Object> data = (Map<String, Object>) r.getData();
             assertFieldEquals(data.get("title"), row.get("title"), "title", vid);
             assertFieldEquals(data.get("rules"), row.get("rules"), "rules", vid);
-            // C2 字段：缺失=null 语义保持（不默认值编造）
-            assertFieldEquals(data.get("threshold"), row.get("threshold"), "threshold", vid);
+            // C2 字段：缺失=null 语义保持（不默认值编造）；DECIMAL 经 JSON 反序列化为 Double（100.00→100.0），按数值比较
+            assertNumericEquals(data.get("threshold"), row.get("threshold"), "threshold", vid);
             assertFieldEquals(data.get("applicableScope"), row.get("applicable_scope"), "applicableScope", vid);
             assertFieldEquals(data.get("status"), row.get("status"), "status", vid);
             assertFieldEquals(data.get("payValue"), row.get("pay_value"), "payValue", vid);

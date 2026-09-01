@@ -3,6 +3,7 @@ package com.hmdp.agent.parity;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
@@ -94,6 +96,17 @@ public abstract class ParityTestBase {
     /** 字段断言（null 完全等价比较，不做默认值兜底） */
     protected static void assertFieldEquals(Object actual, Object expected, String field, Object rowId) {
         assertEquals(String.valueOf(expected), String.valueOf(actual),
+                "字段不一致: " + field + " (行 " + rowId + ") 期望=" + expected + " 实际=" + actual);
+    }
+
+    /** 数值字段断言（跨 BigDecimal/Double 序列化边界按数值比较，如 DECIMAL 100.00 vs JSON 100.0；双侧 null 视为等价） */
+    protected static void assertNumericEquals(Object actual, Object expected, String field, Object rowId) {
+        if (actual == null && expected == null) {
+            return;
+        }
+        assertTrue(actual != null && expected != null,
+                "字段不一致: " + field + " (行 " + rowId + ") 期望=" + expected + " 实际=" + actual);
+        assertEquals(0, new BigDecimal(String.valueOf(expected)).compareTo(new BigDecimal(String.valueOf(actual))),
                 "字段不一致: " + field + " (行 " + rowId + ") 期望=" + expected + " 实际=" + actual);
     }
 }

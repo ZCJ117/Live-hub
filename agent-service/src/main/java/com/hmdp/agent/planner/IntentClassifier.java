@@ -14,6 +14,7 @@ import java.util.Map;
 
 /**
  * 意图分类器（T3.1/T3.2）：lightModel + JSON mode，解析失败重试 2 次（附错误说明），3 败降级
+ * LLM 调用失败（LlmException）fail-fast 不重试：重试共享 120s 读超时，故障时单轮最长阻塞 3×timeout（R5）
  * 分类失败率埋点 m5_intent_parse_fail（R2：告警阈值 5%，Phase 5 看板消费）
  */
 @Component
@@ -78,10 +79,11 @@ public class IntentClassifier {
                 completionTokens += resp.getCompletionTokens() == null ? 0 : resp.getCompletionTokens();
                 return new ClassifyOutcome(parser.parseIntent(resp.getContent()), promptTokens, completionTokens);
             } catch (LlmTypes.LlmException e) {
-                lastError = "LLM 调用失败";
+                // 传输/服务错误立即降级（fail-fast，避免 3×120s 超时叠加阻塞 SSE 线程池）
                 trackEventService.track("m5_intent_parse_fail", sessionId, userId,
                         Map.of("attempt", attempt, "cause", "LLM_ERROR"));
-                log.warn("意图分类 LLM 调用失败(第{}次): sessionId={}", attempt, sessionId);
+                log.warn("意图分类 LLM 调用失败: sessionId={}", sessionId);
+                return new ClassifyOutcome(null, promptTokens, completionTokens);
             } catch (IntentParseException e) {
                 lastError = e.getMessage();
                 trackEventService.track("m5_intent_parse_fail", sessionId, userId,

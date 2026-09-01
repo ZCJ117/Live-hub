@@ -69,11 +69,12 @@ class IntentClassifierTest {
     }
 
     @Test
-    void llm_exception_counts_as_attempt() {
+    void llm_exception_fails_fast_without_retry() {
         when(glmClient.complete(any())).thenThrow(new LlmTypes.LlmException("timeout"));
         ClassifyOutcome outcome = classifier.classify("你好", List.of(), 1L, 2L);
         assertTrue(outcome.failed());
-        verify(glmClient, times(3)).complete(any());
+        verify(glmClient, times(1)).complete(any());
+        verify(track, times(1)).track(eq("m5_intent_parse_fail"), any(), any(), any());
     }
 
     @Test

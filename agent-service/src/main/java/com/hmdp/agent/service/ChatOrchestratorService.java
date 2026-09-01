@@ -170,18 +170,21 @@ public class ChatOrchestratorService {
 
         // 5. 兜底话术（空回答 / 工具连败建议建单，FR-05 边界）
         if (result.answer() == null || result.answer().isBlank()) {
-            sseManager.send(sessionId, "delta", Map.of("text",
-                    result.needTicketFallback()
-                            ? "查询暂时遇到问题，您可以稍后再试，或提交工单由人工跟进。"
-                            : "请描述您的问题，我来帮您查询。"));
+            String fallback = result.needTicketFallback()
+                    ? "查询暂时遇到问题，您可以稍后再试，或提交工单由人工跟进。"
+                    : "请描述您的问题，我来帮您查询。";
+            answer.append(fallback);
+            sseManager.send(sessionId, "delta", Map.of("text", fallback));
         }
         sseManager.send(sessionId, "done", Map.of(
                 "roundNo", session.getMsgCount(),
                 "finishReason", result.reason() == null ? "OK" : result.reason()));
 
         // 6. 回写记忆（assistant 消息脱敏后入历史，4.2 数据红线）
+        // 回写完整编排文本（含中断提示/退款后缀/兜底文案），保证下一轮分类器可见（Code Review Important #2）
+        String reply = answer.isEmpty() ? result.answer() : answer.toString();
         memoryService.append(sessionId, "assistant",
-                Desensitizer.mask(result.answer() == null ? "" : result.answer()));
+                Desensitizer.mask(reply == null ? "" : reply));
 
         // 7. 摘要压缩触发（超 10 轮，异步不阻塞，FR-02 交互 3）
         triggerSummaryIfNeeded(session);

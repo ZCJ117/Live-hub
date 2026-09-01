@@ -133,6 +133,37 @@ class ChatOrchestratorDispatchTest {
     }
 
     @Test
+    void refund_notice_is_persisted_to_assistant_memory() {
+        commonStubs();
+        when(planner.plan(any(), any(), any())).thenReturn(
+                decision(PlanDecision.PlanType.REFUND, Intent.REFUND,
+                        List.of("查询用户订单，定位可退款的订单")));
+        when(reActEngine.run(any(), any(), any(), any(), anyInt(), any(Consumer.class), any()))
+                .thenReturn(reactResult("已定位您的订单"));
+
+        service(Runnable::run).handleChat(session(), "我要退款", "token");
+
+        ArgumentCaptor<String> mem = ArgumentCaptor.forClass(String.class);
+        verify(memoryService).append(eq(1L), eq("assistant"), mem.capture());
+        assertTrue(mem.getValue().contains("退款申请尚未提交")); // 后缀进记忆，下一轮分类器可见
+    }
+
+    @Test
+    void blank_answer_fallback_is_persisted_to_assistant_memory() {
+        commonStubs();
+        when(planner.plan(any(), any(), any())).thenReturn(
+                decision(PlanDecision.PlanType.REACT, Intent.ORDER_QUERY, List.of()));
+        when(reActEngine.run(any(), any(), any(), any(), anyInt(), any(Consumer.class), any()))
+                .thenReturn(reactResult(" "));
+
+        service(Runnable::run).handleChat(session(), "查订单", "token");
+
+        ArgumentCaptor<String> mem = ArgumentCaptor.forClass(String.class);
+        verify(memoryService).append(eq(1L), eq("assistant"), mem.capture());
+        assertTrue(mem.getValue().contains("请描述您的问题"));
+    }
+
+    @Test
     void fallback_menu_pushes_card() {
         commonStubs();
         when(planner.plan(any(), any(), any())).thenReturn(
