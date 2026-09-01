@@ -93,11 +93,11 @@ public class ReActEngine {
             JsonNode actionNode = parseAction(decision);
             if (actionNode == null) {
                 log.warn("ReAct 决策解析失败，降级直答: sessionId={}", ctx.getSessionId());
-                return answerWithGuard(ctx, messages, observations, userMessage, onDelta,
+                return answerWithGuard(ctx, messages, observations, userMessage, onDelta, onEvent,
                         false, "ACTION_PARSE_FAIL", stepsUsed);
             }
             if ("__ANSWER__".equals(actionNode.path("tool").asText())) {
-                return answerWithGuard(ctx, messages, observations, userMessage, onDelta,
+                return answerWithGuard(ctx, messages, observations, userMessage, onDelta, onEvent,
                         false, null, stepsUsed);
             }
 
@@ -114,20 +114,26 @@ public class ReActEngine {
                 if (consecutiveFailures >= 2) {
                     // 连续 2 次失败 → 硬中断（FR-10 转人工触发条件之一，Phase 4 接入）
                     log.warn("连续 2 次工具失败，中断 ReAct: sessionId={}", ctx.getSessionId());
-                    return answerWithGuard(ctx, messages, observations, userMessage, onDelta,
+                    return answerWithGuard(ctx, messages, observations, userMessage, onDelta, onEvent,
                             true, "TOOL_CONSECUTIVE_FAIL", stepsUsed);
                 }
             }
         }
 
         log.info("ReAct 达到最大步数，强制收敛: sessionId={}", ctx.getSessionId());
-        return answerWithGuard(ctx, messages, observations, userMessage, onDelta,
+        return answerWithGuard(ctx, messages, observations, userMessage, onDelta, onEvent,
                 false, "MAX_STEPS", stepsUsed);
     }
 
     /** CHAT 直答（T3.6/T3.13：免工具、light 档；超范围引导由 system prompt 硬约束 6 保证） */
     public ReactResult chatDirect(List<ChatMemoryService.LlmTypesMsg> history, String summary,
                                   String userMessage, Consumer<String> onDelta) {
+        return chatDirect(history, summary, userMessage, onDelta, null);
+    }
+
+    public ReactResult chatDirect(List<ChatMemoryService.LlmTypesMsg> history, String summary,
+                                  String userMessage, Consumer<String> onDelta,
+                                  ToolExecutor.ToolSseCallback onEvent) {
         List<LlmTypes.Message> messages = buildMessages(history, summary, userMessage);
         OutputFilter.FilteredStream fs = outputFilter.stream(onDelta);
         GlmClient.StreamResult sr = glmClient.streamChat(LlmTypes.Request.builder()
@@ -137,6 +143,9 @@ public class ReActEngine {
                 .build(), fs::accept);
         fs.flush();
         if (fs.isBlocked()) {
+            if (onEvent != null) {
+                onEvent.onEvent("content_reset", Map.of("reason", "OUTPUT_BLOCKED"));
+            }
             StringBuilder buf = new StringBuilder();
             GlmClient.StreamResult retry = glmClient.streamChat(LlmTypes.Request.builder()
                     .model(glmProps.getLightModel())
@@ -146,11 +155,13 @@ public class ReActEngine {
             if (retry.content() != null && outputFilter.firstHit(retry.content()).isEmpty()) {
                 onDelta.accept(retry.content());
                 return new ReactResult(retry.content(), false, null, 0,
-                        sr.promptTokens() + retry.promptTokens(), retry.completionTokens(), false);
+                        sr.promptTokens() + retry.promptTokens(),
+                        sr.completionTokens() + retry.completionTokens(), false);
             }
             onDelta.accept(OUTPUT_BLOCKED_FALLBACK);
             return new ReactResult(OUTPUT_BLOCKED_FALLBACK, false, "OUTPUT_BLOCKED", 0,
-                    sr.promptTokens() + retry.promptTokens(), retry.completionTokens(), true);
+                    sr.promptTokens() + retry.promptTokens(),
+                    sr.completionTokens() + retry.completionTokens(), true);
         }
         return new ReactResult(sr.content(), false, null, 0, sr.promptTokens(), sr.completionTokens());
     }
@@ -199,22 +210,29 @@ public class ReActEngine {
     /** 带输出防护的最终回答：命中 → 整段重生成 1 次 → 再命中兜底话术（T4.12） */
     private ReactResult answerWithGuard(ToolContext ctx, List<LlmTypes.Message> messages,
                                         List<ToolResult> observations, String userMessage,
-                                        Consumer<String> onDelta, boolean needTicketFallback,
-                                        String reason, int stepsUsed) {
+                                        Consumer<String> onDelta, ToolExecutor.ToolSseCallback onEvent,
+                                        boolean needTicketFallback, String reason, int stepsUsed) {
         FilteredAnswer first = streamAnswerFiltered(messages, observations, userMessage, onDelta);
         if (!first.blocked()) {
             return finish(ctx, first.sr(), needTicketFallback, reason, stepsUsed, observations, false);
         }
         log.warn("输出敏感词命中，丢弃重生成: sessionId={}", ctx.getSessionId());
+        if (onEvent != null) {
+            onEvent.onEvent("content_reset", Map.of("reason", "OUTPUT_BLOCKED"));
+        }
         StringBuilder buf = new StringBuilder();
         GlmClient.StreamResult retry = glmClient.streamChat(retryRequest(messages, observations, userMessage), buf::append);
         if (retry.content() != null && outputFilter.firstHit(retry.content()).isEmpty()) {
             onDelta.accept(retry.content());
-            return finish(ctx, retry, needTicketFallback, reason, stepsUsed, observations, false);
+            return finish(ctx, new GlmClient.StreamResult(retry.content(),
+                    first.sr().promptTokens() + retry.promptTokens(),
+                    first.sr().completionTokens() + retry.completionTokens()),
+                    needTicketFallback, reason, stepsUsed, observations, false);
         }
         onDelta.accept(OUTPUT_BLOCKED_FALLBACK);
         return new ReactResult(OUTPUT_BLOCKED_FALLBACK, needTicketFallback, reason, stepsUsed,
-                retry.promptTokens(), retry.completionTokens(), true);
+                first.sr().promptTokens() + retry.promptTokens(),
+                first.sr().completionTokens() + retry.completionTokens(), true);
     }
 
     /** 汇总返回：幻觉嫌疑检测（无成功工具数据却含状态断言 → 埋点标记，不拦截） */

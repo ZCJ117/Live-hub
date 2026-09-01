@@ -84,4 +84,20 @@ class OutputFilterTest {
         fs.flush();
         assertFalse(out.toString().contains("一个超长敏感词汇测试"));
     }
+    @Test
+    void emoji代理对不截断() {
+        AgentProperties p = new AgentProperties();
+        p.getSecurity().setSensitiveWords(List.of());
+        p.getSecurity().setOutputFilterTailHold(1);
+        SensitiveWordService s = new SensitiveWordService(p);
+        s.rebuild();
+        OutputFilter f = new OutputFilter(s, p);
+        StringBuilder out = new StringBuilder();
+        OutputFilter.FilteredStream fs = f.stream(out::append);
+        // safeLen 恰好落在高代理位上，验证不被从中间截断
+        fs.accept("a😊");
+        fs.flush();
+        assertEquals("a😊", out.toString());
+    }
+
 }

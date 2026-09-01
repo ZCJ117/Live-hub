@@ -58,6 +58,9 @@ public class OutputFilter {
             }
             int safeLen = full.length() - tailHold;
             if (safeLen > 0) {
+                while (safeLen > 0 && Character.isHighSurrogate(full.charAt(safeLen - 1))) {
+                    safeLen--;
+                }
                 delegate.accept(full.substring(0, safeLen));
                 pending.delete(0, safeLen);
             }

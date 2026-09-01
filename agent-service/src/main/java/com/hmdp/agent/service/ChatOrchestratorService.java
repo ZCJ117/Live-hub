@@ -250,7 +250,8 @@ public class ChatOrchestratorService {
                 if (last == null) {
                     // 预算耗尽兜底：直答收敛
                     last = reActEngine.chatDirect(history, session.getSummary(),
-                            "预算已用完，请基于已知信息简要回答用户：" + message, onDelta);
+                            "预算已用完，请基于已知信息简要回答用户：" + message, onDelta,
+                            (event, data) -> sseManager.send(sessionId, event, data));
                 }
                 if (decision.type() == PlanDecision.PlanType.REFUND) {
                     // T3.5：退款流程提示框架（提交能力 Phase 4 接入）
@@ -262,7 +263,8 @@ public class ChatOrchestratorService {
             }
             case CHAT_DIRECT -> {
                 // T3.6/T3.13：寒暄/闲聊/超范围免工具直答（light 档，超范围引导在 system prompt 硬约束 6）
-                return reActEngine.chatDirect(history, session.getSummary(), message, onDelta);
+                return reActEngine.chatDirect(history, session.getSummary(), message, onDelta,
+                        (event, data) -> sseManager.send(sessionId, event, data));
             }
             case CLARIFY -> {
                 // T3.3：澄清话术（模板直出，不再进 LLM 生成）

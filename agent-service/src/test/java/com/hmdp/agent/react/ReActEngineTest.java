@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -164,5 +165,63 @@ class ReActEngineTest {
         ArgumentCaptor<LlmTypes.Request> captor = ArgumentCaptor.forClass(LlmTypes.Request.class);
         verify(glmClient).streamChat(captor.capture(), any());
         assertEquals(glmProps.getLightModel(), captor.getValue().getModel()); // T3.13：CHAT 走 light 档
+    }
+
+    /** 输出防护用例：自定义词表（默认词表不含测试词） */
+    private ReActEngine guardEngine() throws Exception {
+        AgentProperties p = new AgentProperties();
+        p.getSecurity().setSensitiveWords(List.of("违禁词"));
+        com.hmdp.agent.security.SensitiveWordService sw = new com.hmdp.agent.security.SensitiveWordService(p);
+        // rebuild() 为包私有，跨包测试用反射触发启动构建
+        java.lang.reflect.Method rebuild = com.hmdp.agent.security.SensitiveWordService.class.getDeclaredMethod("rebuild");
+        rebuild.setAccessible(true);
+        rebuild.invoke(sw);
+        return new ReActEngine(glmClient, toolRegistry, toolExecutor, p, glmProps, track,
+                new com.hmdp.agent.security.OutputFilter(sw, p));
+    }
+
+    private void stubStream(java.util.Deque<String> contents) {
+        org.mockito.Mockito.when(glmClient.streamChat(any(LlmTypes.Request.class), any())).thenAnswer(inv -> {
+            java.util.function.Consumer<String> sink = inv.getArgument(1);
+            String content = contents.poll();
+            sink.accept(content);
+            return new GlmClient.StreamResult(content, 20, 15);
+        });
+    }
+
+    @Test
+    void blocked_重生成一次成功() throws Exception {
+        ReActEngine guard = guardEngine();
+        stubStream(new java.util.ArrayDeque<>(List.of("回复含违禁词了", "这是干净的重生内容")));
+        StringBuilder deltas = new StringBuilder();
+        List<String> events = new java.util.ArrayList<>();
+        ReActEngine.ReactResult r = guard.chatDirect(List.of(), null, "你好", deltas::append,
+                (event, data) -> events.add(event));
+
+        assertEquals("这是干净的重生内容", r.answer());
+        assertFalse(r.outputBlocked());
+        assertTrue(deltas.toString().contains("这是干净的重生内容"));
+        assertTrue(events.contains("content_reset"), "content_reset 事件未发出: " + events);
+        // token 记账 = 首次尝试 + 重试
+        assertEquals(40, r.promptTokens());
+        assertEquals(30, r.completionTokens());
+    }
+
+    @Test
+    void blocked_重生成仍命中_兜底话术() throws Exception {
+        ReActEngine guard = guardEngine();
+        stubStream(new java.util.ArrayDeque<>(List.of("第一次含违禁词", "第二次还是违禁词")));
+        StringBuilder deltas = new StringBuilder();
+        List<String> events = new java.util.ArrayList<>();
+        ReActEngine.ReactResult r = guard.chatDirect(List.of(), null, "你好", deltas::append,
+                (event, data) -> events.add(event));
+
+        assertEquals(ReActEngine.OUTPUT_BLOCKED_FALLBACK, r.answer());
+        assertTrue(r.outputBlocked());
+        assertTrue(deltas.toString().contains(ReActEngine.OUTPUT_BLOCKED_FALLBACK));
+        assertTrue(events.contains("content_reset"), "content_reset 事件未发出: " + events);
+        assertEquals("OUTPUT_BLOCKED", r.reason());
+        assertEquals(40, r.promptTokens());
+        assertEquals(30, r.completionTokens());
     }
 }

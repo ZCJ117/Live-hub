@@ -199,12 +199,12 @@ class ChatOrchestratorDispatchTest {
         commonStubs();
         when(planner.plan(any(), any(), any())).thenReturn(
                 decision(PlanDecision.PlanType.CHAT_DIRECT, Intent.CHAT, List.of()));
-        when(reActEngine.chatDirect(any(), any(), any(), any(Consumer.class)))
+        when(reActEngine.chatDirect(any(), any(), any(), any(Consumer.class), any()))
                 .thenReturn(new ReActEngine.ReactResult("您好", false, null, 0, 10, 10));
 
         service(Runnable::run).handleChat(session(), "你好", "token");
 
-        verify(reActEngine).chatDirect(any(), any(), eq("你好"), any(Consumer.class));
+        verify(reActEngine).chatDirect(any(), any(), eq("你好"), any(Consumer.class), any());
         verify(reActEngine, never()).run(any(), any(), any(), any(), anyInt(), any(), any());
     }
 }
