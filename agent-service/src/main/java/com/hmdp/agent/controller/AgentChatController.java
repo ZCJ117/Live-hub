@@ -9,6 +9,7 @@ import com.hmdp.agent.memory.ChatMemoryService;
 import com.hmdp.agent.service.AgentSessionService;
 import com.hmdp.agent.service.ChatOrchestratorService;
 import com.hmdp.agent.snapshot.SessionSnapshotService;
+import com.hmdp.agent.sse.PollRoundCollector;
 import com.hmdp.agent.sse.SseSessionManager;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
@@ -34,6 +35,9 @@ import java.util.Map;
 @RequestMapping("/agent/chat")
 @Slf4j
 public class AgentChatController {
+
+    /** D2：请求线程限时等待上限（FR-01 边界 2：3s 超时返回 partial 供前端继续轮询） */
+    private static final long POLL_WAIT_MS = 3000;
 
     private final AgentSessionService sessionService;
     private final ChatOrchestratorService orchestrator;
@@ -94,6 +98,69 @@ public class AgentChatController {
             orchestrator.handleChat(session, req.getMessage(), token);
         }
         return emitter;
+    }
+
+    /**
+     * D2 降级轮询（FR-01 边界 2 / 4.4）：SSE 建连失败/不支持时的 JSON 同步通道
+     * - message 非空或无 sessionId：与 /agent/chat 相同入口（建连/发消息）。轮次经 sseExecutor 异步执行
+     *   （PRD 4.1：不在 Tomcat 工作线程同步阻塞等待 LLM），请求线程仅限时等待聚合结果（3s）
+     * - message 为空且携带 sessionId：继续轮询在途轮次（不重发消息）
+     * - 超时未完成返回 partial:true，收集器保留，前端继续 3s 间隔轮询直至 finishReason 返回
+     */
+    @PostMapping("/poll")
+    public Result poll(@RequestBody(required = false) ChatRequest req) {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("未登录，请先登录");
+        }
+        if (req == null) {
+            req = new ChatRequest();
+        }
+        PollRoundCollector collector;
+        AgentSession session;
+        boolean reused;
+        if (req.getSessionId() != null && StrUtil.isBlank(req.getMessage())) {
+            // 继续轮询在途轮次
+            session = sessionService.getOwned(req.getSessionId(), user.getId());
+            collector = sseManager.getPollCollector(session.getId());
+            if (collector == null) {
+                // 无在途轮次（上一轮已取走/重连）：空响应
+                return Result.ok(Map.of("partial", false, "finishReason", "OK",
+                        "text", "", "cards", List.of()));
+            }
+            reused = isReused(session);
+        } else {
+            session = req.getSessionId() == null
+                    ? sessionService.createOrReuse(user, req)
+                    : sessionService.getOwned(req.getSessionId(), user.getId());
+            reused = isReused(session);
+            collector = new PollRoundCollector();
+            sseManager.registerPollCollector(session.getId(), collector);
+            String token = StpUtil.getTokenValue();
+            if (StrUtil.isBlank(req.getMessage())) {
+                orchestrator.handleConnect(session, new ChatOrchestratorService.ConnectContext(token, reused));
+            } else {
+                if (req.getContext() != null && req.getContext().getOrderId() != null) {
+                    memoryService.setFocusOrder(session.getId(), req.getContext().getOrderId());
+                }
+                orchestrator.handleChat(session, req.getMessage(), token);
+            }
+        }
+
+        boolean completed = collector.await(POLL_WAIT_MS);
+        if (!completed) {
+            // 收集器保留：前端 3s 间隔继续轮询
+            return Result.ok(Map.of("partial", true, "sessionId", String.valueOf(session.getId())));
+        }
+        sseManager.removePollCollector(session.getId());
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("partial", false);
+        data.put("sessionId", String.valueOf(session.getId()));
+        data.put("reused", reused);
+        data.put("text", collector.text());
+        data.put("cards", collector.cards());
+        data.put("finishReason", collector.finishReason());
+        return Result.ok(data);
     }
 
     /** 主动结束会话（FR-12 评价推送时点之一；FR-13 回放快照固化时点之一） */

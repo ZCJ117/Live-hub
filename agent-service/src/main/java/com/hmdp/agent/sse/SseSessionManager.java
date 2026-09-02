@@ -29,6 +29,8 @@ public class SseSessionManager {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Map<Long, SseEmitter> emitters = new ConcurrentHashMap<>();
+    /** D2 降级轮询收集器（poll 模式无 SSE emitter，事件由收集器缓存供同步聚合返回） */
+    private final Map<Long, PollRoundCollector> pollCollectors = new ConcurrentHashMap<>();
     private final AgentProperties props;
     private final RedissonClient redisson;
 
@@ -55,19 +57,40 @@ public class SseSessionManager {
 
     /** 线程安全推送；失败不抛出（推送失败不阻断业务流程，仅清理连接） */
     public void send(Long sessionId, String event, Object data) {
+        boolean delivered = false;
+        PollRoundCollector collector = pollCollectors.get(sessionId);
+        if (collector != null) {
+            collector.accept(event, data);
+            delivered = true;
+        }
         SseEmitter emitter = emitters.get(sessionId);
-        if (emitter == null) {
-            return;
-        }
-        try {
-            emitter.send(SseEmitter.event().name(event).data(data));
-            if ("card".equals(event)) {
-                recordCard(sessionId, data); // 推送成功才入回放流水（与用户所见一致）
+        if (emitter != null) {
+            try {
+                emitter.send(SseEmitter.event().name(event).data(data));
+                delivered = true;
+            } catch (Exception e) {
+                log.warn("SSE 推送失败，清理连接: sessionId={}, event={}", sessionId, event);
+                emitters.remove(sessionId);
             }
-        } catch (Exception e) {
-            log.warn("SSE 推送失败，清理连接: sessionId={}, event={}", sessionId, event);
-            emitters.remove(sessionId);
         }
+        if (delivered && "card".equals(event)) {
+            recordCard(sessionId, data); // 推送/收集成功才入回放流水（与用户所见一致）
+        }
+    }
+
+    /** D2：注册降级轮询收集器（同会话新一轮覆盖旧收集器） */
+    public void registerPollCollector(Long sessionId, PollRoundCollector collector) {
+        pollCollectors.put(sessionId, collector);
+    }
+
+    /** D2：取在途轮次收集器（无则 null） */
+    public PollRoundCollector getPollCollector(Long sessionId) {
+        return pollCollectors.get(sessionId);
+    }
+
+    /** D2：本轮聚合结果返回后移除收集器 */
+    public void removePollCollector(Long sessionId) {
+        pollCollectors.remove(sessionId);
     }
 
     /** 卡片流水入 Redis（FR-13 回放；记录失败仅告警，不影响推送语义） */
