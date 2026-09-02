@@ -22,6 +22,9 @@ public class ChatRequest {
     @Valid
     private ContextPayload context;
 
+    /** FR-13「基于此会话继续咨询」：携带旧会话 ID 新建会话并继承摘要 */
+    private Long resumeSessionId;
+
     @Data
     public static class ContextPayload {
         private Long orderId;

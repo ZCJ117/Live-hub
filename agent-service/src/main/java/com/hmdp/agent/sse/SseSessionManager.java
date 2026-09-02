@@ -1,12 +1,17 @@
 package com.hmdp.agent.sse;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hmdp.agent.config.AgentProperties;
+import com.hmdp.agent.memory.ChatMemoryService;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RList;
+import org.redisson.api.RedissonClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -15,16 +20,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * - 会话 emitter 注册/移除
  * - 统一 safeSend（推送失败即断连清理，避免泄漏）
  * - 心跳（15s ping，防网关空闲断连）
+ * - card 事件流水记录（FR-13 回放快照，T5.3：集中拦截覆盖全部卡片发射点）
  */
 @Component
 @Slf4j
 public class SseSessionManager {
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private final Map<Long, SseEmitter> emitters = new ConcurrentHashMap<>();
     private final AgentProperties props;
+    private final RedissonClient redisson;
 
-    public SseSessionManager(AgentProperties props) {
+    public SseSessionManager(AgentProperties props, RedissonClient redisson) {
         this.props = props;
+        this.redisson = redisson;
     }
 
     public SseEmitter createEmitter(Long sessionId) {
@@ -51,9 +61,23 @@ public class SseSessionManager {
         }
         try {
             emitter.send(SseEmitter.event().name(event).data(data));
+            if ("card".equals(event)) {
+                recordCard(sessionId, data); // 推送成功才入回放流水（与用户所见一致）
+            }
         } catch (Exception e) {
             log.warn("SSE 推送失败，清理连接: sessionId={}, event={}", sessionId, event);
             emitters.remove(sessionId);
+        }
+    }
+
+    /** 卡片流水入 Redis（FR-13 回放；记录失败仅告警，不影响推送语义） */
+    private void recordCard(Long sessionId, Object data) {
+        try {
+            RList<String> list = redisson.getList(ChatMemoryService.cardsKey(sessionId));
+            list.add(MAPPER.writeValueAsString(data));
+            list.expire(Duration.ofMinutes(props.getSession().getMemoryTtlMinutes()));
+        } catch (Exception e) {
+            log.warn("卡片流水记录失败: sessionId={}", sessionId);
         }
     }
 

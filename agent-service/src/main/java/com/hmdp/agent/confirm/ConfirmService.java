@@ -6,6 +6,7 @@ import com.hmdp.agent.entity.AgentSession;
 import com.hmdp.agent.entity.AgentTask;
 import com.hmdp.agent.entity.AgentTicket;
 import com.hmdp.agent.feign.OrderFeignClient;
+import com.hmdp.agent.metrics.TrackEventService;
 import com.hmdp.agent.planner.FlowStateService;
 import com.hmdp.agent.service.AgentSessionService;
 import com.hmdp.agent.ticket.TicketPriorityRules;
@@ -36,13 +37,22 @@ public class ConfirmService {
     private final TicketService ticketService;
     private final FlowStateService flowStateService;
     private final TicketPriorityRules priorityRules;
+    private final TrackEventService trackEventService;
 
     /** 同步结果（ConfirmController 转 Result.ok/fail 输出） */
     public record ConfirmOutcome(boolean success, String message,
                                  String refundNo, String ticketNo, String expectedSla) {
     }
 
+    /** m5_refund_confirm 埋点（T5.5：通过/失败原因）统一出口，业务逻辑在 doConfirm */
     public ConfirmOutcome confirm(Long userId, Long sessionId, ConfirmRequest req) {
+        ConfirmOutcome o = doConfirm(userId, sessionId, req);
+        trackEventService.track("m5_refund_confirm", sessionId, userId,
+                Map.of("passed", o.success(), "reason", String.valueOf(o.message())));
+        return o;
+    }
+
+    private ConfirmOutcome doConfirm(Long userId, Long sessionId, ConfirmRequest req) {
         sessionService.getOwned(sessionId, userId); // 1. 会话归属（4.2 强绑定）
 
         // 2. actionId 查任务（userId 强制过滤 → 篡改/越权即拦截）

@@ -40,6 +40,16 @@ public class ChatMemoryService {
         return "agent:session:" + sessionId + ":focus";
     }
 
+    /** 卡片流水键（FR-13 回放快照：card 事件发出时由 SseSessionManager 写入） */
+    public static String cardsKey(Long sessionId) {
+        return "agent:session:" + sessionId + ":cards";
+    }
+
+    /** 记忆 TTL（分钟）——卡片流水等会话级键共用同一生命周期 */
+    public long ttlMinutes() {
+        return props.getSession().getMemoryTtlMinutes();
+    }
+
     private long ttlSeconds() {
         return props.getSession().getMemoryTtlMinutes() * 60L;
     }

@@ -11,6 +11,8 @@ import com.hmdp.agent.memory.ChatMemoryService;
 import com.hmdp.agent.metrics.TrackEventService;
 import com.hmdp.agent.planner.FlowStateService;
 import com.hmdp.agent.service.AgentSessionService;
+import com.hmdp.agent.service.RatingService;
+import com.hmdp.agent.snapshot.SessionSnapshotService;
 import com.hmdp.agent.sse.SseSessionManager;
 import com.hmdp.agent.ticket.TicketPriorityRules;
 import com.hmdp.agent.ticket.TicketService;
@@ -49,6 +51,7 @@ public class TransferService {
     private final RedissonClient redisson;
     private final AgentProperties props;
     private final TicketPriorityRules priorityRules;
+    private final SessionSnapshotService snapshotService;
 
     public record TransferOutcome(boolean success, String message,
                                   String ticketNo, String expectedSla) {
@@ -136,6 +139,15 @@ public class TransferService {
         } catch (Exception e) {
             log.warn("转人工确认话术推送失败（不影响建单）: sessionId={}", sessionId, e);
         }
+        // FR-12/FR-13/T5.5：转人工确认=本会话服务闭环 → 回放快照固化 + 评价卡片 + m5_session_end
+        snapshotService.saveSnapshot(session);
+        trackEventService.track("m5_session_end", sessionId, session.getUserId(), Map.of(
+                "closeReason", "TRANSFERRED",
+                "msgCount", session.getMsgCount() == null ? 0 : session.getMsgCount(),
+                "durationMinutes", session.getCreateTime() == null ? 0
+                        : Duration.between(session.getCreateTime(), LocalDateTime.now()).toMinutes(),
+                "resolved", false));
+        sseManager.send(sessionId, "card", RatingService.ratingCard(sessionId));
         return new TransferOutcome(true, msg, ticket.getTicketNo(), ticket.getExpectedSla());
     }
 

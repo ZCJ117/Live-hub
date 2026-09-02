@@ -7,6 +7,7 @@ import com.hmdp.agent.entity.AgentSession;
 import com.hmdp.agent.entity.AgentTask;
 import com.hmdp.agent.entity.AgentTicket;
 import com.hmdp.agent.feign.OrderFeignClient;
+import com.hmdp.agent.metrics.TrackEventService;
 import com.hmdp.agent.planner.FlowStateService;
 import com.hmdp.agent.service.AgentSessionService;
 import com.hmdp.agent.ticket.TicketPriorityRules;
@@ -42,10 +43,11 @@ class ConfirmServiceTest {
     @Mock private TicketService ticketService;
     @Mock private FlowStateService flowStateService;
     @Mock private TicketPriorityRules priorityRules;
+    @Mock private TrackEventService trackEventService;
 
     private ConfirmService service() {
         return new ConfirmService(sessionService, confirmTaskService, orderFeignClient,
-                ticketService, flowStateService, priorityRules);
+                ticketService, flowStateService, priorityRules, trackEventService);
     }
 
     private AgentSession session() {

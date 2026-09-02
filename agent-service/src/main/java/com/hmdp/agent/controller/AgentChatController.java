@@ -8,19 +8,26 @@ import com.hmdp.agent.entity.AgentSession;
 import com.hmdp.agent.memory.ChatMemoryService;
 import com.hmdp.agent.service.AgentSessionService;
 import com.hmdp.agent.service.ChatOrchestratorService;
+import com.hmdp.agent.snapshot.SessionSnapshotService;
 import com.hmdp.agent.sse.SseSessionManager;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
- * 客服会话接口（FR-01/FR-02）
+ * 客服会话接口（FR-01/FR-02）+ 客服记录（FR-13）
  * SSE 全链路基于异步 Servlet：请求线程只注册 emitter 与提交异步任务（PRD 4.1）
  */
 @RestController
@@ -32,15 +39,18 @@ public class AgentChatController {
     private final ChatOrchestratorService orchestrator;
     private final SseSessionManager sseManager;
     private final ChatMemoryService memoryService;
+    private final SessionSnapshotService snapshotService;
 
     public AgentChatController(AgentSessionService sessionService,
                                ChatOrchestratorService orchestrator,
                                SseSessionManager sseManager,
-                               ChatMemoryService memoryService) {
+                               ChatMemoryService memoryService,
+                               SessionSnapshotService snapshotService) {
         this.sessionService = sessionService;
         this.orchestrator = orchestrator;
         this.sseManager = sseManager;
         this.memoryService = memoryService;
+        this.snapshotService = snapshotService;
     }
 
     /**
@@ -86,7 +96,7 @@ public class AgentChatController {
         return emitter;
     }
 
-    /** 主动结束会话（FR-12 评价推送时点之一，评价功能 Phase 5） */
+    /** 主动结束会话（FR-12 评价推送时点之一；FR-13 回放快照固化时点之一） */
     @PostMapping("/close")
     public Result close(@RequestBody ChatRequest req) {
         UserDTO user = UserHolder.getUser();
@@ -99,6 +109,48 @@ public class AgentChatController {
         sessionService.getOwned(req.getSessionId(), user.getId());
         sessionService.close(req.getSessionId(), "USER");
         return Result.ok(SessionInfoDTO.of(req.getSessionId(), "CLOSED", true));
+    }
+
+    /** FR-13：客服记录列表（最近 30 天会话，含状态与评价标记） */
+    @GetMapping("/history")
+    public Result history() {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("未登录，请先登录");
+        }
+        List<Map<String, Object>> items = sessionService.listRecent(user.getId(), 30).stream()
+                .map(s -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("sessionId", s.getId());
+                    m.put("status", s.getStatus());
+                    m.put("rating", s.getRating());
+                    m.put("ratingTags", s.getRatingTags());
+                    m.put("summary", s.getSummary());
+                    m.put("transferReason", s.getTransferReason());
+                    m.put("msgCount", s.getMsgCount());
+                    m.put("createTime", s.getCreateTime());
+                    return m;
+                }).toList();
+        return Result.ok(Map.of("sessions", items, "windowDays", 30));
+    }
+
+    /** FR-13：会话回放（静态快照：文本+卡片，工具过程不回放；不可继续对话） */
+    @GetMapping("/history/{sessionId}")
+    public Result replay(@PathVariable Long sessionId) {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("未登录，请先登录");
+        }
+        AgentSession session = sessionService.getOwned(sessionId, user.getId());
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("sessionId", sessionId);
+        data.put("status", session.getStatus());
+        data.put("summary", session.getSummary());
+        data.put("rating", session.getRating());
+        data.put("ratingTags", session.getRatingTags());
+        data.put("snapshot", snapshotService.loadSnapshot(sessionId)); // null=无快照（如 90 天前归档前未生成）
+        data.put("resumeSessionId", sessionId); // 「基于此会话继续咨询」按钮携带值
+        return Result.ok(data);
     }
 
     /** 判断是否复用了既有 ACTIVE 会话（FR-01 边界 3） */

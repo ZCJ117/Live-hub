@@ -8,6 +8,7 @@ import com.hmdp.agent.exception.BusinessException;
 import com.hmdp.agent.mapper.AgentSessionMapper;
 import com.hmdp.agent.memory.ChatMemoryService;
 import com.hmdp.agent.metrics.TrackEventService;
+import com.hmdp.agent.snapshot.SessionSnapshotService;
 import com.hmdp.agent.sse.SseSessionManager;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.UserDTO;
@@ -21,11 +22,12 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 /**
  * 会话生命周期管理（FR-01）
- * 创建/复用/关闭 + 日会话数频控 + 空闲自动关闭调度
+ * 创建/复用/关闭 + 日会话数频控 + 空闲自动关闭调度 + 90 天归档（FR-13 T5.3）
  */
 @Service
 @Slf4j
@@ -37,21 +39,26 @@ public class AgentSessionService extends ServiceImpl<AgentSessionMapper, AgentSe
     private final ChatMemoryService memoryService;
     private final SseSessionManager sseSessionManager;
     private final TrackEventService trackEventService;
+    private final SessionSnapshotService snapshotService;
 
     /**
      * 创建或复用会话
+     * - 显式携带 resumeSessionId → 跳过复用新建会话并携带旧摘要（FR-13「基于此会话继续咨询」）
      * - 同用户已有 ACTIVE 会话 → 自动复用（FR-01 边界 3：复用未过期会话）
      * - 日会话数超限 → 拒绝（FR-11：单用户日会话数上限 20）
      */
     public AgentSession createOrReuse(UserDTO user, ChatRequest req) {
+        AgentSession resumed = req.getResumeSessionId() == null ? null
+                : getOwned(req.getResumeSessionId(), user.getId());
+
         // 日会话频控（新会话才计数）
         String dailyKey = "agent:user:daily:" + user.getId() + ":" + LocalDate.now();
 
-        AgentSession existing = getOne(Wrappers.<AgentSession>lambdaQuery()
+        AgentSession existing = resumed == null ? getOne(Wrappers.<AgentSession>lambdaQuery()
                 .eq(AgentSession::getUserId, user.getId())
                 .eq(AgentSession::getStatus, "ACTIVE")
                 .orderByDesc(AgentSession::getCreateTime)
-                .last("LIMIT 1"));
+                .last("LIMIT 1")) : null;
         if (existing != null) {
             // 复用未过期会话，不重复计数
             touch(existing);
@@ -70,15 +77,19 @@ public class AgentSessionService extends ServiceImpl<AgentSessionMapper, AgentSe
                 .setModule("M5")
                 .setStatus("ACTIVE")
                 .setEntry(entryOf(req))
-                .setContextJson(toJson(req.getContext()))
+                .setContextJson(resumed == null ? toJson(req.getContext())
+                        : "{\"resumedFrom\":" + resumed.getId() + "}")
+                .setSummary(resumed == null ? null : resumed.getSummary())
                 .setFlowState("IDLE")
                 .setMsgCount(0)
                 .setTokenCost(java.math.BigDecimal.ZERO);
         save(session);
 
         // m5_session_start 埋点（服务端直写，D1.8）
-        trackEventService.track("m5_session_start", session.getId(), user.getId(),
-                Map.of("entry", session.getEntry()));
+        Map<String, Object> startProps = resumed == null
+                ? Map.of("entry", session.getEntry())
+                : Map.of("entry", session.getEntry(), "resumedFrom", resumed.getId());
+        trackEventService.track("m5_session_start", session.getId(), user.getId(), startProps);
         return session;
     }
 
@@ -89,6 +100,14 @@ public class AgentSessionService extends ServiceImpl<AgentSessionMapper, AgentSe
             throw new BusinessException("会话不存在或无权访问");
         }
         return session;
+    }
+
+    /** FR-13：近 N 天会话列表（「我的 → 客服记录」，含状态与评价标记） */
+    public List<AgentSession> listRecent(Long userId, int days) {
+        return list(Wrappers.<AgentSession>lambdaQuery()
+                .eq(AgentSession::getUserId, userId)
+                .ge(AgentSession::getCreateTime, LocalDateTime.now().minusDays(days))
+                .orderByDesc(AgentSession::getCreateTime));
     }
 
     /** 消息计数（单会话上限 100，FR-11） */
@@ -105,12 +124,52 @@ public class AgentSessionService extends ServiceImpl<AgentSessionMapper, AgentSe
         if (session == null || !"ACTIVE".equals(session.getStatus())) {
             return;
         }
+        boolean userClosed = "USER".equals(reason);
         session.setStatus("CLOSED").setCloseReason(reason);
         updateById(session);
-        memoryService.evict(sessionId);
+        snapshotService.saveSnapshot(session); // FR-13：先固化回放快照再清理 Redis
+        // m5_session_end（T5.5）：resolved 口径——用户主动关闭=推断解决；超时关闭=未确认解决
+        trackEventService.track("m5_session_end", sessionId, session.getUserId(), Map.of(
+                "closeReason", reason,
+                "msgCount", session.getMsgCount() == null ? 0 : session.getMsgCount(),
+                "durationMinutes", session.getCreateTime() == null ? 0
+                        : Duration.between(session.getCreateTime(), LocalDateTime.now()).toMinutes(),
+                "resolved", userClosed));
+        // FR-12：会话结束推送评价卡片（一次性推送；无提醒调度，忽略即不再提醒）
+        sseSessionManager.send(sessionId, "card", RatingService.ratingCard(sessionId));
         sseSessionManager.send(sessionId, "done",
                 Map.of("finishReason", "SESSION_CLOSED"));
+        memoryService.evict(sessionId);
+        snapshotService.evictCards(sessionId);
         sseSessionManager.complete(sessionId);
+    }
+
+    /** FR-12：评价落库（每会话仅一次——rating is null 条件更新，重复评价返回 false） */
+    public boolean rate(Long sessionId, Long userId, int score, String tagsJson) {
+        return lambdaUpdate()
+                .eq(AgentSession::getId, sessionId)
+                .eq(AgentSession::getUserId, userId)
+                .isNull(AgentSession::getRating)
+                .set(AgentSession::getRating, score)
+                .set(AgentSession::getRatingTags, tagsJson)
+                .update();
+    }
+
+    /** FR-13：90 天归档（T5.3）——CLOSED/TRANSFERRED 且 90 天未更新 → ARCHIVED（数据保留在库，物理归档不在本阶段范围） */
+    public boolean archiveExpiredSessions() {
+        return lambdaUpdate()
+                .in(AgentSession::getStatus, List.of("CLOSED", "TRANSFERRED"))
+                .lt(AgentSession::getUpdateTime, LocalDateTime.now().minusDays(90))
+                .set(AgentSession::getStatus, "ARCHIVED")
+                .update();
+    }
+
+    /** 每日归档调度（幂等，启动即执行一次） */
+    @Scheduled(fixedRate = 86400000)
+    public void archiveDaily() {
+        if (archiveExpiredSessions()) {
+            log.info("90 天会话归档完成");
+        }
     }
 
     /** 触发转人工状态锁（CAS：仅 ACTIVE→TRANSFERRED，防并发双触发；@return 是否本次胜出） */

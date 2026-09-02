@@ -7,6 +7,7 @@ import com.hmdp.agent.memory.ChatMemoryService;
 import com.hmdp.agent.metrics.TrackEventService;
 import com.hmdp.agent.planner.FlowStateService;
 import com.hmdp.agent.service.AgentSessionService;
+import com.hmdp.agent.snapshot.SessionSnapshotService;
 import com.hmdp.agent.sse.SseSessionManager;
 import com.hmdp.agent.ticket.TicketPriorityRules;
 import com.hmdp.agent.ticket.TicketService;
@@ -45,6 +46,7 @@ class TransferServiceTest {
     @Mock private SseSessionManager sseManager;
     @Mock private RedissonClient redisson;
     @Mock private RBucket<String> bucket;
+    @Mock private SessionSnapshotService snapshotService;
 
     private TransferService service() {
         return service(new AgentProperties());
@@ -53,7 +55,7 @@ class TransferServiceTest {
     private TransferService service(AgentProperties props) {
         return new TransferService(sessionService, flowStateService, memoryService,
                 toolCallMapper, ticketService, trackEventService, sseManager, redisson,
-                props, new TicketPriorityRules(props));
+                props, new TicketPriorityRules(props), snapshotService);
     }
 
     private AgentSession active() {
