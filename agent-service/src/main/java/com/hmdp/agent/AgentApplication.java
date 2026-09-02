@@ -2,6 +2,7 @@ package com.hmdp.agent;
 
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -11,6 +12,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * PRD：PRD-智能客服工单Agent.md v1.0
  */
 @SpringBootApplication
+@Import(com.hmdp.config.RedissonConfig.class)
 @EnableFeignClients(basePackages = "com.hmdp.agent.feign")
 @EnableScheduling
 @MapperScan("com.hmdp.agent.mapper")

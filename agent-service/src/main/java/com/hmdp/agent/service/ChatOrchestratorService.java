@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hmdp.agent.audit.ToolCallAuditService;
 import com.hmdp.agent.config.AgentProperties;
 import com.hmdp.agent.config.AgentTokenHolder;
+import com.hmdp.agent.config.GlmProperties;
 import com.hmdp.agent.entity.AgentSession;
 import com.hmdp.agent.feign.RagFeignClient;
 import com.hmdp.agent.flow.ComplaintFlowService;
@@ -52,6 +53,7 @@ public class ChatOrchestratorService {
     private final TrackEventService trackEventService;
     private final GlmClient glmClient;
     private final AgentProperties props;
+    private final GlmProperties glmProps;
     private final PlannerService plannerService;
     private final Executor sseExecutor;
     private final InjectionDetector injectionDetector;
@@ -70,6 +72,7 @@ public class ChatOrchestratorService {
                                    TrackEventService trackEventService,
                                    GlmClient glmClient,
                                    AgentProperties props,
+                                   GlmProperties glmProps,
                                    PlannerService plannerService,
                                    InjectionDetector injectionDetector,
                                    SensitiveWordService sensitiveWordService,
@@ -87,6 +90,7 @@ public class ChatOrchestratorService {
         this.trackEventService = trackEventService;
         this.glmClient = glmClient;
         this.props = props;
+        this.glmProps = glmProps;
         this.plannerService = plannerService;
         this.injectionDetector = injectionDetector;
         this.sensitiveWordService = sensitiveWordService;
@@ -427,7 +431,7 @@ public class ChatOrchestratorService {
                         + (session.getSummary() == null ? "" : "已有摘要（请合并）：" + session.getSummary() + "\n\n")
                         + "对话历史：\n" + raw;
                 LlmTypes.Response r = glmClient.complete(LlmTypes.Request.builder()
-                        .model("glm-4-flash")
+                        .model(glmProps.getLightModel())
                         .messages(List.of(LlmTypes.Message.user(prompt)))
                         .temperature(0.2)
                         .build());
