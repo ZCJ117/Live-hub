@@ -128,6 +128,25 @@ public class TicketService extends ServiceImpl<AgentTicketMapper, AgentTicket> {
      */
     public AgentTicket transition(Long userId, String ticketNo, String targetStatus, String handleResult) {
         AgentTicket ticket = getByTicketNo(userId, ticketNo);
+        return doTransition(ticket, targetStatus, handleResult);
+    }
+
+    /**
+     * D9 工作台：坐席侧状态流转（与用户侧同一状态机，非法跳转同样 100% 拦截；
+     * 不校验工单归属——坐席处理全组工单，PRD 未定义坐席角色体系，演示级）
+     */
+    public AgentTicket transitionBySeat(String ticketNo, String targetStatus, String handleResult) {
+        java.util.List<AgentTicket> found = list(Wrappers.<AgentTicket>lambdaQuery()
+                .eq(AgentTicket::getTicketNo, ticketNo)
+                .last("LIMIT 1"));
+        if (found.isEmpty()) {
+            throw new BusinessException("工单不存在");
+        }
+        return doTransition(found.get(0), targetStatus, handleResult);
+    }
+
+    /** 状态机核心（用户侧/坐席侧共用） */
+    private AgentTicket doTransition(AgentTicket ticket, String targetStatus, String handleResult) {
         String allowed = TRANSITIONS.get(ticket.getStatus());
         if (!ticket.getStatus().equals(targetStatus) && !targetStatus.equals(allowed)) {
             throw new BusinessException("非法的状态流转: " + ticket.getStatus() + " → " + targetStatus);
@@ -139,6 +158,19 @@ public class TicketService extends ServiceImpl<AgentTicketMapper, AgentTicket> {
         }
         updateById(ticket);
         return ticket;
+    }
+
+    /** D9 工作台：坐席侧工单查询（组过滤 + priority HIGH>MEDIUM>LOW 排序，同级按创建时间倒序） */
+    public java.util.List<AgentTicket> listForConsole(String group, String priority, String status) {
+        java.util.List<AgentTicket> tickets = list(Wrappers.<AgentTicket>lambdaQuery()
+                .eq(group != null && !group.isBlank(), AgentTicket::getAssigneeGroup, group)
+                .eq(priority != null && !priority.isBlank(), AgentTicket::getPriority, priority)
+                .eq(status != null && !status.isBlank(), AgentTicket::getStatus, status));
+        Map<String, Integer> rank = Map.of("HIGH", 0, "MEDIUM", 1, "LOW", 2);
+        tickets.sort(java.util.Comparator
+                .comparingInt((AgentTicket t) -> rank.getOrDefault(t.getPriority(), 3))
+                .thenComparing(t -> t.getCreateTime(), java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+        return tickets;
     }
 
     /** priority 默认规则（FR-09：涉资金=高，普通=中，建议=低） */

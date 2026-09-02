@@ -108,6 +108,21 @@ class TransferServiceTest {
     }
 
     @Test
+    void 坐席在线_确认进入接管模式_不建单() {
+        AgentProperties props = new AgentProperties();
+        props.getTransfer().setSeatOnline(true);
+        AgentSession s = active().setStatus("TRANSFERRED").setTransferReason("HUMAN_DEMAND");
+        when(sessionService.getOwned(1L, 100L)).thenReturn(s);
+
+        TransferService.TransferOutcome o = service(props).confirmTransfer(100L, 1L);
+
+        assertTrue(o.success());
+        assertTrue(o.message().contains("人工坐席"));
+        verify(ticketService, never()).create(any(), any(), any());
+        verify(redisson, never()).getBucket(anyString());
+    }
+
+    @Test
     void 等待期消息_追加user与ack_原TTL写回() {
         when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
         when(bucket.get()).thenReturn("{\"sessionId\":1,\"history\":[{\"role\":\"user\",\"content\":\"退款\"}]}");

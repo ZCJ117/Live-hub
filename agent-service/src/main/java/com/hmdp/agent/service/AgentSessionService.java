@@ -110,6 +110,13 @@ public class AgentSessionService extends ServiceImpl<AgentSessionMapper, AgentSe
                 .orderByDesc(AgentSession::getCreateTime));
     }
 
+    /** D9 工作台：转人工会话队列（TRANSFERRED 且移交包在 Redis 的会话，FR-14 流程 D 接管面板） */
+    public List<AgentSession> listTransferQueue() {
+        return list(Wrappers.<AgentSession>lambdaQuery()
+                .eq(AgentSession::getStatus, "TRANSFERRED")
+                .likeRight(AgentSession::getSnapshotUri, "redis://agent:transfer:"));
+    }
+
     /** 消息计数（单会话上限 100，FR-11） */
     public void checkAndIncrMsg(AgentSession session) {
         if (session.getMsgCount() >= props.getSession().getMaxMsgCount()) {

@@ -96,8 +96,14 @@ public class TransferService {
             return new TransferOutcome(false, "会话未处于转人工状态", null, null);
         }
         if (props.getTransfer().isSeatOnline()) {
-            // P2 工作台接入后的人工接管路径（本阶段不可达，占位保证协议完整）
-            return new TransferOutcome(true, "已接入人工坐席，请稍候", null, null);
+            // D9（FR-14 流程 D）：有坐席 → 进入接管模式，人工经工作台回复（同一 SSE 通道，role=human）
+            String takeoverMsg = "已为您接入人工坐席，坐席正在处理，请稍候。您可继续留言，消息将同步给人工客服。";
+            try {
+                sseManager.send(sessionId, "delta", Map.of("text", takeoverMsg));
+            } catch (Exception e) {
+                log.warn("接管话术推送失败（不影响接管）: sessionId={}", sessionId, e);
+            }
+            return new TransferOutcome(true, takeoverMsg, null, null);
         }
         // 一次性守卫（防双击/并发重复建单 + dedup 漂移）：CAS 占位 PENDING → 建单成功回填工单号，失败删标记允许重试
         RBucket<String> flag = redisson.getBucket("agent:session:" + sessionId + ":transferConfirmed");
