@@ -38,9 +38,17 @@ public class AgentTokenBucketLimiter {
 
     /** @return true=放行 */
     public boolean tryAcquire(String key) {
-        Long result = redisTemplate.execute(SCRIPT, List.of(key),
-                String.valueOf(capacity), String.valueOf(refillPerSec),
-                String.valueOf(System.currentTimeMillis() / 1000));
+        Long result;
+        try {
+            result = redisTemplate.execute(SCRIPT, List.of(key),
+                    String.valueOf(capacity), String.valueOf(refillPerSec),
+                    String.valueOf(System.currentTimeMillis() / 1000));
+        } catch (Exception e) {
+            // Redis 抖动时限流放行（与 Sentinel fail-open 同姿态）：客服通道可用性优先，
+            // 短暂失去限流精度好过整条 /agent/** 500
+            log.warn("agent 路由限流器 Redis 异常，fail-open 放行: key={}", key, e);
+            return true;
+        }
         boolean allowed = result != null && result == 1L;
         if (!allowed) {
             log.debug("agent 路由限流触发: key={}", key);
