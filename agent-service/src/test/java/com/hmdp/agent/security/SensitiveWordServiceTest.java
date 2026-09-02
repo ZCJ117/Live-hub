@@ -1,5 +1,6 @@
 package com.hmdp.agent.security;
 
+import org.springframework.mock.env.MockEnvironment;
 import com.hmdp.agent.config.AgentProperties;
 import org.junit.jupiter.api.Test;
 
@@ -13,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SensitiveWordServiceTest {
 
     private SensitiveWordService service(AgentProperties props) {
-        SensitiveWordService s = new SensitiveWordService(props);
+        SensitiveWordService s = new SensitiveWordService(props, new MockEnvironment());
         s.rebuild();
         return s;
     }

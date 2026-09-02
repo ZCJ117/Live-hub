@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.context.environment.EnvironmentChangeEvent;
 import org.springframework.context.ApplicationListener;
+import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.stereotype.Component;
 
 import java.util.Comparator;
@@ -23,6 +24,7 @@ import java.util.regex.Pattern;
 public class SensitiveWordService implements ApplicationListener<EnvironmentChangeEvent> {
 
     private final AgentProperties props;
+    private final ConfigurableEnvironment environment;
 
     private volatile List<Pattern> patterns = List.of();
     private volatile int maxWordLength = 0;
@@ -55,11 +57,18 @@ public class SensitiveWordService implements ApplicationListener<EnvironmentChan
         rebuild();
     }
 
-    /** 启动时构建 */
+    /** 启动时构建；热更新时直接从 Environment 重新绑定（T14 联调修复：监听器与
+     *  ConfigurationPropertiesRebinder 对同一事件无序，读 props 可能拿到 rebind 前的旧值，
+     *  而 Nacos 属性源更新先于事件发布，故 Environment 绑定在任意监听顺序下都读到新值） */
     @jakarta.annotation.PostConstruct
     void rebuild() {
-        List<String> words = props.getSecurity().getSensitiveWords() == null
-                ? List.<String>of() : props.getSecurity().getSensitiveWords();
+        AgentProperties.Security security = org.springframework.boot.context.properties.bind.Binder
+                .get(environment)
+                .bind("agent.security", org.springframework.boot.context.properties.bind.Bindable
+                        .of(AgentProperties.Security.class))
+                .orElseGet(props::getSecurity);
+        List<String> words = security.getSensitiveWords() == null
+                ? List.<String>of() : security.getSensitiveWords();
         this.patterns = words.stream()
                 .filter(w -> w != null && !w.isBlank())
                 .map(w -> Pattern.compile(Pattern.quote(w.trim())))

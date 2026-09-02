@@ -1,5 +1,6 @@
 package com.hmdp.agent.service;
 
+import org.springframework.mock.env.MockEnvironment;
 import com.hmdp.agent.config.AgentProperties;
 import com.hmdp.agent.entity.AgentSession;
 import com.hmdp.agent.flow.RefundFlowService;
@@ -60,7 +61,7 @@ class ChatOrchestratorDispatchTest {
                 sseManager, track, glmClient, props,
                 new com.hmdp.agent.config.GlmProperties(), planner,
                 new com.hmdp.agent.security.InjectionDetector(),
-                new com.hmdp.agent.security.SensitiveWordService(props),
+                new com.hmdp.agent.security.SensitiveWordService(props, new org.springframework.mock.env.MockEnvironment()),
                 new com.hmdp.agent.security.EmotionDetector(props),
                 mock(com.hmdp.agent.audit.ToolCallAuditService.class),
                 refundFlowService,

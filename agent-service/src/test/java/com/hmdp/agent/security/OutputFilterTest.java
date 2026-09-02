@@ -1,5 +1,6 @@
 package com.hmdp.agent.security;
 
+import org.springframework.mock.env.MockEnvironment;
 import com.hmdp.agent.config.AgentProperties;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +21,7 @@ class OutputFilterTest {
     }
 
     private SensitiveWordService sw() {
-        SensitiveWordService s = new SensitiveWordService(props());
+        SensitiveWordService s = new SensitiveWordService(props(), new MockEnvironment());
         s.rebuild();
         return s;
     }
@@ -74,7 +75,7 @@ class OutputFilterTest {
         AgentProperties p = new AgentProperties();
         p.getSecurity().setSensitiveWords(List.of("一个超长敏感词汇测试"));
         p.getSecurity().setOutputFilterTailHold(4);
-        SensitiveWordService s = new SensitiveWordService(p);
+        SensitiveWordService s = new SensitiveWordService(p, new MockEnvironment());
         s.rebuild();
         OutputFilter f = new OutputFilter(s, p);
         StringBuilder out = new StringBuilder();
@@ -89,7 +90,7 @@ class OutputFilterTest {
         AgentProperties p = new AgentProperties();
         p.getSecurity().setSensitiveWords(List.of());
         p.getSecurity().setOutputFilterTailHold(1);
-        SensitiveWordService s = new SensitiveWordService(p);
+        SensitiveWordService s = new SensitiveWordService(p, new MockEnvironment());
         s.rebuild();
         OutputFilter f = new OutputFilter(s, p);
         StringBuilder out = new StringBuilder();

@@ -39,7 +39,7 @@ class ReActEngineTest {
     private final GlmProperties glmProps = new GlmProperties();
     private final ReActEngine engine = new ReActEngine(glmClient, toolRegistry, toolExecutor, props, glmProps, track,
             new com.hmdp.agent.security.OutputFilter(
-                    new com.hmdp.agent.security.SensitiveWordService(props), props));
+                    new com.hmdp.agent.security.SensitiveWordService(props, new org.springframework.mock.env.MockEnvironment()), props));
 
     private final ToolContext ctx = ToolContext.builder().sessionId(1L).userId(10L).build();
 
@@ -171,7 +171,7 @@ class ReActEngineTest {
     private ReActEngine guardEngine() throws Exception {
         AgentProperties p = new AgentProperties();
         p.getSecurity().setSensitiveWords(List.of("违禁词"));
-        com.hmdp.agent.security.SensitiveWordService sw = new com.hmdp.agent.security.SensitiveWordService(p);
+        com.hmdp.agent.security.SensitiveWordService sw = new com.hmdp.agent.security.SensitiveWordService(p, new org.springframework.mock.env.MockEnvironment());
         // rebuild() 为包私有，跨包测试用反射触发启动构建
         java.lang.reflect.Method rebuild = com.hmdp.agent.security.SensitiveWordService.class.getDeclaredMethod("rebuild");
         rebuild.setAccessible(true);
