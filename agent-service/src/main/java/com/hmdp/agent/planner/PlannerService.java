@@ -61,9 +61,10 @@ public class PlannerService {
                     "intent", result.intent().name(), "confidence", result.confidence(),
                     "clarifyRound", round, "isFallbackMenu", isMenu));
             if (isMenu) {
-                // T4.8：澄清 2 轮超限 → 转人工（替换 Phase 3 CLARIFY_MENU 降级；解析 3 败菜单保留）
+                // FR-03 边界（D4，A3 评审确认）：澄清 2 轮超限 → 第 3 轮降级菜单（options 已含"转人工"按钮；
+                // 用户菜单后继续模糊表达由既有 HUMAN_DEMAND/情绪检测链路兜底）
                 flowStateService.resetClarify(sessionId);
-                return PlanDecision.transfer(result.intent(), result.confidence(), outcome);
+                return PlanDecision.menu(result.intent(), result.confidence(), outcome);
             }
             return new PlanDecision(PlanDecision.PlanType.CLARIFY, result.intent(), result.confidence(),
                     List.of(), clarifyText(result.intent()), null,

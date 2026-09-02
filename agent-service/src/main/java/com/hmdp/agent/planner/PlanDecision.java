@@ -24,7 +24,7 @@ public record PlanDecision(PlanType type, Intent intent, double confidence,
         COMPLAINT,
         /** 转人工桩（Phase 4 实装 FR-10） */
         HUMAN_DEMAND,
-        /** 转人工（澄清超限，T4.8：替换 Phase 3 的 CLARIFY_MENU 降级；解析 3 败菜单保留） */
+        /** 转人工（预留：澄清超限已按 FR-03 改为 FALLBACK_MENU，D4） */
         TRANSFER
     }
 

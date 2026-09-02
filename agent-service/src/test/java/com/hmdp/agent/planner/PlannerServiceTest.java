@@ -86,12 +86,12 @@ class PlannerServiceTest {
     }
 
     @Test
-    void third_clarify_round_triggers_transfer() {   // 原 third_clarify_round_degrades_to_menu（T4.8 澄清超限→转人工）
+    void third_clarify_round_degrades_to_menu() {   // FR-03 边界（D4）：第 3 轮降级菜单（含"转人工"按钮）
         when(classifier.classify(any(), any(), any(), any()))
                 .thenReturn(outcome(Intent.CHAT, 0.3, List.of()));
         when(flowState.incrClarify(1L)).thenReturn(3);
         PlanDecision d = planner.plan(session("IDLE"), "听不懂", List.of());
-        assertEquals(PlanDecision.PlanType.TRANSFER, d.type());
+        assertEquals(PlanDecision.PlanType.FALLBACK_MENU, d.type());
         verify(flowState).resetClarify(1L);
         verify(track).track(eq("m5_intent"), any(), any(),
                 argThat(p -> Boolean.TRUE.equals(p.get("isFallbackMenu"))));

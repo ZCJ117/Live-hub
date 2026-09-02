@@ -364,7 +364,7 @@ public class ChatOrchestratorService {
                 return new ReActEngine.ReactResult("TRANSFERRED", false, "TRANSFERRED", 0, 0, 0);
             }
             case TRANSFER -> {
-                // T4.8：澄清 2 轮超限触发转人工；done 由主流程统一发送
+                // 预留分支（D4：澄清超限已按 FR-03 改降级菜单）；done 由主流程统一发送
                 transferService.trigger(session, "CLARIFY_EXCEED");
                 finishAfterTransfer(session, onDelta,
                         "多次未能确认您的需求，已为您转接人工客服。");
