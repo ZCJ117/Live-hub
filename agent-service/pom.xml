@@ -104,10 +104,13 @@
             <version>${sa-token.version}</version>
         </dependency>
 
-        <!-- RocketMQ（T4.7 工单路由通知） -->
+        <!-- RocketMQ（T4.7 工单路由通知）。显式 2.3.0：2.2.3 的 RocketMQAutoConfiguration
+             在 Boot 3.1 下不生效（RocketMQTemplate 缺失致启动失败）；agent 仅用 producer，
+             不受 2.3.x 监听容器与 client 4.9.4 错位影响（T14 联调实证） -->
         <dependency>
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-spring-boot-starter</artifactId>
+            <version>2.3.0</version>
         </dependency>
 
         <!-- Sentinel Core（T4.14 工具层熔断，编程式规则，无 Dashboard） -->

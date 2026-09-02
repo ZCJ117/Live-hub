@@ -51,10 +51,30 @@
             <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
         </dependency>
 
-        <!-- RocketMQ（FR-09 工单通知消费，附录 B 站内信通道） -->
+        <!-- RocketMQ（FR-09 工单通知消费，附录 B 站内信通道）。T14 联调：Boot 3.1 下 2.2.3 的
+             RocketMQAutoConfiguration 不激活（监听容器后置处理器不注册 → 消费者静默死亡），
+             2.3.1 监听容器按 client 5.x 编译而其 pom 误钉 client 4.9.4 →
+             显式升 client 5.3.1（setNamespaceV2 需 5.2+）并排除 acl（其传递的 common 4.9.4
+             与 client 5.x 类布局冲突）；与 order-service 配方一致 -->
         <dependency>
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-spring-boot-starter</artifactId>
+            <version>2.3.1</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.rocketmq</groupId>
+                    <artifactId>rocketmq-acl</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.rocketmq</groupId>
+                    <artifactId>rocketmq-client</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client</artifactId>
+            <version>5.3.1</version>
         </dependency>
 
         <!-- OpenFeign -->

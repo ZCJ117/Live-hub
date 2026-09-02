@@ -117,10 +117,29 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
-        <!-- RocketMQ -->
+        <!-- RocketMQ（T14 联调：Boot 3.1 下 2.2.3 的 RocketMQAutoConfiguration 不生效致 RocketMQTemplate
+             缺失；2.3.x 修复装配但监听容器按 client 5.x 编译而其 pom 误钉 client 4.9.4 →
+             显式升 client 5.3.1（setNamespaceV2 需 5.2+）并排除 acl（其传递的 common 4.9.4 与
+             client 5.x 类布局冲突）；实证 2.3.1 + client 5.3.1 可启动且监听容器正常 -->
         <dependency>
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-spring-boot-starter</artifactId>
+            <version>2.3.1</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.rocketmq</groupId>
+                    <artifactId>rocketmq-acl</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.rocketmq</groupId>
+                    <artifactId>rocketmq-client</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client</artifactId>
+            <version>5.3.1</version>
         </dependency>
 
 
