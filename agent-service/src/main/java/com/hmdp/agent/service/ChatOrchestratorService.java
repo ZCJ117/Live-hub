@@ -222,6 +222,8 @@ public class ChatOrchestratorService {
         //  落位于 onDelta 定义之后、Planner 之前——核心约束是"不进 LLM/不跑 Planner"，语义等价）
         if ("TRANSFERRED".equals(session.getStatus())) {
             String ack = "您的消息已记录，将随工单一并转交人工客服。";
+            // D6（FR-10 边界）：等待期消息追加进移交包随工单带给人工（尽力而为，失败仅 warn 不阻断 ack）
+            transferService.appendLateMessage(session, message);
             memoryService.append(sessionId, "assistant", ack);
             onDelta.accept(ack);
             sseManager.send(sessionId, "done", Map.of("roundNo", session.getMsgCount(),

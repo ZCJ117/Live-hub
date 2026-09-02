@@ -108,6 +108,41 @@ class TransferServiceTest {
     }
 
     @Test
+    void 等待期消息_追加user与ack_原TTL写回() {
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        when(bucket.get()).thenReturn("{\"sessionId\":1,\"history\":[{\"role\":\"user\",\"content\":\"退款\"}]}");
+        when(bucket.remainTimeToLive()).thenReturn(3600000L);
+
+        service().appendLateMessage(active().setStatus("TRANSFERRED"), "还没解决，人工什么时候在");
+
+        verify(bucket).set(
+                argThat(json -> json.contains("还没解决，人工什么时候在")
+                        && json.contains("您的消息已记录，将随工单一并转交人工客服。")
+                        && json.contains("\"role\":\"user\"")),
+                eq(java.time.Duration.ofMillis(3600000L)));
+    }
+
+    @Test
+    void 等待期消息_移交包不存在_跳过不重建() {
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        when(bucket.get()).thenReturn(null);
+
+        service().appendLateMessage(active(), "还在吗");
+
+        verify(bucket, never()).set(anyString(), any(java.time.Duration.class));
+    }
+
+    @Test
+    void 等待期消息_history非数组_跳过不破坏原包() {
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+        when(bucket.get()).thenReturn("{\"sessionId\":1,\"history\":\"{\\\"role\\\":\\\"user\\\"}\"}");
+
+        service().appendLateMessage(active(), "还在吗");
+
+        verify(bucket, never()).set(anyString(), any(java.time.Duration.class));
+    }
+
+    @Test
     void 无人值守确认_建单_返回工单号与SLA() {
         AgentSession s = active().setStatus("TRANSFERRED").setTransferReason("HUMAN_DEMAND")
                 .setSummary("用户申请转人工：订单退款问题");

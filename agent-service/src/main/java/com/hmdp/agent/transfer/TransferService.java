@@ -1,7 +1,10 @@
 package com.hmdp.agent.transfer;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.hmdp.agent.config.AgentProperties;
 import com.hmdp.agent.dto.TicketRequest;
 import com.hmdp.agent.entity.AgentSession;
@@ -196,6 +199,41 @@ public class TransferService {
         }
         sessionService.updateSnapshotUri(sessionId, "redis://" + key);
         return key;
+    }
+
+    /**
+     * D6（FR-10 边界）：等待人工期间的用户消息追加进移交包（尽力而为：
+     * 包不存在（已过期/建单前）或 history 非数组则跳过，不重建、不报错；异常仅告警不阻断 ack）
+     */
+    public void appendLateMessage(AgentSession session, String userMessage) {
+        Long sessionId = session.getId();
+        String key = "agent:transfer:" + sessionId;
+        try {
+            RBucket<String> bucket = redisson.getBucket(key);
+            String raw = bucket.get();
+            if (raw == null) {
+                return;
+            }
+            ObjectNode pkg = (ObjectNode) MAPPER.readTree(raw);
+            JsonNode history = pkg.get("history");
+            if (history == null || !history.isArray()) {
+                log.warn("移交包 history 非数组，跳过等待期消息追加: sessionId={}", sessionId);
+                return;
+            }
+            ArrayNode entries = (ArrayNode) history;
+            ObjectNode userMsg = MAPPER.createObjectNode();
+            userMsg.put("role", "user").put("content", userMessage);
+            ObjectNode ack = MAPPER.createObjectNode();
+            ack.put("role", "assistant").put("content", "您的消息已记录，将随工单一并转交人工客服。");
+            entries.add(userMsg);
+            entries.add(ack);
+            long ttlMs = bucket.remainTimeToLive();
+            Duration ttl = ttlMs > 0 ? Duration.ofMillis(ttlMs)
+                    : Duration.ofDays(props.getTransfer().getHandoverTtlDays());
+            bucket.set(MAPPER.writeValueAsString(pkg), ttl);
+        } catch (Exception e) {
+            log.warn("等待期消息写入移交包失败（尽力而为）: sessionId={}", sessionId, e);
+        }
     }
 
     /** 摘要关键词粗分类（无人值守建单用；无法识别按 OTHER） */
