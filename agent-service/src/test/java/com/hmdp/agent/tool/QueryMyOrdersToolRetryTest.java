@@ -20,7 +20,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 订单查询增强单测（T3.7/FR-05）：超时自动重试 1 次 / size 截断分页 / 卡片含 voucherId
+ * 订单查询增强单测（T3.7/FR-05）：单次调用（重试上收至 ToolExecutor）/ size 截断分页 / 卡片含 voucherId
  */
 class QueryMyOrdersToolRetryTest {
 
@@ -35,20 +35,20 @@ class QueryMyOrdersToolRetryTest {
     }
 
     @Test
-    void retries_once_after_timeout_then_succeeds() {
+    void timeout_single_call_returns_friendly_fail() {
+        // 重试已上收至 ToolExecutor（瞬态错误码白名单），工具本身单次调用
         when(orderFeign.queryMyOrders(any(), any(), any(), any(), any()))
-                .thenThrow(new RuntimeException("read timeout"))
-                .thenReturn(Result.ok(List.of(orderRow(1L, 8L, 2)), 1L));
+                .thenThrow(new RuntimeException("read timeout"));
 
         ToolResult r = tool.queryMyOrders(ctx, Map.of());
-        assertTrue(r.isSuccess()); // T3.7：超时自动重试 1 次
-        verify(orderFeign, times(2)).queryMyOrders(any(), any(), any(), any(), any());
+        assertFalse(r.isSuccess());
+        assertEquals("ORDER_TIMEOUT", r.getErrorCode());
+        verify(orderFeign, times(1)).queryMyOrders(any(), any(), any(), any(), any());
     }
 
     @Test
-    void double_failure_returns_friendly_fail() {
+    void service_failure_returns_friendly_fail() {
         when(orderFeign.queryMyOrders(any(), any(), any(), any(), any()))
-                .thenThrow(new RuntimeException("timeout"))
                 .thenThrow(new RuntimeException("timeout"));
 
         ToolResult r = tool.queryMyOrders(ctx, Map.of());

@@ -34,6 +34,8 @@ public class GlmClient {
     private final GlmProperties props;
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    /** 退避缩放系数（仅测试置 0 以消除真实 sleep） */
+    volatile long backoffScale = 1;
 
     public GlmClient(GlmProperties props) {
         this.props = props;
@@ -43,11 +45,7 @@ public class GlmClient {
                 .build();
     }
 
-    /**
-     * 流式对话：逐 delta 回调，最后返回完整文本与 token 统计
-     * 注意：必须在非 Tomcat 工作线程调用（D1.2 §2.1 线程模型）
-     */
-    /** 流式对话：逐 delta 回调。首 delta 前失败 → 重试（含备用模型）；已产出 delta 后失败 → 直接抛（防重复输出） */
+    /** 流式对话：逐 delta 回调。首 delta 前失败 → 重试（含备用模型）；已产出 delta 后失败 → 直接抛（防重复输出）。须在非 Tomcat 工作线程调用（D1.2 §2.1 线程模型） */
     public StreamResult streamChat(LlmTypes.Request request, Consumer<String> onDelta) {
         LlmTypes.LlmException last = null;
         for (String model : modelChain(request.getModel())) {
@@ -158,9 +156,12 @@ public class GlmClient {
         return alt == null || alt.equals(model) ? List.of(model) : List.of(model, alt);
     }
 
-    private void sleepBackoff(int attempt) {
+    void sleepBackoff(int attempt) {
+        if (backoffScale == 0) {
+            return;
+        }
         try {
-            Thread.sleep(BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)]);
+            Thread.sleep(BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] * backoffScale);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
         }

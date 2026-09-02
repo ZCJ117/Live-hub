@@ -27,6 +27,14 @@ public class SentinelRuleConfig implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        try {
+            loadRules();
+        } catch (Exception e) {
+            log.error("Sentinel 降级规则加载失败（不阻断启动）", e);
+        }
+    }
+
+    private void loadRules() {
         List<DegradeRule> rules = new ArrayList<>();
         toolRegistry.getTools().keySet().forEach(toolName -> {
             DegradeRule rule = new DegradeRule(toolName)

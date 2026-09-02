@@ -1,12 +1,16 @@
 package com.hmdp.agent.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hmdp.agent.audit.ToolCallAuditService;
 import com.hmdp.agent.config.AgentProperties;
 import com.hmdp.agent.config.AgentTokenHolder;
 import com.hmdp.agent.entity.AgentSession;
+import com.hmdp.agent.feign.RagFeignClient;
 import com.hmdp.agent.flow.ComplaintFlowService;
 import com.hmdp.agent.flow.RefundFlowService;
 import com.hmdp.agent.llm.GlmClient;
+import com.hmdp.agent.llm.LlmTypes;
 import com.hmdp.agent.memory.ChatMemoryService;
 import com.hmdp.agent.metrics.TrackEventService;
 import com.hmdp.agent.planner.PlanDecision;
@@ -39,6 +43,8 @@ import java.util.function.Consumer;
 @Slf4j
 public class ChatOrchestratorService {
 
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+
     private final AgentSessionService sessionService;
     private final ChatMemoryService memoryService;
     private final ReActEngine reActEngine;
@@ -55,7 +61,7 @@ public class ChatOrchestratorService {
     private final RefundFlowService refundFlowService;
     private final ComplaintFlowService complaintFlowService;
     private final TransferService transferService;
-    private final com.hmdp.agent.feign.RagFeignClient ragFeignClient;
+    private final RagFeignClient ragFeignClient;
 
     public ChatOrchestratorService(AgentSessionService sessionService,
                                    ChatMemoryService memoryService,
@@ -72,7 +78,7 @@ public class ChatOrchestratorService {
                                    RefundFlowService refundFlowService,
                                    ComplaintFlowService complaintFlowService,
                                    TransferService transferService,
-                                   com.hmdp.agent.feign.RagFeignClient ragFeignClient,
+                                   RagFeignClient ragFeignClient,
                                    @Qualifier("agentSseExecutor") Executor sseExecutor) {
         this.sessionService = sessionService;
         this.memoryService = memoryService;
@@ -241,7 +247,7 @@ public class ChatOrchestratorService {
         ReActEngine.ReactResult result;
         try {
             result = dispatch(decision, session, ctx, history, message, answer, onDelta);
-        } catch (com.hmdp.agent.llm.LlmTypes.LlmException e) {
+        } catch (LlmTypes.LlmException e) {
             // T4.14：LLM 全链路失败（重试+备用模型均败）→ FAQ 直答 + 建单入口（PRD 4.3）
             log.error("LLM 全链路失败，FAQ 降级: sessionId={}", sessionId, e);
             trackEventService.track("m5_llm_degrade", sessionId, session.getUserId(), Map.of());
@@ -400,8 +406,7 @@ public class ChatOrchestratorService {
             return null;
         }
         try {
-            com.fasterxml.jackson.databind.JsonNode n =
-                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(session.getContextJson());
+            JsonNode n = JSON_MAPPER.readTree(session.getContextJson());
             return n.path("shopId").isNumber() ? n.path("shopId").asLong() : null;
         } catch (Exception e) {
             return null;
@@ -421,9 +426,9 @@ public class ChatOrchestratorService {
                         + "保留：用户身份、诉求、已查到的事实（订单号/状态等）、未解决的问题。只输出摘要正文。\n\n"
                         + (session.getSummary() == null ? "" : "已有摘要（请合并）：" + session.getSummary() + "\n\n")
                         + "对话历史：\n" + raw;
-                com.hmdp.agent.llm.LlmTypes.Response r = glmClient.complete(com.hmdp.agent.llm.LlmTypes.Request.builder()
+                LlmTypes.Response r = glmClient.complete(LlmTypes.Request.builder()
                         .model("glm-4-flash")
-                        .messages(List.of(com.hmdp.agent.llm.LlmTypes.Message.user(prompt)))
+                        .messages(List.of(LlmTypes.Message.user(prompt)))
                         .temperature(0.2)
                         .build());
                 String summary = r.getContent();

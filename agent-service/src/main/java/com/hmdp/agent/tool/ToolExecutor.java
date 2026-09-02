@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -91,14 +92,22 @@ public class ToolExecutor {
         return result;
     }
 
-    /** 统一失败重试 1 次（T4.14：泛化 Phase 3 QueryMyOrdersTool 内联重试） */
+    /** 瞬态错误码白名单（超时/网络/服务不可用）——业务性失败（参数错误等）不重试 */
+    private static final List<String> TRANSIENT_ERROR_HINTS = List.of("TIMEOUT", "UNAVAILABLE", "TOOL_INVOKE_ERROR");
+
+    private boolean transientFailure(ToolResult r) {
+        String code = r.getErrorCode();
+        return code != null && TRANSIENT_ERROR_HINTS.stream().anyMatch(code::contains);
+    }
+
+    /** 瞬态失败统一重试 1 次（T4.14：泛化 Phase 3 QueryMyOrdersTool 内联重试） */
     private ToolResult invokeWithRetry(ToolRegistry.ToolDefinition def, ToolContext ctx,
                                        Map<String, Object> args) throws Exception {
         ToolResult first = (ToolResult) def.method().invoke(def.host(), ctx, args == null ? Map.of() : args);
-        if (first.isSuccess()) {
+        if (first.isSuccess() || !transientFailure(first)) {
             return first;
         }
-        log.info("工具失败重试 1 次: toolName={}, code={}", def.name(), first.getErrorCode());
+        log.info("工具瞬态失败重试 1 次: toolName={}, code={}", def.name(), first.getErrorCode());
         return (ToolResult) def.method().invoke(def.host(), ctx, args == null ? Map.of() : args);
     }
 

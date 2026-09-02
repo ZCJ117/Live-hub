@@ -44,20 +44,14 @@ public class QueryMyOrdersTool {
             Integer size = extractInt(args.get("size"));
             size = (size == null || size <= 0) ? 5 : Math.min(size, 5);
 
-            // T3.7：Feign 2s 超时/失败自动重试 1 次
+            // 重试已上收到 ToolExecutor（瞬态错误码白名单，T4.14），此处单次调用
             Result result = null;
-            Exception lastError = null;
-            for (int attempt = 0; attempt < 2; attempt++) {
-                try {
-                    result = orderFeignClient.queryMyOrders(orderId, status, days, page, size);
-                    lastError = null;
-                    break;
-                } catch (Exception e) {
-                    log.warn("订单查询第 {} 次失败: orderId={}", attempt + 1, orderId, e);
-                    lastError = e;
-                }
+            try {
+                result = orderFeignClient.queryMyOrders(orderId, status, days, page, size);
+            } catch (Exception e) {
+                log.warn("订单查询失败: orderId={}", orderId, e);
             }
-            if (lastError != null || result == null || !Boolean.TRUE.equals(result.getSuccess())) {
+            if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
                 return ToolResult.fail("ORDER_TIMEOUT", "订单服务暂时繁忙，请稍后再试；您也可以提交工单由人工跟进");
             }
 

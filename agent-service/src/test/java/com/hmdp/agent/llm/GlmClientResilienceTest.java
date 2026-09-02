@@ -37,6 +37,7 @@ class GlmClientResilienceTest {
         props.setConnectTimeout(Duration.ofSeconds(2));
         props.setReadTimeout(Duration.ofSeconds(2));
         client = new GlmClient(props);
+        client.backoffScale = 0; // 消除重试退避真实 sleep，提速测试
     }
 
     @AfterEach
