@@ -35,15 +35,24 @@ public class ConfirmController {
             return Result.fail("未登录，请先登录");
         }
         log.info("退款确认提交: sessionId={}, userId={}, decision={}", sessionId, user.getId(), req.getDecision());
-        ConfirmService.ConfirmOutcome o = confirmService.confirm(user.getId(), sessionId, req);
-        if (!o.success()) {
-            return Result.fail(o.message());
+        // T14 联调修复：confirm 为普通 Controller 线程（非 SSE 异步链路），
+        // AgentTokenHolder 只在 ChatOrchestratorService 设置过——不补设则 Feign 透传空 token，
+        // order-service 按未登录拒绝退款（卡片走不明确路径被作废）
+        String token = cn.dev33.satoken.stp.StpUtil.getTokenValue();
+        com.hmdp.agent.config.AgentTokenHolder.set(token);
+        try {
+            ConfirmService.ConfirmOutcome o = confirmService.confirm(user.getId(), sessionId, req);
+            if (!o.success()) {
+                return Result.fail(o.message());
+            }
+            Map<String, Object> data = new HashMap<>();
+            data.put("message", o.message());
+            data.put("refundNo", o.refundNo());
+            data.put("ticketNo", o.ticketNo());
+            data.put("expectedSla", o.expectedSla());
+            return Result.ok(data);
+        } finally {
+            com.hmdp.agent.config.AgentTokenHolder.clear();
         }
-        Map<String, Object> data = new HashMap<>();
-        data.put("message", o.message());
-        data.put("refundNo", o.refundNo());
-        data.put("ticketNo", o.ticketNo());
-        data.put("expectedSla", o.expectedSla());
-        return Result.ok(data);
     }
 }
