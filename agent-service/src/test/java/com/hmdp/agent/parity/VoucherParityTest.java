@@ -21,8 +21,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 @SpringBootTest
 @Tag("parity")
-@EnabledIf(value = "com.hmdp.agent.parity.ParityTestBase#middlewareReachable",
-        disabledReason = "Nacos 未启动，跳过对拍（待环境）")
+@EnabledIf(value = "com.hmdp.agent.parity.ParityTestBase#voucherServiceUp",
+        disabledReason = "Nacos 或 voucher-service 未启动，跳过对拍（待环境）")
 class VoucherParityTest extends ParityTestBase {
 
     @Autowired private QueryVoucherTool tool;

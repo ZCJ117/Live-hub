@@ -45,6 +45,29 @@ public abstract class ParityTestBase {
         }
     }
 
+    /** 业务服务探活：Nacos 实例列表非空才算可达（服务未启动时 Feign 降级返回兜底话术，会污染对拍结果） */
+    private static boolean serviceUp(String serviceName) {
+        try {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(
+                    "http://127.0.0.1:8848/nacos/v1/ns/instance/list?serviceName=" + serviceName)).GET().build();
+            HttpResponse<String> resp = HttpClient.newHttpClient()
+                    .send(req, HttpResponse.BodyHandlers.ofString());
+            return resp.statusCode() == 200 && resp.body().contains("\"hosts\":[{");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 供子类 @EnabledIf：shop-service 是否已注册到 Nacos */
+    public static boolean shopServiceUp() {
+        return serviceUp("shop-service");
+    }
+
+    /** 供子类 @EnabledIf：voucher-service 是否已注册到 Nacos */
+    public static boolean voucherServiceUp() {
+        return serviceUp("voucher-service");
+    }
+
     @BeforeAll
     static void initBizDb() {
         try {
