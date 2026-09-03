@@ -85,6 +85,32 @@ class ReActEngineTest {
     }
 
     @Test
+    void decide_request_contains_user_question_history_and_focus_hint() {
+        // DEF-S1：决策请求必须包含用户当前问题与对话历史——此前二者缺失导致模型无从判断，永远 ANSWER（零工具调用）
+        // DEF-A8：焦点订单注入决策层
+        Decisions.set("{\"action\":\"ANSWER\"}");
+        stubDecisions();
+        org.mockito.Mockito.when(glmClient.streamChat(any(LlmTypes.Request.class), any())).thenReturn(
+                new GlmClient.StreamResult("ok", 10, 10));
+
+        com.hmdp.agent.memory.ChatMemoryService.LlmTypesMsg h1 =
+                new com.hmdp.agent.memory.ChatMemoryService.LlmTypesMsg("user", "上一轮报过订单号9003");
+        ToolContext focusCtx = ToolContext.builder().sessionId(1L).userId(10L).focusOrderId(9003L).build();
+        engine.run(focusCtx, List.of(h1), null, "这个单子什么时候退款",
+                props.getReact().getMaxSteps(), s -> {}, null);
+
+        ArgumentCaptor<LlmTypes.Request> decideCaptor = ArgumentCaptor.forClass(LlmTypes.Request.class);
+        verify(glmClient).complete(decideCaptor.capture());
+        LlmTypes.Request req = decideCaptor.getValue();
+        StringBuilder all = new StringBuilder();
+        req.getMessages().forEach(m -> all.append(m.getRole()).append(':').append(m.getContent()).append('\n'));
+        String joined = all.toString();
+        assertTrue(joined.contains("用户当前问题：这个单子什么时候退款"), "决策 prompt 必须包含用户当前问题（DEF-S1）");
+        assertTrue(joined.contains("上一轮报过订单号9003"), "决策请求必须包含对话历史（DEF-S1）");
+        assertTrue(joined.contains("当前聚焦订单：9003"), "决策 prompt 必须包含焦点订单提示（DEF-A8）");
+    }
+
+    @Test
     void two_consecutive_tool_failures_interrupt_with_ticket_fallback() {
         Decisions.set(
                 "{\"action\":{\"tool\":\"query_my_orders\",\"args\":{}}}",

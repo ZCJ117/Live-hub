@@ -54,11 +54,7 @@ public class AgentSessionService extends ServiceImpl<AgentSessionMapper, AgentSe
         // 日会话频控（新会话才计数）
         String dailyKey = "agent:user:daily:" + user.getId() + ":" + LocalDate.now();
 
-        AgentSession existing = resumed == null ? getOne(Wrappers.<AgentSession>lambdaQuery()
-                .eq(AgentSession::getUserId, user.getId())
-                .eq(AgentSession::getStatus, "ACTIVE")
-                .orderByDesc(AgentSession::getCreateTime)
-                .last("LIMIT 1")) : null;
+        AgentSession existing = resumed == null ? findActive(user.getId()) : null;
         if (existing != null) {
             // 复用未过期会话，不重复计数
             touch(existing);
@@ -91,6 +87,15 @@ public class AgentSessionService extends ServiceImpl<AgentSessionMapper, AgentSe
                 : Map.of("entry", session.getEntry(), "resumedFrom", resumed.getId());
         trackEventService.track("m5_session_start", session.getId(), user.getId(), startProps);
         return session;
+    }
+
+    /** 用户当前 ACTIVE 会话（无则 null）。DEF-A4 修复：controller 的复用提示以此为准，不再用 msgCount 推断 */
+    public AgentSession findActive(Long userId) {
+        return getOne(Wrappers.<AgentSession>lambdaQuery()
+                .eq(AgentSession::getUserId, userId)
+                .eq(AgentSession::getStatus, "ACTIVE")
+                .orderByDesc(AgentSession::getCreateTime)
+                .last("LIMIT 1"));
     }
 
     /** 归属校验（4.2：sessionId 与 userId 强绑定） */

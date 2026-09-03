@@ -96,15 +96,41 @@ class TransferServiceTest {
     void 移交包_四要素快照_Redis写入_snapshotUri回填() {
         AgentSession s = active().setStatus("TRANSFERRED").setTransferReason("HUMAN_DEMAND")
                 .setSummary("用户张三，诉求：退款；已查事实：订单200已支付；未解决：退款未提交");
-        when(memoryService.readRawJson(1L)).thenReturn("[{\"role\":\"user\",\"content\":\"退款\"}]");
+        // DEF-D8 修复：history 改为真正的 JSON 数组（readHistoryArray），此前 JSONL 被 readTree 截断为首条
+        com.fasterxml.jackson.databind.node.ArrayNode historyArr =
+                new com.fasterxml.jackson.databind.ObjectMapper().createArrayNode();
+        historyArr.addObject().put("role", "user").put("content", "退款");
+        historyArr.addObject().put("role", "assistant").put("content", "已查到订单状态");
+        when(memoryService.readHistoryArray(1L)).thenReturn(historyArr);
         when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
         when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
 
         String key = service().buildHandoverPackage(s);
 
         assertTrue(key.startsWith("agent:transfer:1"));
-        verify(bucket).set(contains("退款"), any(java.time.Duration.class));
+        org.mockito.ArgumentCaptor<String> pkgCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(bucket).set(pkgCaptor.capture(), any(java.time.Duration.class));
+        String pkg = pkgCaptor.getValue();
+        assertTrue(pkg.contains("退款"));
+        assertTrue(pkg.contains("\"history\":[{"), "history 必须是 JSON 数组（DEF-D8）");
+        assertTrue(pkg.contains("已查到订单状态"), "完整历史必须入包（DEF-D8）");
         verify(sessionService).updateSnapshotUri(eq(1L), contains("agent:transfer:1"));
+    }
+
+    @Test
+    void 移交包_summary为空_写入兜底话术保证摘要要素() {
+        // DEF-D8 配套：summary null 时包内写入兜底话术（与无人值守建单口径一致）
+        AgentSession s = active().setStatus("TRANSFERRED").setTransferReason("NEGATIVE_EMOTION");
+        when(memoryService.readHistoryArray(1L))
+                .thenReturn(new com.fasterxml.jackson.databind.ObjectMapper().createArrayNode());
+        when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
+
+        service().buildHandoverPackage(s);
+
+        org.mockito.ArgumentCaptor<String> pkgCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(bucket).set(pkgCaptor.capture(), any(java.time.Duration.class));
+        assertTrue(pkgCaptor.getValue().contains("会话无摘要"));
     }
 
     @Test
@@ -113,13 +139,18 @@ class TransferServiceTest {
         props.getTransfer().setSeatOnline(true);
         AgentSession s = active().setStatus("TRANSFERRED").setTransferReason("HUMAN_DEMAND");
         when(sessionService.getOwned(1L, 100L)).thenReturn(s);
+        // DEF-D7b：接管模式也构建移交包（snapshot_uri 回填 → 工作台队列可见）
+        when(memoryService.readHistoryArray(1L))
+                .thenReturn(new com.fasterxml.jackson.databind.ObjectMapper().createArrayNode());
+        when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
 
         TransferService.TransferOutcome o = service(props).confirmTransfer(100L, 1L);
 
         assertTrue(o.success());
         assertTrue(o.message().contains("人工坐席"));
         verify(ticketService, never()).create(any(), any(), any());
-        verify(redisson, never()).getBucket(anyString());
+        verify(sessionService).updateSnapshotUri(eq(1L), contains("agent:transfer:1"));
     }
 
     @Test
@@ -182,7 +213,8 @@ class TransferServiceTest {
     void 会话摘要为空_模板兜底摘要仍可建单() {
         AgentSession s = active().setStatus("TRANSFERRED").setTransferReason("NEGATIVE_EMOTION");
         when(sessionService.getOwned(1L, 100L)).thenReturn(s);
-        lenient().when(memoryService.readRawJson(1L)).thenReturn("[]");
+        lenient().when(memoryService.readHistoryArray(1L))
+                .thenReturn(new com.fasterxml.jackson.databind.ObjectMapper().createArrayNode());
         lenient().when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
         stubCasAcquired();
         com.hmdp.agent.entity.AgentTicket ticket = new com.hmdp.agent.entity.AgentTicket()
@@ -196,6 +228,8 @@ class TransferServiceTest {
                 org.mockito.ArgumentCaptor.forClass(com.hmdp.agent.dto.TicketRequest.class);
         verify(ticketService).create(eq(100L), eq(1L), captor.capture());
         assertTrue(captor.getValue().getSummary().contains("转人工"));
+        // DEF-D1 修复：refs 携带 transferReason，dedup 键唯一化（不再与 OTHER+空 refs 工单撞键被吞）
+        assertTrue(captor.getValue().getRefs().containsKey("transferReason"));
     }
 
     // ===== T4.9 加固：一次性确认守卫 / 移交包健壮性 / 占位分支 =====
@@ -206,7 +240,8 @@ class TransferServiceTest {
     }
 
     private void stubHappyCreate() {
-        when(memoryService.readRawJson(1L)).thenReturn("[]");
+        lenient().when(memoryService.readHistoryArray(1L))
+                .thenReturn(new com.fasterxml.jackson.databind.ObjectMapper().createArrayNode());
         when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
         when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
         when(ticketService.create(eq(100L), eq(1L), any())).thenReturn(
@@ -267,7 +302,8 @@ class TransferServiceTest {
     void 建单失败_标记清除可重试() {
         when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
         stubCasAcquired();
-        when(memoryService.readRawJson(1L)).thenReturn("[]");
+        lenient().when(memoryService.readHistoryArray(1L))
+                .thenReturn(new com.fasterxml.jackson.databind.ObjectMapper().createArrayNode());
         when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
         when(ticketService.create(eq(100L), eq(1L), any()))
                 .thenThrow(new RuntimeException("db down"))
@@ -318,7 +354,8 @@ class TransferServiceTest {
     void 移交包Redis失败_不写snapshotUri仍建单() {
         when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
         stubCasAcquired();
-        when(memoryService.readRawJson(1L)).thenReturn("[]");
+        lenient().when(memoryService.readHistoryArray(1L))
+                .thenReturn(new com.fasterxml.jackson.databind.ObjectMapper().createArrayNode());
         when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
         org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
                 .doNothing().when(bucket).set(anyString(), any(java.time.Duration.class));
@@ -333,18 +370,22 @@ class TransferServiceTest {
     }
 
     @Test
-    void seatOnline占位分支_不建单不写移交包() {
+    void seatOnline占位分支_不建单但移交包入队() {
+        // DEF-D7b：接管分支行为变更——不建单（never create）但必须写移交包（工作台队列可见）
         AgentProperties props = new AgentProperties();
         props.getTransfer().setSeatOnline(true);
         when(sessionService.getOwned(1L, 100L)).thenReturn(transferred());
+        when(memoryService.readHistoryArray(1L))
+                .thenReturn(new com.fasterxml.jackson.databind.ObjectMapper().createArrayNode());
+        when(toolCallMapper.selectList(any())).thenReturn(java.util.List.of());
+        when(redisson.<String>getBucket(anyString())).thenReturn(bucket);
 
         TransferService.TransferOutcome o = service(props).confirmTransfer(100L, 1L);
 
         assertTrue(o.success());
         assertTrue(o.message().contains("坐席"));
         verify(ticketService, never()).create(any(), any(), any());
-        verify(redisson, never()).getBucket(anyString());
-        verify(memoryService, never()).readRawJson(any());
+        verify(sessionService).updateSnapshotUri(eq(1L), contains("agent:transfer:1"));
     }
 
     @Test

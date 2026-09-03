@@ -73,14 +73,16 @@ public class AgentChatController {
             req = new ChatRequest();
         }
         // 断线重连（5 分钟内）：sessionId 复用，上下文不丢失（FR-01 验收 3）
+        // DEF-A4 修复：reused 以"是否存在既有 ACTIVE 会话"为判据（此前 msgCount>0 导致只看欢迎语的用户复用无提示）
         AgentSession session;
         boolean reused = false;
         if (req.getSessionId() != null) {
             session = sessionService.getOwned(req.getSessionId(), user.getId());
             reused = true;
         } else {
+            AgentSession existing = sessionService.findActive(user.getId());
             session = sessionService.createOrReuse(user, req);
-            reused = isReused(session);
+            reused = existing != null;
         }
 
         String token = StpUtil.getTokenValue();
@@ -128,12 +130,13 @@ public class AgentChatController {
                 return Result.ok(Map.of("partial", false, "finishReason", "OK",
                         "text", "", "cards", List.of()));
             }
-            reused = isReused(session);
+            reused = true;
         } else {
+            AgentSession existing = sessionService.findActive(user.getId());
             session = req.getSessionId() == null
                     ? sessionService.createOrReuse(user, req)
                     : sessionService.getOwned(req.getSessionId(), user.getId());
-            reused = isReused(session);
+            reused = req.getSessionId() != null || existing != null;
             collector = new PollRoundCollector();
             sseManager.registerPollCollector(session.getId(), collector);
             String token = StpUtil.getTokenValue();
@@ -162,7 +165,6 @@ public class AgentChatController {
         data.put("finishReason", collector.finishReason());
         return Result.ok(data);
     }
-
     /** 主动结束会话（FR-12 评价推送时点之一；FR-13 回放快照固化时点之一） */
     @PostMapping("/close")
     public Result close(@RequestBody ChatRequest req) {
@@ -218,10 +220,5 @@ public class AgentChatController {
         data.put("snapshot", snapshotService.loadSnapshot(sessionId)); // null=无快照（如 90 天前归档前未生成）
         data.put("resumeSessionId", sessionId); // 「基于此会话继续咨询」按钮携带值
         return Result.ok(data);
-    }
-
-    /** 判断是否复用了既有 ACTIVE 会话（FR-01 边界 3） */
-    private boolean isReused(AgentSession session) {
-        return session.getMsgCount() > 0;
     }
 }

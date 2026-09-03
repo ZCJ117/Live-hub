@@ -165,6 +165,11 @@ public class ChatOrchestratorService {
             return;
         }
         String message = pp.message();
+        if (pp.verdict() == InputPreprocessor.Verdict.TRUNCATED) {
+            // DEF-A6 修复：截断提示直接推送用户（PRD 3.2 边界1"截断并提示用户精简"），不依赖 LLM 复述
+            sseManager.send(sessionId, "delta", Map.of("text",
+                    "您的消息过长，已按前 " + props.getMessage().getMaxLength() + " 字处理；请精简描述，以便我更快帮您解决问题。"));
+        }
 
         // 1.2 消息数频控（单会话 100 条，FR-11）——置于安全检测之前，被拦截消息也计入会话消息数
         try {

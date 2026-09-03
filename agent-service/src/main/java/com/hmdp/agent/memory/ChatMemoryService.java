@@ -87,6 +87,20 @@ public class ChatMemoryService {
         return String.join("\n", list.readAll());
     }
 
+    /** 历史 JSON 数组（DEF-D8 修复：移交包消费端需要真正的 JSON 数组，readRawJson 的 JSONL 拼接会被 readTree 截断为首条） */
+    public com.fasterxml.jackson.databind.JsonNode readHistoryArray(Long sessionId) {
+        RList<String> list = redisson.getList(historyKey(sessionId));
+        com.fasterxml.jackson.databind.node.ArrayNode arr = MAPPER.createArrayNode();
+        for (String json : list.readAll()) {
+            try {
+                arr.add(MAPPER.readTree(json));
+            } catch (Exception e) {
+                log.warn("历史消息解析失败（跳过）: sessionId={}", sessionId);
+            }
+        }
+        return arr;
+    }
+
     /** 裁剪历史：仅保留最近 keep 条（摘要生效后 / 压缩失败降级） */
     public void trimKeepLast(Long sessionId, int keep) {
         RList<String> list = redisson.getList(historyKey(sessionId));

@@ -33,4 +33,14 @@ class TicketDedupKeyTest {
         assertNotEquals(TicketService.buildDedupKey(1L, "ORDER", refs),
                 TicketService.buildDedupKey(2L, "ORDER", refs));
     }
+
+    @Test
+    void null值refs键_与不含该键_同键() {
+        // DEF-B3c：LLM 抽取时含 shopId:null 与不含 shopId 的两次抽取必须同键（重复进线合并才稳定）
+        Map<String, Object> withNull = new LinkedHashMap<>();
+        withNull.put("orderId", 9003L);
+        withNull.put("shopId", null);
+        assertEquals(TicketService.buildDedupKey(1L, "ORDER", withNull),
+                TicketService.buildDedupKey(1L, "ORDER", Map.of("orderId", 9003L)));
+    }
 }

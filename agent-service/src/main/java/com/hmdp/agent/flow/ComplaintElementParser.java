@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -28,13 +29,14 @@ public class ComplaintElementParser {
         JsonNode root = readTree(raw);
         JsonNode cat = root.path("category");
         String category = cat.isTextual() ? cat.asText() : null;
-        if (category != null && category.isBlank()) {
+        // DEF-B3a 修复：非法类别值（如 LLM 输出 "ORDER|MERCHANT_SERVICE"）置 null，走追问/OTHER 兜底
+        if (category != null && (category.isBlank() || !com.hmdp.agent.ticket.TicketService.VALID_CATEGORIES.contains(category))) {
             category = null;
         }
         Map<String, Object> refs;
         try {
             refs = root.path("refs").isObject()
-                    ? MAPPER.convertValue(root.path("refs"), Map.class) : Map.of();
+                    ? normalizeRefs(MAPPER.convertValue(root.path("refs"), Map.class)) : Map.of();
         } catch (IllegalArgumentException e) {
             throw new ParseFail("refs 必须为对象");
         }
@@ -46,6 +48,23 @@ public class ComplaintElementParser {
             throw new ParseFail("未抽取到任何要素");
         }
         return new Element(category, refs, time, demand);
+    }
+
+    /** DEF-B3c 修复：剔除 null 值键（LLM 时而输出 shopId:null 污染 dedup_key），数值字符串归一为 Long */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> normalizeRefs(Map<String, Object> raw) {
+        Map<String, Object> refs = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : raw.entrySet()) {
+            Object v = e.getValue();
+            if (v == null) {
+                continue;
+            }
+            if (v instanceof String s && s.matches("\\d+")) {
+                v = Long.parseLong(s);
+            }
+            refs.put(e.getKey(), v);
+        }
+        return refs;
     }
 
     private JsonNode readTree(String raw) throws ParseFail {

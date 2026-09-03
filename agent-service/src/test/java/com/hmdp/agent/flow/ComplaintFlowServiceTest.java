@@ -99,6 +99,32 @@ class ComplaintFlowServiceTest {
     }
 
     @Test
+    void 泛泛投诉_demand被原文自填_仍追问不建单() {
+        // DEF-B2：LLM 把"我要投诉"原文填进 demand 时，category 为 null → demand 视为未收集，继续追问（PRD 3.9 边界1）
+        stubBucket();
+        when(glmClient.complete(any(LlmTypes.Request.class))).thenReturn(
+                resp("{\"demand\":\"我要投诉\"}"));
+        Sink sink = Sink.create();
+        service().handle(session(), "我要投诉", sink.onDelta());
+        verify(ticketService, never()).create(any(), any(), any(TicketRequest.class));
+        assertTrue(sink.text().contains("请补充"));
+    }
+
+    @Test
+    void dedup命中_提示已有工单不新建() {
+        // DEF-B3d：去重命中话术区分"已有工单在处理中"，不误报"已为您登记新工单"
+        stubBucket();
+        when(glmClient.complete(any(LlmTypes.Request.class))).thenReturn(
+                resp("{\"category\":\"ORDER\",\"refs\":{\"orderId\":9003},\"demand\":\"要求补发\"}"));
+        when(ticketService.findExistingByDedup(any(), any())).thenReturn(
+                java.util.Optional.of(new AgentTicket().setTicketNo("TK20260903000011")));
+        Sink sink = Sink.create();
+        service().handle(session(), "投诉订单9003漏发货要求补发", sink.onDelta());
+        verify(ticketService, never()).create(any(), any(), any(TicketRequest.class));
+        assertTrue(sink.text().contains("已有工单 TK20260903000011"));
+    }
+
+    @Test
     void 要素齐_建单_返回工单号与SLA() {
         stubBucket();
         when(glmClient.complete(any(LlmTypes.Request.class)))

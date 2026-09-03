@@ -57,6 +57,10 @@ public class ComplaintFlowService {
         ComplaintElementParser.Element element = extract(message);
         merge(draft, element);
         draft.setRounds(draft.getRounds() + 1);
+        // DEF-B2 修复：泛泛投诉（如"我要投诉"）被 LLM 原文自填 demand 时视为未收集到诉求，继续追问
+        if (draft.getCategory() == null && message.equals(draft.getDemand())) {
+            draft.setDemand(null);
+        }
 
         boolean complete = draft.getCategory() != null && draft.getDemand() != null;
         if (!complete && draft.getRounds() <= props.getTicket().getMaxCollectRounds()) {
@@ -77,6 +81,16 @@ public class ComplaintFlowService {
         Long sessionId = session.getId();
         String priority = priorityRules.fundRelated(draft.getDemand()) ? "HIGH" : null; // null → TicketService 默认规则
         String summary = buildSummary(draft);
+        // DEF-B3d：dedup 命中时话术区分"已有工单"（create 内部仍保留竞态安全的去重兜底）
+        java.util.Optional<AgentTicket> existing = ticketService.findExistingByDedup(sessionId,
+                TicketRequest.of(draft.getCategory(), priority, summary, draft.getRefs()));
+        if (existing.isPresent()) {
+            say(onDelta, "您已有工单 " + existing.get().getTicketNo() + " 在处理中，无需重复提交；"
+                    + "您可在\"我的-客服记录\"查看进度。");
+            flowStateService.setFlowState(sessionId, "IDLE");
+            redisson.<String>getBucket(draftKey(sessionId)).delete();
+            return;
+        }
         try {
             AgentTicket ticket = createWithRetry(session, draft, priority, summary);
             trackEventService.track("m5_ticket_create", sessionId, session.getUserId(), Map.of(
@@ -149,7 +163,7 @@ public class ComplaintFlowService {
         ComplaintElementParser parser = new ComplaintElementParser();
         String prompt = """
                 从用户消息中抽取投诉要素，只输出 JSON 对象：
-                {"category":"ORDER|VOUCHER|MERCHANT_SERVICE|ACCOUNT_SECURITY|OTHER|null","refs":{"orderId":数字,"voucherId":数字,"shopId":数字},"time":"发生时间原文或null","demand":"诉求原文"}
+                {"category":"ORDER|VOUCHER|MERCHANT_SERVICE|ACCOUNT_SECURITY|OTHER|null","refs":{"orderId":数字,"voucherId":数字,"shopId":数字},"time":"发生时间原文或null","demand":"用户明确表达的实质诉求（如退款/补发/道歉/赔偿）；若用户仅泛泛表达不满或未说明希望如何解决，输出 null"}
                 无法判断的字段输出 null，refs 只保留能识别的键。
                 用户消息：%s
                 """.formatted(message);

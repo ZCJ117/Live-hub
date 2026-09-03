@@ -70,9 +70,12 @@ class SessionP1FeaturesDbIT {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, 1);
             ps.setString(2, "[\"没解决问题\"]");
+            ps.setLong(3, sessionId);
             assertEquals(1, ps.executeUpdate(), "首次评价恰好 1 行");
+            // JDBC 参数绑定不跨执行保留，重执行前须重设全部占位符（含 WHERE 的 id）
             ps.setInt(1, 5);
-            ps.setString(2, null);
+            ps.setNull(2, java.sql.Types.VARCHAR);
+            ps.setLong(3, sessionId);
             assertEquals(0, ps.executeUpdate(), "重复评价 0 行（每会话仅一次）");
         }
         try (Statement st = conn.createStatement();

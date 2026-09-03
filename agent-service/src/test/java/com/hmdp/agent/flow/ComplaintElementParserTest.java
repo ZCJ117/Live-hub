@@ -36,4 +36,14 @@ class ComplaintElementParserTest {
         assertEquals(null, e.category());
         assertEquals(Map.of(), e.refs());
     }
+
+    @Test
+    void 非法类别值_置null_null值refs键剔除_数值归一() throws ComplaintElementParser.ParseFail {
+        // DEF-B3a：LLM 抽取 "ORDER|MERCHANT_SERVICE" 类垃圾值 → null（走追问/OTHER 兜底，不再 DB Data too long）
+        // DEF-B3c：shopId:null 剔除 + "9003" 数值字符串归一为 Long，保证 dedup_key 稳定
+        ComplaintElementParser.Element e = parser.parse(
+                "{\"category\":\"ORDER|MERCHANT_SERVICE\",\"refs\":{\"orderId\":\"9003\",\"shopId\":null},\"demand\":\"要求补发\"}");
+        assertEquals(null, e.category());
+        assertEquals(Map.of("orderId", 9003L), e.refs());
+    }
 }

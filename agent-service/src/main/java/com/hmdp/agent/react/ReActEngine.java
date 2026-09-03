@@ -88,7 +88,7 @@ public class ReActEngine {
 
         for (int step = 1; step <= maxSteps; step++) {
             stepsUsed = step;
-            String decision = decide(messages, observations, userMessage, step, maxSteps);
+            String decision = decide(messages, observations, userMessage, step, maxSteps, ctx);
 
             JsonNode actionNode = parseAction(decision);
             if (actionNode == null) {
@@ -249,30 +249,40 @@ public class ReActEngine {
                 sr.promptTokens(), sr.completionTokens(), outputBlocked);
     }
 
-    /** 决策调用：lightModel + JSON mode 输出 action 或 ANSWER 指令；末两步注入收敛提示 */
+    /** 决策调用：lightModel + JSON mode 输出 action 或 ANSWER 指令；末两步注入收敛提示
+     *  （DEF-S1 修复：决策请求必须包含对话历史与用户当前问题——此前 prompt 不含二者，模型无从知晓诉求，永远直接 ANSWER 导致零工具调用） */
     private String decide(List<LlmTypes.Message> baseMessages, List<ToolResult> observations,
-                          String userMessage, int step, int maxSteps) {
+                          String userMessage, int step, int maxSteps, ToolContext ctx) {
         String obsText = observations.isEmpty() ? "（暂无，尚未调用任何工具）" : renderObservations(observations);
         String prompt = """
-                你是客服任务编排器。根据对话历史和工具返回数据，决定下一步。
+                用户当前问题：%s
+                你是客服任务编排器，负责决定「调用工具查证」还是「直接回答」。
                 可用工具：
                 %s
                 已获取的数据：
                 %s
 
-                当前是第 %d/%d 步。请只输出一个 JSON 对象，二选一：
-                1. 需要调用工具：{"thought":"简短理由","action":{"tool":"工具名","args":{...}}}
-                2. 已能回答（或无需工具）：{"action":"ANSWER"}
-                注意：涉及订单状态/券规则/商户营业状态的事实陈述必须基于已获取的数据，无数据不要编造。
-                """.formatted(toolRegistry.describe(), obsText, step, maxSteps);
+                判定规则（按顺序执行）：
+                1. 若「已获取的数据」为空、不完整或不足以回答用户当前问题 → 必须调用合适的工具。涉及订单/券/商户的事实类问题，首次必须先调用工具查证，禁止跳过工具直接作答。
+                2. 仅当「已获取的数据」已足够回答用户当前问题时，才允许直接回答。
+
+                当前是第 %d/%d 步。只输出一个 JSON 对象：
+                调用工具：{"thought":"简短理由","action":{"tool":"工具名","args":{...}}}
+                直接回答：{"action":"ANSWER"}
+                """.formatted(userMessage, toolRegistry.describe(), obsText, step, maxSteps);
+        if (ctx.getFocusOrderId() != null) {
+            // DEF-A8 修复：焦点订单注入决策层，"这个单子/该订单"类指代可落地为不带 orderId 的工具调用
+            prompt += "\n当前聚焦订单：" + ctx.getFocusOrderId()
+                    + "（用户说\"这个单子/该订单\"即指此单；调用 query_my_orders 时无需带 orderId 参数）";
+        }
         if (maxSteps - step <= 1) {
             prompt += "\n注意：剩余步数不多，请基于已有数据尽快收敛作答。";
         }
+        List<LlmTypes.Message> messages = new ArrayList<>(baseMessages);
+        messages.add(LlmTypes.Message.user(prompt));
         LlmTypes.Response resp = glmClient.complete(LlmTypes.Request.builder()
                 .model(glmProps.getLightModel())
-                .messages(List.of(
-                        LlmTypes.Message.system(baseMessages.get(0).getContent()),
-                        LlmTypes.Message.user(prompt)))
+                .messages(messages)
                 .jsonMode(true)
                 .temperature(0.1)
                 .build());

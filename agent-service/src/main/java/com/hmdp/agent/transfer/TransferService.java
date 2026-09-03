@@ -97,6 +97,9 @@ public class TransferService {
         }
         if (props.getTransfer().isSeatOnline()) {
             // D9（FR-14 流程 D）：有坐席 → 进入接管模式，人工经工作台回复（同一 SSE 通道，role=human）
+            // DEF-D7b 修复：接管模式同样构建移交包——listTransferQueue 按 snapshot_uri 前缀过滤，
+            // 不建包则工作台队列看不到该会话，坐席无从接手
+            buildHandoverPackage(session);
             String takeoverMsg = "已为您接入人工坐席，坐席正在处理，请稍候。您可继续留言，消息将同步给人工客服。";
             try {
                 sseManager.send(sessionId, "delta", Map.of("text", takeoverMsg));
@@ -129,8 +132,9 @@ public class TransferService {
         String priority = priorityRules.fundRelated(summary) ? "HIGH" : "MEDIUM";
         AgentTicket ticket;
         try {
+            // DEF-D1 修复：refs 携带 transferReason——dedup 键唯一化，避免与会话内既有 OTHER+空 refs 工单撞键被吞
             ticket = ticketService.create(userId, sessionId, TicketRequest.of(
-                    inferCategory(summary), priority, summary, Map.of()));
+                    inferCategory(summary), priority, summary, Map.of("transferReason", String.valueOf(session.getTransferReason()))));
         } catch (Exception e) {
             flag.delete(); // 仅建单失败清标记，允许重试
             log.error("无人值守建单失败: sessionId={}", sessionId, e);
@@ -183,15 +187,12 @@ public class TransferService {
         pkg.put("sessionId", sessionId);
         pkg.put("userId", session.getUserId());
         pkg.put("transferReason", session.getTransferReason());
-        pkg.put("summary", session.getSummary());
-        // history 先反序列化为 JsonNode，P2 消费端单次解析即可（避免 JSON 字符串双重转义）
-        String rawHistory = memoryService.readRawJson(sessionId);
-        try {
-            pkg.put("history", MAPPER.readTree(rawHistory));
-        } catch (Exception e) {
-            // 降级：非合法 JSON 时放原始字符串
-            pkg.put("history", rawHistory);
-        }
+        // DEF-D8 修复：summary 空时写入兜底话术（与无人值守建单口径一致，保证移交包"摘要"要素不缺）
+        pkg.put("summary", session.getSummary() == null || session.getSummary().isBlank()
+                ? "用户申请转人工（原因：" + session.getTransferReason() + "），会话无摘要，详见对话历史。"
+                : session.getSummary());
+        // history 为真正的 JSON 数组（逐条解析；此前 JSONL 拼接被 readTree 截断为首条消息，人工只能看到一句话）
+        pkg.put("history", memoryService.readHistoryArray(sessionId));
         pkg.put("toolSnapshots", toolSnapshots);
         pkg.put("builtAt", LocalDateTime.now().toString());
 
@@ -210,6 +211,7 @@ public class TransferService {
     /**
      * D6（FR-10 边界）：等待人工期间的用户消息追加进移交包（尽力而为：
      * 包不存在（已过期/建单前）或 history 非数组则跳过，不重建、不报错；异常仅告警不阻断 ack）
+     * （DEF-D8 修复后 history 恒为数组，追加路径恢复可用）
      */
     public void appendLateMessage(AgentSession session, String userMessage) {
         Long sessionId = session.getId();

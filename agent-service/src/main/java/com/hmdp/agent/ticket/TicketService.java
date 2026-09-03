@@ -19,6 +19,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -54,16 +55,23 @@ public class TicketService extends ServiceImpl<AgentTicketMapper, AgentTicket> {
             "ACCOUNT_SECURITY", "SECURITY_GROUP",
             "OTHER", "ORDER_GROUP");
 
-    /** 创建工单：分类路由 + 优先级规则 + dedup_key 去重 + 工单号生成 */
+    /** PRD 3.9 合法类别白名单（工单域单一定义；要素解析器引用同一常量） */
+    public static final Set<String> VALID_CATEGORIES =
+            Set.of("ORDER", "VOUCHER", "MERCHANT_SERVICE", "ACCOUNT_SECURITY", "OTHER");
+
+    /** 创建工单：分类路由 + 优先级规则 + dedup_key 去重 + 工单号生成
+     *  （DEF-B3b 修复：category 防御性归一，非法/空值落 OTHER，避免 DB Data too long 级联建单失败） */
     public AgentTicket create(Long userId, Long sessionId, TicketRequest req) {
-        String priority = req.getPriority() != null ? req.getPriority() : defaultPriority(req.getCategory());
-        String assigneeGroup = CATEGORY_GROUP.getOrDefault(req.getCategory(), "ORDER_GROUP");
+        String category = req.getCategory() != null && VALID_CATEGORIES.contains(req.getCategory())
+                ? req.getCategory() : "OTHER";
+        String priority = req.getPriority() != null ? req.getPriority() : defaultPriority(category);
+        String assigneeGroup = CATEGORY_GROUP.getOrDefault(category, "ORDER_GROUP");
         String sla = switch (priority) {
             case "HIGH" -> "4h";
             case "LOW" -> "72h";
             default -> "24h";
         };
-        String dedupKey = buildDedupKey(sessionId, req.getCategory(), req.getRefs());
+        String dedupKey = buildDedupKey(sessionId, category, req.getRefs());
 
         // 同会话同问题去重（FR-09 边界：返回已有工单号）
         AgentTicket existing = getOne(Wrappers.<AgentTicket>lambdaQuery()
@@ -78,7 +86,7 @@ public class TicketService extends ServiceImpl<AgentTicketMapper, AgentTicket> {
                 .setTicketNo(nextTicketNo())
                 .setSessionId(sessionId)
                 .setUserId(userId)
-                .setCategory(req.getCategory())
+                .setCategory(category)
                 .setPriority(priority)
                 .setSummary(req.getSummary())
                 .setRefsJson(toJson(req.getRefs()))
@@ -102,6 +110,16 @@ public class TicketService extends ServiceImpl<AgentTicketMapper, AgentTicket> {
         log.info("工单创建: ticketNo={}, category={}, priority={}, group={}",
                 ticket.getTicketNo(), ticket.getCategory(), priority, assigneeGroup);
         return ticket;
+    }
+
+    /** DEF-B3d：按 dedup_key 预查既有工单（命中时调用方用"已有工单在处理中"话术，避免误报"已为您登记新工单"） */
+    public java.util.Optional<AgentTicket> findExistingByDedup(Long sessionId, TicketRequest req) {
+        String category = req.getCategory() != null && VALID_CATEGORIES.contains(req.getCategory())
+                ? req.getCategory() : "OTHER";
+        String dedupKey = buildDedupKey(sessionId, category, req.getRefs());
+        return java.util.Optional.ofNullable(getOne(Wrappers.<AgentTicket>lambdaQuery()
+                .eq(AgentTicket::getDedupKey, dedupKey)
+                .last("LIMIT 1")));
     }
 
     /** 凭工单号查询（FR-13 前置：工单号唯一可查）；归属校验防越权 */
@@ -183,9 +201,17 @@ public class TicketService extends ServiceImpl<AgentTicketMapper, AgentTicket> {
         };
     }
 
-    /** dedup_key = MD5(category + sorted(refs) + sessionId)（PRD 6.1 补充字段） */
+    /** dedup_key = MD5(category + sorted(refs) + sessionId)（PRD 6.1 补充字段）
+     *  （DEF-B3c 修复：剔除 null 值键，避免 LLM 输出 shopId:null 与不输出的两次抽取得到不同键） */
     static String buildDedupKey(Long sessionId, String category, Map<String, Object> refs) {
-        TreeMap<String, Object> sorted = new TreeMap<>(refs == null ? Map.of() : refs);
+        TreeMap<String, Object> sorted = new TreeMap<>();
+        if (refs != null) {
+            refs.forEach((k, v) -> {
+                if (v != null) {
+                    sorted.put(k, v);
+                }
+            });
+        }
         String raw = category + "|" + sorted + "|" + sessionId;
         try {
             byte[] digest = MessageDigest.getInstance("MD5")

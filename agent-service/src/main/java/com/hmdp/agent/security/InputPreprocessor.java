@@ -35,8 +35,8 @@ public final class InputPreprocessor {
         }
         int max = props.getMessage().getMaxLength();
         if (msg.length() > max) {
-            return new PreprocessResult(Verdict.TRUNCATED,
-                    msg.substring(0, max) + "\n（消息过长已截断，请精简后重发）", false);
+            // DEF-A6 修复：不再把提示内嵌进 user message（用户不可见）；截断事实由 doChat 以独立 delta 推送给用户
+            return new PreprocessResult(Verdict.TRUNCATED, msg.substring(0, max), false);
         }
         return new PreprocessResult(Verdict.OK, msg, false);
     }

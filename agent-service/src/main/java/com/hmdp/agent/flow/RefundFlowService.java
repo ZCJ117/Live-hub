@@ -58,6 +58,21 @@ public class RefundFlowService {
                 .toList();
 
         if (eligible.isEmpty()) {
+            // DEF-C8 修复：先查进行中/已受理的退款申请（PRD 3.8 边界1：提示已有申请及编号，不再误导"不符合退款条件"）
+            for (OrderCardDTO c : cards) {
+                Optional<AgentTask> active = confirmTaskService
+                        .findActiveByOrder(session.getUserId(), c.getOrderId(), null).stream().findFirst();
+                if (active.isPresent()) {
+                    AgentTask t = active.get();
+                    if ("ADOPTED".equals(t.getStatus())) {
+                        say(onDelta, "该订单已有一笔退款申请处理中，受理编号 RF" + t.getId()
+                                + "，请耐心等待处理，勿重复提交。");
+                    } else {
+                        say(onDelta, "该订单有一笔待确认的退款申请（10 分钟内有效），请在原卡片上确认提交或取消。");
+                    }
+                    return;
+                }
+            }
             // PRD 边界：订单已核销/已完成 → 卡片不可生成，说明不可退原因
             say(onDelta, cards.isEmpty()
                     ? "未查询到您的订单记录。仅\"已支付\"状态且未核销的订单支持申请退款。"

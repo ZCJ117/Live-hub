@@ -34,7 +34,9 @@ class InputPreprocessorTest {
         for (int i = 0; i < 600; i++) sb.append("字");
         var r = InputPreprocessor.preprocess(sb.toString(), props);
         assertEquals(InputPreprocessor.Verdict.TRUNCATED, r.verdict());
-        assertEquals(500 + "\n（消息过长已截断，请精简后重发）".length(), r.message().length());
+        // DEF-A6：截断提示不再内嵌进消息（由 doChat 以独立 delta 推送用户），消息为纯截断文本
+        assertEquals(500, r.message().length());
+        assertFalse(r.message().contains("截断"));
     }
 
     @Test
