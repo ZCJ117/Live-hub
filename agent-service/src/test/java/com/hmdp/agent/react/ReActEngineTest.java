@@ -112,21 +112,44 @@ class ReActEngineTest {
 
     @Test
     void two_consecutive_tool_failures_interrupt_with_ticket_fallback() {
-        Decisions.set(
-                "{\"action\":{\"tool\":\"query_my_orders\",\"args\":{}}}",
-                "{\"action\":{\"tool\":\"query_my_orders\",\"args\":{}}}");
+        // R-1：首次失败即原参快速重试（不等 LLM 二次决策）——decide 仅 1 次、execute 2 次、话术不调 LLM 生成
+        Decisions.set("{\"action\":{\"tool\":\"query_my_orders\",\"args\":{}}}");
         stubDecisions();
         org.mockito.Mockito.when(toolExecutor.execute(anyString(), any(), any(), any()))
                 .thenReturn(ToolResult.fail("ORDER_TIMEOUT", "订单服务暂时繁忙"));
-        org.mockito.Mockito.when(glmClient.streamChat(any(LlmTypes.Request.class), any())).thenReturn(
-                new GlmClient.StreamResult("抱歉，查询遇到问题", 50, 30));
 
         ReActEngine.ReactResult r = engine.run(ctx, List.of(), null, "查订单",
                 props.getReact().getMaxSteps(), s -> {}, null);
 
-        assertTrue(r.needTicketFallback()); // FR-05：建议建单或转人工
+        assertTrue(r.needTicketFallback()); // FR-05/FR-10：转人工或建议建单
         assertEquals("TOOL_CONSECUTIVE_FAIL", r.reason());
+        assertEquals("订单服务暂时繁忙", r.answer(), "失败话术 = 最后一次失败摘要（编排层另有转人工固定文案）");
+        assertEquals(1, r.stepsUsed());
+        verify(glmClient, org.mockito.Mockito.times(1)).complete(any()); // 无二次决策
+        verify(glmClient, org.mockito.Mockito.never()).streamChat(any(), any()); // 不调 LLM 生成失败话术
+        verify(toolExecutor, org.mockito.Mockito.times(2)).execute(eq("query_my_orders"), any(), any(), any());
+    }
+
+    @Test
+    void first_failure_retried_inline_and_recovery_continues_loop() {
+        // R-1：瞬态失败原参重试成功 → 循环继续，下一步决策可基于数据回答
+        Decisions.set(
+                "{\"action\":{\"tool\":\"query_my_orders\",\"args\":{}}}",
+                "{\"action\":\"ANSWER\"}");
+        stubDecisions();
+        org.mockito.Mockito.when(toolExecutor.execute(anyString(), any(), any(), any()))
+                .thenReturn(ToolResult.fail("ORDER_TIMEOUT", "订单服务暂时繁忙"))
+                .thenReturn(ToolResult.builder().success(true).data(List.of()).summary("1 条").build());
+        org.mockito.Mockito.when(glmClient.streamChat(any(LlmTypes.Request.class), any())).thenReturn(
+                new GlmClient.StreamResult("您的订单已支付", 10, 10));
+
+        ReActEngine.ReactResult r = engine.run(ctx, List.of(), null, "查订单",
+                props.getReact().getMaxSteps(), s -> {}, null);
+
+        assertEquals("您的订单已支付", r.answer());
         assertEquals(2, r.stepsUsed());
+        verify(toolExecutor, org.mockito.Mockito.times(2)).execute(anyString(), any(), any(), any());
+        verify(glmClient, org.mockito.Mockito.times(2)).complete(any()); // 失败重试不额外增加决策次数
     }
 
     @Test

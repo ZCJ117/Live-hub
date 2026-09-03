@@ -244,6 +244,29 @@ class ChatOrchestratorDispatchTest {
     }
 
     @Test
+    void concurrent_second_turn_rejected_as_busy() {
+        // R-4：同会话串轮守卫——上一轮在途时新消息快速拒绝（不进 Planner/不写记忆），防两轮事件交叉推到同一连接
+        commonStubs();
+        when(planner.plan(any(), any(), any())).thenReturn(
+                decision(PlanDecision.PlanType.REACT, Intent.ORDER_QUERY, List.of()));
+        ChatOrchestratorService svc = service(Runnable::run);
+        when(reActEngine.run(any(), any(), any(), any(), anyInt(), any(Consumer.class), any()))
+                .thenAnswer(inv -> {
+                    svc.handleChat(session(), "第二条", "token"); // 第一轮在途期间并发第二轮
+                    return reactResult("第一轮回答");
+                });
+
+        svc.handleChat(session(), "第一条", "token");
+
+        verify(sseManager).send(eq(1L), eq("delta"),
+                argThat(d -> String.valueOf(((Map<?, ?>) d).get("text")).contains("仍在处理中")));
+        verify(sseManager).send(eq(1L), eq("done"),
+                argThat(d -> "BUSY".equals(((Map<?, ?>) d).get("finishReason"))));
+        verify(planner, times(1)).plan(any(), any(), any()); // 第二轮不进 Planner
+        verify(memoryService, times(1)).append(eq(1L), eq("user"), any()); // 仅第一轮写记忆
+    }
+
+    @Test
     void chat_direct_uses_engine_chat_direct() {
         commonStubs();
         when(planner.plan(any(), any(), any())).thenReturn(

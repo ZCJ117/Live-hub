@@ -32,6 +32,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
@@ -134,23 +136,40 @@ public class ChatOrchestratorService {
         });
     }
 
+    /** R-4 串轮守卫：同会话一轮未结束又进新消息 → 快速拒绝，防两轮事件交叉推到同一连接（前端单连接有输入态保护，此处兜底） */
+    private final Set<Long> inFlightTurns = ConcurrentHashMap.newKeySet();
+
     /** 一轮对话（异步执行） */
     public void handleChat(AgentSession session, String rawMessage, String token) {
-        sseExecutor.execute(() -> {
-            try {
-                AgentTokenHolder.set(token);
-                MDC.put("traceId", ToolCallAuditService.currentTraceId());
-                doChat(session, rawMessage);
-            } catch (Exception e) {
-                log.error("对话处理失败: sessionId={}", session.getId(), e);
-                sseManager.send(session.getId(), "error", Map.of(
-                        "code", "CHAT_FAIL", "friendlyText", "服务暂时繁忙，请稍后再试"));
-                sseManager.send(session.getId(), "done", Map.of("finishReason", "ERROR"));
-            } finally {
-                AgentTokenHolder.clear();
-                MDC.remove("traceId");
-            }
-        });
+        Long sessionId = session.getId();
+        if (!inFlightTurns.add(sessionId)) {
+            // 处理中拒绝：不进 LLM/不写记忆/不计消息数，提示稍候重发
+            sseManager.send(sessionId, "delta", Map.of("text", "上一条消息仍在处理中，请稍候再发送。"));
+            sseManager.send(sessionId, "done", Map.of("finishReason", "BUSY"));
+            return;
+        }
+        try {
+            sseExecutor.execute(() -> {
+                try {
+                    AgentTokenHolder.set(token);
+                    MDC.put("traceId", ToolCallAuditService.currentTraceId());
+                    doChat(session, rawMessage);
+                } catch (Exception e) {
+                    log.error("对话处理失败: sessionId={}", sessionId, e);
+                    sseManager.send(sessionId, "error", Map.of(
+                            "code", "CHAT_FAIL", "friendlyText", "服务暂时繁忙，请稍后再试"));
+                    sseManager.send(sessionId, "done", Map.of("finishReason", "ERROR"));
+                } finally {
+                    inFlightTurns.remove(sessionId);
+                    AgentTokenHolder.clear();
+                    MDC.remove("traceId");
+                }
+            });
+        } catch (RuntimeException e) {
+            // 线程池拒绝（AbortPolicy，D1.6）：释放串轮标记再上抛，否则该会话被永久 BUSY
+            inFlightTurns.remove(sessionId);
+            throw e;
+        }
     }
 
     private void doChat(AgentSession session, String rawMessage) {

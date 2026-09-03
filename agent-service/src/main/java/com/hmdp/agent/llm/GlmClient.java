@@ -97,7 +97,8 @@ public class GlmClient {
         Request httpRequest = buildRequest(body);
         try (Response response = httpClient.newCall(httpRequest).execute()) {
             if (!response.isSuccessful() || response.body() == null) {
-                throw new LlmTypes.LlmException("LLM API error: HTTP " + (response.code()));
+                throw new LlmTypes.LlmException("LLM API error: HTTP " + response.code()
+                        + errorDetail(response, body));
             }
             JsonNode root = objectMapper.readTree(response.body().string());
             JsonNode choices = root.path("choices");
@@ -172,7 +173,8 @@ public class GlmClient {
         Request request = buildRequest(body);
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful() || response.body() == null) {
-                throw new LlmTypes.LlmException("LLM API error: HTTP " + response.code());
+                throw new LlmTypes.LlmException("LLM API error: HTTP " + response.code()
+                        + errorDetail(response, body));
             }
             BufferedSource source = response.body().source();
             String line;
@@ -203,6 +205,44 @@ public class GlmClient {
             }
         } catch (IOException e) {
             throw new LlmTypes.LlmException("LLM 流式调用失败", e);
+        }
+    }
+
+    /** R-2（间歇 400 定位）：失败异常携带请求指纹（模型/消息条数与字符量/请求字节数）+ 上游错误体摘要——OkHttp 不落请求体日志的替代定位手段 */
+    private String errorDetail(Response response, Map<String, Object> body) {
+        StringBuilder sb = new StringBuilder(" ");
+        try {
+            sb.append(fingerprint(body));
+            if (response.body() != null) {
+                String upstream = response.body().string();
+                if (!upstream.isBlank()) {
+                    sb.append(" upstreamBody=").append(upstream, 0, Math.min(upstream.length(), 300));
+                }
+            }
+        } catch (Exception e) {
+            sb.append("[detail-unavailable]");
+        }
+        return sb.toString();
+    }
+
+    private String fingerprint(Map<String, Object> body) {
+        try {
+            StringBuilder sb = new StringBuilder("fingerprint[model=").append(body.get("model"));
+            Object msgs = body.get("messages");
+            if (msgs instanceof List<?> list) {
+                sb.append(", msgs=").append(list.size());
+                for (Object o : list) {
+                    if (o instanceof Map<?, ?> m) {
+                        sb.append(' ').append(m.get("role")).append(':')
+                                .append(String.valueOf(m.get("content")).length());
+                    }
+                }
+            }
+            sb.append(", jsonMode=").append(body.containsKey("response_format"));
+            sb.append(", bytes=").append(objectMapper.writeValueAsString(body).length()).append(']');
+            return sb.toString();
+        } catch (Exception e) {
+            return "fingerprint[unavailable]";
         }
     }
 

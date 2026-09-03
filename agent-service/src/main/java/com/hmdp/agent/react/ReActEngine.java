@@ -83,7 +83,6 @@ public class ReActEngine {
 
         List<LlmTypes.Message> messages = buildMessages(history, summary, userMessage);
         List<ToolResult> observations = new ArrayList<>();
-        int consecutiveFailures = 0;
         int stepsUsed = 0;
 
         for (int step = 1; step <= maxSteps; step++) {
@@ -106,18 +105,21 @@ public class ReActEngine {
 
             ToolResult result = toolExecutor.execute(toolName, args, ctx, onEvent);
             observations.add(result);
-
             if (result.isSuccess()) {
-                consecutiveFailures = 0;
-            } else {
-                consecutiveFailures++;
-                if (consecutiveFailures >= 2) {
-                    // 连续 2 次失败 → 硬中断（FR-10 转人工触发条件之一，Phase 4 接入）
-                    log.warn("连续 2 次工具失败，中断 ReAct: sessionId={}", ctx.getSessionId());
-                    return answerWithGuard(ctx, messages, observations, userMessage, onDelta, onEvent,
-                            true, "TOOL_CONSECUTIVE_FAIL", stepsUsed);
-                }
+                continue;
             }
+            // R-1（PRD 4.1 上游故障反馈 ≤6s）：失败观测路径缩短——不回 LLM 二次决策（省 2 次 LLM 往返），
+            // 原参立即重试一次；重试仍败即连败×2 硬中断（FR-10 转人工语义不变）。
+            // 失败话术由编排层固定文案接管（dispatch 的 TOOL_CONSECUTIVE_FAIL 分支），不再调 LLM 生成
+            log.warn("工具失败，原参快速重试（不等 LLM 二次决策）: sessionId={}, tool={}, code={}",
+                    ctx.getSessionId(), toolName, result.getErrorCode());
+            result = toolExecutor.execute(toolName, args, ctx, onEvent);
+            observations.add(result);
+            if (result.isSuccess()) {
+                continue;
+            }
+            log.warn("工具连败 2 次，硬中断 ReAct: sessionId={}, tool={}", ctx.getSessionId(), toolName);
+            return new ReactResult(result.getSummary(), true, "TOOL_CONSECUTIVE_FAIL", stepsUsed, 0, 0);
         }
 
         log.info("ReAct 达到最大步数，强制收敛: sessionId={}", ctx.getSessionId());

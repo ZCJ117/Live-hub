@@ -118,6 +118,39 @@ class GlmClientResilienceTest {
     }
 
     @Test
+    void http_400_异常信息含请求指纹与上游错误体() {
+        // R-2：间歇 400 定位——失败异常必须携带请求指纹（模型/消息字符量）与上游错误体摘要
+        for (int i = 0; i < 6; i++) { // 主/备模型 × 各 3 次
+            server.enqueue(new MockResponse().setResponseCode(400)
+                    .setBody("{\"error\":{\"code\":\"1210\",\"message\":\"API 调用参数有误\"}}"));
+        }
+        LlmTypes.LlmException e = assertThrows(LlmTypes.LlmException.class, () -> client.complete(
+                LlmTypes.Request.builder().model("glm-main")
+                        .messages(List.of(LlmTypes.Message.user("hi"))).build()));
+        String msg = e.getMessage();
+        assertTrue(msg.contains("HTTP 400"), msg);
+        assertTrue(msg.contains("fingerprint[model=glm-"), msg);
+        assertTrue(msg.contains("user:2,"), "user 消息字符数应入指纹: " + msg);
+        assertTrue(msg.contains("jsonMode=false"), msg);
+        assertTrue(msg.contains("API 调用参数有误"), "上游错误体应入异常信息: " + msg);
+    }
+
+    @Test
+    void 流式_400_同样携带指纹与错误体() {
+        for (int i = 0; i < 6; i++) {
+            server.enqueue(new MockResponse().setResponseCode(400)
+                    .setBody("{\"error\":{\"message\":\"invalid request\"}}"));
+        }
+        StringBuilder out = new StringBuilder();
+        LlmTypes.LlmException e = assertThrows(LlmTypes.LlmException.class, () -> client.streamChat(
+                LlmTypes.Request.builder().model("glm-light")
+                        .messages(List.of(LlmTypes.Message.user("abc"))).build(), out::append));
+        assertTrue(e.getMessage().contains("fingerprint[model=glm-"), e.getMessage());
+        assertTrue(e.getMessage().contains("user:3,"), e.getMessage());
+        assertTrue(e.getMessage().contains("invalid request"), e.getMessage());
+    }
+
+    @Test
     void 流式_中途断流_不再重试_抛异常() {
         // 断流点必须落在首个 delta 事件之后（MockWebServer 在响应体一半处断开，故用 padding 撑过半程；
         // throttle 保证首个事件先完整到达客户端）
