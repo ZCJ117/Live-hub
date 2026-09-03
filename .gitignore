@@ -31,3 +31,10 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### E2E取证（含登录token，禁止入库）
+.e2e/
+
+### JVM崩溃日志
+hs_err_pid*.log
+replay_pid*.log
