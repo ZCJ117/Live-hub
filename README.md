@@ -17,7 +17,7 @@ Live-hub是一个基于微服务架构的仿大众点评系统，提供用户注
 - **监控告警**：集成Micrometer、Prometheus实现应用监控
 
 ### 1.3 系统架构
-![hm-dianping 微服务架构](docs/images/architecture.png)
+![Live-hub 微服务架构](docs/images/architecture.png)
 
 ## 2. 技术栈
 
