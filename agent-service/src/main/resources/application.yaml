@@ -2,17 +2,22 @@ server:
   port: 8088 # agent-service 端口（8081~8087 已占用）
 
 spring:
+  # 本地凭据（SPEC-06 G8）：optional 保证文件缺失时不阻塞启动；环境变量优先级更高，可覆盖
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     # 独立 schema agent_service，复用既有 MySQL 实例（PRD 4.4）
     url: jdbc:mysql://127.0.0.1:3306/agent_service?useSSL=false&serverTimezone=Asia/Shanghai
     username: root
-    password: 520117
+    password: ${MYSQL_PASSWORD:}
   data:
     redis:
       host: localhost
       port: 6379
-      password: 520117
+      password: ${REDIS_PASSWORD:}
       lettuce:
         pool:
           max-active: 10

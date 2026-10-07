@@ -4,6 +4,11 @@ server:
 
 # Spring 配置
 spring:
+  # 本地凭据（SPEC-06 G8）：optional 保证文件缺失时不阻塞启动；环境变量优先级更高，可覆盖
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
   # 云服务配置
   cloud:
     # 网关配置
@@ -65,7 +70,7 @@ spring:
     redis:
       host: localhost
       port: 6379
-      password: 520117
+      password: ${REDIS_PASSWORD:}
       lettuce:
         pool:
           max-active: 10

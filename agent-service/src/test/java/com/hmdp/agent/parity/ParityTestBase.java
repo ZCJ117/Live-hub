@@ -31,7 +31,7 @@ public abstract class ParityTestBase {
     protected static final String BIZ_URL =
             "jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=Asia/Shanghai";
     protected static final String DB_USER = "root";
-    protected static final String DB_PWD = "520117";
+    protected static final String DB_PWD = System.getenv("MYSQL_PASSWORD");
     protected static final String GATEWAY = "http://127.0.0.1:8081";
 
     protected static Connection biz;
@@ -70,6 +70,8 @@ public abstract class ParityTestBase {
 
     @BeforeAll
     static void initBizDb() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(DB_PWD != null && !DB_PWD.isBlank(),
+                "未设置 MYSQL_PASSWORD，跳过：请先 `set -a; source .env; set +a`");
         try {
             biz = DriverManager.getConnection(BIZ_URL, DB_USER, DB_PWD);
             biz.createStatement().executeQuery("SELECT 1");

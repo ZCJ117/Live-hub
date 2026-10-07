@@ -29,12 +29,14 @@ class RefundIdempotencyDbIT {
 
     private static final String URL = "jdbc:mysql://127.0.0.1:3306/agent_service?useSSL=false&serverTimezone=Asia/Shanghai";
     private static final String USER = "root";
-    private static final String PASS = "520117";
+    private static final String PASS = System.getenv("MYSQL_PASSWORD");
 
     private static Connection conn;
 
     @BeforeAll
     static void setup() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(PASS != null && !PASS.isBlank(),
+                "未设置 MYSQL_PASSWORD，跳过：请先 `set -a; source .env; set +a`");
         try {
             conn = DriverManager.getConnection(URL, USER, PASS);
         } catch (Exception e) {

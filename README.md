@@ -577,7 +577,7 @@ spring:
     redis:
       host: localhost
       port: 6379
-      password: 520117
+      password: ${MYSQL_PASSWORD:}   # 见 .env.example
       lettuce:
         pool:
           max-active: 10

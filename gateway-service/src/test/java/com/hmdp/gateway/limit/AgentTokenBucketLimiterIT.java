@@ -28,7 +28,10 @@ class AgentTokenBucketLimiterIT {
     static void setup() {
         try {
             LettuceConnectionFactory factory = new LettuceConnectionFactory("localhost", 6379);
-            factory.setPassword("520117");
+            String pwd = System.getenv("REDIS_PASSWORD");
+            org.junit.jupiter.api.Assumptions.assumeTrue(pwd != null && !pwd.isBlank(),
+                    "未设置 REDIS_PASSWORD，跳过：请先 `set -a; source .env; set +a`");
+            factory.setPassword(pwd);
             factory.afterPropertiesSet();
             redis = new StringRedisTemplate(factory);
             redis.afterPropertiesSet();

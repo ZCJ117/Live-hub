@@ -37,7 +37,9 @@ class ChatMemoryServiceTest {
                     .setConnectTimeout(500)
                     .setTimeout(1000)
                     .setRetryAttempts(1);
-            String pwd = System.getenv().getOrDefault("REDIS_PASSWORD", "520117");
+            String pwd = System.getenv("REDIS_PASSWORD");
+            org.junit.jupiter.api.Assumptions.assumeTrue(pwd != null && !pwd.isBlank(),
+                    "未设置 REDIS_PASSWORD，跳过：请先 `set -a; source .env; set +a`");
             if (!pwd.isBlank()) {
                 server.setPassword(pwd);
             }

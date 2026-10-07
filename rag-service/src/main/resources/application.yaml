@@ -3,6 +3,11 @@ server:
 
 #NOTE 这里向量数据库选择 PostgreSQL+pgvector(扩展),是用来存文档和向量的
 spring:
+  # 本地凭据（SPEC-06 G8）：optional 保证文件缺失时不阻塞启动；环境变量优先级更高，可覆盖
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
   datasource:
     driver-class-name: org.postgresql.Driver     # PostgreSQL 驱动
     url: jdbc:postgresql://localhost:5433/rag_db    # PostgreSQL 驱动
@@ -14,7 +19,7 @@ spring:
     redis:
       host: localhost
       port: 6379
-      password: 520117
+      password: ${REDIS_PASSWORD:}
 
 mybatis-plus:
   type-aliases-package: com.hmdp.rag.entity

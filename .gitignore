@@ -38,3 +38,6 @@ build/
 ### JVM崩溃日志
 hs_err_pid*.log
 replay_pid*.log
+
+# 本地凭据（SPEC-06 G8）：模板见 .env.example
+.env
