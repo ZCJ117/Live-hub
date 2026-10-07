@@ -6,6 +6,7 @@ import cn.hutool.core.bean.BeanUtil;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
+import com.hmdp.dto.UserInfoVO;
 import com.hmdp.entity.User;
 import com.hmdp.entity.UserInfo;
 import com.hmdp.user.service.IUserInfoService;
@@ -86,10 +87,8 @@ public class UserController {
             // 没有详情，应该是第一次查看详情
             return Result.ok();
         }
-        info.setCreateTime(null);
-        info.setUpdateTime(null);
-        // 返回
-        return Result.ok(info);
+        // 脱敏返回（SPEC-06 §5.4）：不回传 credits/birthday/gender
+        return Result.ok(BeanUtil.copyProperties(info, UserInfoVO.class));
     }
 
     @GetMapping("/{id}")
