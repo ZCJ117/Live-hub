@@ -268,11 +268,18 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
         // 获取当前页数据
         List<Blog> records = page.getRecords();
-        // 查询用户
-        records.forEach(blog -> {
-            this.queryBlogUser(blog);
+        // 查询用户：本页博客同属该用户，博主信息只在循环外取一次（SPEC-07 §1.5 消除逐条远程调用）
+        Result userResult = userFeignClient.getUserById(id);
+        UserDTO author = userResult.getSuccess()
+                ? BeanUtil.copyProperties(userResult.getData(), UserDTO.class)
+                : null;
+        for (Blog blog : records) {
+            if (author != null) {
+                blog.setName(author.getNickName());
+                blog.setIcon(author.getIcon());
+            }
             this.isBlogLiked(blog);
-        });
+        }
         return Result.ok(records);
     }
 }
