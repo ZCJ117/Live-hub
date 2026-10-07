@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
 import java.util.Collections;
@@ -44,9 +45,20 @@ public class UserController {
      * 发送手机验证码
      */
     @PostMapping("code")
-    public Result sendCode(@RequestParam("phone") String phone, HttpSession session) {
+    public Result sendCode(@RequestParam("phone") String phone,
+                           HttpSession session,
+                           HttpServletRequest request) {
         // 发送短信验证码并保存验证码
-        return userService.sendCode(phone,session);
+        return userService.sendCode(phone, session, resolveClientIp(request));
+    }
+
+    /** 取真实客户端 IP：优先 X-Forwarded-For 首段（网关转发场景），回退 remoteAddr */
+    private String resolveClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 
     /**

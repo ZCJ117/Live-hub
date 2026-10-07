@@ -17,7 +17,12 @@ import jakarta.servlet.http.HttpSession;
  */
 public interface IUserService extends IService<User> {
 
-    Result sendCode(String phone, HttpSession session);
+    /**
+     * 发送手机验证码（SPEC-06 §5.5 增加频控）
+     *
+     * @param clientIp 调用方 IP，用于每 IP 24 小时上限
+     */
+    Result sendCode(String phone, HttpSession session, String clientIp);
 
     Result login(LoginFormDTO loginForm, HttpSession session);
 

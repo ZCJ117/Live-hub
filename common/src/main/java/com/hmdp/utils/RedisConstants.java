@@ -3,6 +3,10 @@ package com.hmdp.utils;
 public class RedisConstants {
     public static final String LOGIN_CODE_KEY = "login:code:";
     public static final Long LOGIN_CODE_TTL = 2L;
+    /** 验证码频控（SPEC-06 §5.5）：手机号 60 秒 1 次 / 24 小时 10 次，IP 24 小时 20 次 */
+    public static final String LOGIN_CODE_LIMIT_KEY = "login:code:limit:phone:";
+    public static final String LOGIN_CODE_COUNT_KEY = "login:code:count:phone:";
+    public static final String LOGIN_CODE_IP_COUNT_KEY = "login:code:count:ip:";
     public static final String LOGIN_USER_KEY = "login:token:";
     public static final Long LOGIN_USER_TTL = 36000L;
 

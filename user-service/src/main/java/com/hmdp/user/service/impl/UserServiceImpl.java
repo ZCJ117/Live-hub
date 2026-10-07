@@ -45,28 +45,71 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     private StringRedisTemplate stringRedisTemplate;
 
 
+    /** 验证码频控口径（SPEC-06 §5.5） */
+    private static final long CODE_PHONE_INTERVAL_SECONDS = 60L;
+    private static final long CODE_PHONE_MAX_PER_DAY = 10L;
+    private static final long CODE_IP_MAX_PER_DAY = 20L;
+    private static final long CODE_COUNT_TTL_HOURS = 24L;
+
     //NOTE 发送验证码
     @Override
-    public Result sendCode(String phone, HttpSession session) {
+    public Result sendCode(String phone, HttpSession session, String clientIp) {
 
         //校验手机号
-        if(RegexUtils.isPhoneInvalid(phone)){
+        if (RegexUtils.isPhoneInvalid(phone)) {
             //不符合，返回错误信息
             return Result.fail("手机格式错误");
         }
+
+        // 频控（SPEC-06 §5.5）：未被频控前，该接口可对任意手机号无限轰炸
+        if (!checkSendCodeLimit(phone, clientIp)) {
+            return Result.fail("验证码发送过于频繁，请稍后再试");
+        }
+
         //符合，生成验证码
         String code = RandomUtil.randomNumbers(6);
 
-
         //保存验证码到redis中
-//        session.setAttribute("code",code);   NOTE 这里用redis代替session
-        stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY+phone,code,LOGIN_CODE_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY + phone, code, LOGIN_CODE_TTL, TimeUnit.MINUTES);
 
-
-        // 发送验证码
-        log.debug("发送短信验证码成功，验证码:{}",code);
+        // 发送验证码。注意：**不得**在此打印验证码明文——
+        // user-service 的 logging.level.com.hmdp 为 debug，明文会直接落到日志（SPEC-06 §5.5）
+        log.debug("发送短信验证码成功，phone={}", phone);
         //返回ok
         return Result.ok();
+    }
+
+    /**
+     * 验证码发送频控：手机号 60 秒 1 次 + 24 小时 10 次；IP 24 小时 20 次。
+     * Redis 异常时放行（不因限流组件故障阻断登录），仅在计数超限时拒绝。
+     */
+    private boolean checkSendCodeLimit(String phone, String clientIp) {
+        try {
+            Boolean allowed = stringRedisTemplate.opsForValue().setIfAbsent(
+                    LOGIN_CODE_LIMIT_KEY + phone, "1", CODE_PHONE_INTERVAL_SECONDS, TimeUnit.SECONDS);
+            if (Boolean.FALSE.equals(allowed)) {
+                return false;
+            }
+            if (incrWithTtl(LOGIN_CODE_COUNT_KEY + phone) > CODE_PHONE_MAX_PER_DAY) {
+                return false;
+            }
+            if (clientIp != null && !clientIp.isBlank()
+                    && incrWithTtl(LOGIN_CODE_IP_COUNT_KEY + clientIp) > CODE_IP_MAX_PER_DAY) {
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            log.warn("验证码频控检查异常，放行: phone={}", phone, e);
+            return true;
+        }
+    }
+
+    private long incrWithTtl(String key) {
+        Long count = stringRedisTemplate.opsForValue().increment(key);
+        if (count != null && count == 1L) {
+            stringRedisTemplate.expire(key, CODE_COUNT_TTL_HOURS, TimeUnit.HOURS);
+        }
+        return count == null ? 0L : count;
     }
 
 
