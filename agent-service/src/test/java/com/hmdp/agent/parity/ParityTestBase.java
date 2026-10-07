@@ -70,7 +70,7 @@ public abstract class ParityTestBase {
 
     @BeforeAll
     static void initBizDb() {
-        org.junit.jupiter.api.Assumptions.assumeTrue(DB_PWD != null && !DB_PWD.isBlank(),
+        assumeTrue(DB_PWD != null && !DB_PWD.isBlank(),
                 "未设置 MYSQL_PASSWORD，跳过：请先 `set -a; source .env; set +a`");
         try {
             biz = DriverManager.getConnection(BIZ_URL, DB_USER, DB_PWD);
