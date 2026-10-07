@@ -1,5 +1,6 @@
 package com.hmdp.order.controller;
 
+import cn.dev33.satoken.annotation.SaCheckRole;
 import com.hmdp.dto.Result;
 import com.hmdp.order.service.ISeckillConsistencyService;
 import org.springframework.web.bind.annotation.*;
@@ -8,6 +9,7 @@ import jakarta.annotation.Resource;
 
 @RestController
 @RequestMapping("/seckill/consistency")
+@SaCheckRole("admin")
 public class SeckillConsistencyController {
 
     @Resource

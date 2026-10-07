@@ -1,6 +1,7 @@
 package com.hmdp.shop.controller;
 
 
+import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
@@ -40,6 +41,7 @@ public class ShopController {
      * @return 商铺id
      */
     @PostMapping
+    @SaCheckRole("admin")
     public Result saveShop(@RequestBody Shop shop) {
         // 写入数据库
         shopService.save(shop);
@@ -53,6 +55,7 @@ public class ShopController {
      * @return 无
      */
     @PutMapping
+    @SaCheckRole("admin")
     public Result updateShop(@RequestBody Shop shop) {
         // 写入数据库
         return shopService.update(shop);

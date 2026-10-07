@@ -42,6 +42,10 @@ logging:
   level:
     com.hmdp: debug # 日志级别，debug 用于开发环境，生产环境建议调整为 info 或 warn
 
+# hmdp 自定义配置
+hmdp:
+  admin-user-ids: ${ADMIN_USER_IDS:} # 管理接口（商户增改、券创建等）的授权用户id白名单，逗号分隔
+
 # Sa-Token 配置
 sa-token:
   token-name: Authorization

@@ -1,6 +1,7 @@
 package com.hmdp.voucher.controller;
 
 
+import cn.dev33.satoken.annotation.SaCheckRole;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Voucher;
 import com.hmdp.voucher.service.IVoucherService;
@@ -32,6 +33,7 @@ public class VoucherController {
      * @return 优惠券id
      */
     @PostMapping
+    @SaCheckRole("admin")
     public Result addVoucher(@RequestBody Voucher voucher) {
         voucherService.save(voucher);
         return Result.ok(voucher.getId());
@@ -43,6 +45,7 @@ public class VoucherController {
      * @return 优惠券id
      */
     @PostMapping("seckill")
+    @SaCheckRole("admin")
     public Result addSeckillVoucher(@RequestBody Voucher voucher) {
         voucherService.addSeckillVoucher(voucher);
         return Result.ok(voucher.getId());

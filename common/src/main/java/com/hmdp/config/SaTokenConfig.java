@@ -1,11 +1,13 @@
 package com.hmdp.config;
 
 import cn.dev33.satoken.interceptor.SaInterceptor;
+import cn.dev33.satoken.stp.StpInterface;
 import cn.dev33.satoken.stp.StpUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -25,8 +27,10 @@ import java.util.Set;
 public class SaTokenConfig implements WebMvcConfigurer {
 
     /**
-     * 免登录路径。前四项与网关 SaTokenGatewayConfig 的既有白名单严格一致；
-     * {@code /internal/**} 由 InternalTokenInterceptor 用共享密钥保护，不走登录态。
+     * 免登录路径。其中 {@code /user/login}、{@code /user/code}、{@code /actuator/**}
+     * 三项与网关 SaTokenGatewayConfig 的既有白名单一致；{@code /internal/**} 与
+     * {@code /error} 是服务侧额外放开的——前者由 InternalTokenInterceptor 用共享密钥保护，
+     * 不走登录态，后者承接容器转发的错误页。
      */
     static final Set<String> LOGIN_EXCLUDE_PATHS = Set.of(
             "/user/login", "/user/code", "/internal/**", "/actuator/**", "/error");
@@ -35,6 +39,15 @@ public class SaTokenConfig implements WebMvcConfigurer {
 
     public SaTokenConfig(@Value("${hmdp.internal-token:}") String internalToken) {
         this.internalToken = internalToken;
+    }
+
+    /**
+     * 注册角色来源。Sa-Token 通过 StpInterface 解析 {@code @SaCheckRole}。
+     * 此处显式注册而非依赖扫描——common 的 com.hmdp.config 不在各服务的扫描范围内。
+     */
+    @Bean
+    public StpInterface stpInterface(@Value("${hmdp.admin-user-ids:}") String adminUserIds) {
+        return new AdminRoleProvider(adminUserIds);
     }
 
     @Override
