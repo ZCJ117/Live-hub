@@ -8,6 +8,7 @@ import com.hmdp.order.dto.OrderQueryVO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.RefundMessages;
 import com.hmdp.dto.SeckillOrderMessage;
+import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Voucher;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.order.feign.VoucherFeignClient;
@@ -15,13 +16,13 @@ import com.hmdp.order.mapper.VoucherOrderMapper;
 import com.hmdp.order.metrics.SeckillMetrics;
 import com.hmdp.order.mq.SeckillOrderProducer;
 import com.hmdp.order.service.IVoucherOrderService;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import io.micrometer.core.instrument.Timer;
 import io.seata.spring.annotation.GlobalTransactional;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RedissonClient;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -57,9 +58,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private StringRedisTemplate stringRedisTemplate;
 
     @Resource
-    private RedissonClient redissonClient;
-
-    @Resource
     private SeckillOrderProducer seckillOrderProducer;
 
     @Resource
@@ -91,14 +89,22 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         seckillMetrics.incrementSeckillRequest();
 
         try {
-            Long userId = UserHolder.getUser().getId();
+            UserDTO user = UserHolder.getUser();
+            if (user == null) {
+                seckillMetrics.incrementSeckillFail();
+                return Result.fail("未登录，请先登录");
+            }
+            Long userId = user.getId();
 
             long orderId = redisIdWorker.nextId("order");
 
-            Long result = stringRedisTemplate.execute(
+            Long scriptResult = stringRedisTemplate.execute(
                     SECKILL_SCRIPT,
                     Collections.emptyList(),
                     voucherId.toString(), userId.toString(), String.valueOf(orderId));
+
+            // 脚本返回 nil（Redis 异常）按 key 缺失处理，避免拆箱 NPE
+            long result = scriptResult == null ? 3L : scriptResult;
 
             if (result != 0) {
                 seckillMetrics.incrementSeckillFail();
@@ -106,29 +112,56 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     seckillMetrics.incrementStockInsufficient();
                     log.warn("秒杀失败-库存不足: userId={}, voucherId={}", userId, voucherId);
                     return Result.fail("库存不足");
-                } else {
+                } else if (result == 2) {
                     seckillMetrics.incrementDuplicateOrder();
                     log.warn("秒杀失败-重复下单: userId={}, voucherId={}", userId, voucherId);
                     return Result.fail("不能重复下单");
+                } else {
+                    // result == 3：seckill:stock:{voucherId} 不存在，需预热；与真实"库存不足"区分
+                    seckillMetrics.incrementRedisStockMissing();
+                    log.error("秒杀失败-Redis库存key缺失，需预热: voucherId={}", voucherId);
+                    return Result.fail("系统繁忙，请稍后重试");
                 }
             }
 
             SeckillOrderMessage message = new SeckillOrderMessage(orderId, userId, voucherId);
 
-            boolean sendSuccess = seckillOrderProducer.sendSeckillOrderMessageAsync(message);
-            if (sendSuccess) {
-                seckillMetrics.incrementMqSendSuccess();
-            } else {
+            // 同步发送（SPEC-03 §5.2 方案 A）：asyncSend 的返回值只代表"提交成功"，
+            // 真正的失败被吞在回调里，用户会拿到一个永不兑现的 orderId
+            if (!seckillOrderProducer.sendSeckillOrderMessage(message)) {
+                rollbackSeckillReservation(voucherId, userId, orderId);
                 seckillMetrics.incrementMqSendFail();
-                log.warn("消息发送失败，但Redis已预扣库存，订单将异步处理: orderId={}", orderId);
+                seckillMetrics.incrementSeckillFail();
+                log.error("秒杀订单消息发送失败，已回滚Redis预扣: orderId={}, userId={}, voucherId={}",
+                        orderId, userId, voucherId);
+                return Result.fail("系统繁忙，请稍后重试");
             }
 
+            seckillMetrics.incrementMqSendSuccess();
             seckillMetrics.incrementSeckillSuccess();
-            log.info("秒杀资格校验通过，订单异步处理中: orderId={}, userId={}, voucherId={}", orderId, userId, voucherId);
-
+            log.info("秒杀资格校验通过，订单异步处理中: orderId={}, userId={}, voucherId={}",
+                    orderId, userId, voucherId);
             return Result.ok(orderId);
         } finally {
             seckillMetrics.recordLatency(timerSample);
+        }
+    }
+
+    /**
+     * 入口侧回滚（SPEC-03 §5.6）：库存恢复 + 移除用户标记 + 删除订单明细。
+     * 三者同源，必须一起回滚——任一遗漏都会让用户被永久标记"已购买"或库存凭空少 1。
+     */
+    private void rollbackSeckillReservation(Long voucherId, Long userId, Long orderId) {
+        try {
+            stringRedisTemplate.opsForValue().increment(RedisConstants.SECKILL_STOCK_KEY + voucherId);
+            stringRedisTemplate.opsForSet().remove(
+                    RedisConstants.SECKILL_ORDER_SET_KEY + voucherId, userId.toString());
+            stringRedisTemplate.opsForHash().delete(
+                    RedisConstants.SECKILL_ORDER_DETAIL_KEY + voucherId, orderId.toString());
+        } catch (Exception e) {
+            // 回滚失败无法在同一请求内自愈，记录待人工核对（补偿能力归 SPEC-04）
+            log.error("回滚秒杀预扣失败，需人工核对: voucherId={}, userId={}, orderId={}",
+                    voucherId, userId, orderId, e);
         }
     }
 

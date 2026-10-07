@@ -27,6 +27,7 @@ public class SeckillMetrics {
     private Counter seckillFailCounter;
     private Counter stockInsufficientCounter;
     private Counter duplicateOrderCounter;
+    private Counter redisStockMissingCounter;
     private Timer seckillLatencyTimer;
     private Counter mqSendSuccessCounter;
     private Counter mqSendFailCounter;
@@ -60,6 +61,11 @@ public class SeckillMetrics {
         duplicateOrderCounter = Counter.builder("seckill.duplicate.order")
                 .description("重复下单次数")
                 .tag("reason", "duplicate_order")
+                .register(meterRegistry);
+
+        redisStockMissingCounter = Counter.builder("seckill.stock.key.missing")
+                .description("Redis 库存key缺失次数（需预热，与库存不足区分）")
+                .tag("reason", "redis_stock_key_missing")
                 .register(meterRegistry);
 
         seckillLatencyTimer = Timer.builder("seckill.latency")
@@ -111,6 +117,10 @@ public class SeckillMetrics {
 
     public void incrementDuplicateOrder() {
         duplicateOrderCounter.increment();
+    }
+
+    public void incrementRedisStockMissing() {
+        redisStockMissingCounter.increment();
     }
 
     public Timer.Sample startTimer() {

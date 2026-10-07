@@ -1,0 +1,128 @@
+package com.hmdp.order.service;
+
+import com.hmdp.dto.Result;
+import com.hmdp.dto.UserDTO;
+import com.hmdp.order.metrics.SeckillMetrics;
+import com.hmdp.order.mq.SeckillOrderProducer;
+import com.hmdp.order.service.impl.VoucherOrderServiceImpl;
+import com.hmdp.utils.RedisIdWorker;
+import com.hmdp.utils.UserHolder;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+class SeckillVoucherServiceTest {
+
+    @Mock private StringRedisTemplate stringRedisTemplate;
+    @Mock private RedisIdWorker redisIdWorker;
+    @Mock private SeckillOrderProducer seckillOrderProducer;
+    @Mock private SeckillMetrics seckillMetrics;
+    @Mock private ValueOperations<String, String> valueOperations;
+    @InjectMocks private VoucherOrderServiceImpl service;
+
+    @BeforeEach
+    void login() {
+        UserDTO user = new UserDTO();
+        user.setId(7L);
+        UserHolder.saveUser(user);
+        when(redisIdWorker.nextId("order")).thenReturn(9001L);
+    }
+
+    @AfterEach
+    void logout() {
+        UserHolder.removeUser();
+    }
+
+    private void scriptReturns(Long value) {
+        when(stringRedisTemplate.execute(any(), anyList(), any(), any(), any())).thenReturn(value);
+    }
+
+    @Test
+    void 脚本返回1_库存不足() {
+        scriptReturns(1L);
+        Result r = service.seckillVoucher(1L);
+        assertFalse(r.getSuccess());
+        assertEquals("库存不足", r.getErrorMsg());
+        verify(seckillMetrics).incrementStockInsufficient();
+    }
+
+    @Test
+    void 脚本返回2_重复下单() {
+        scriptReturns(2L);
+        Result r = service.seckillVoucher(1L);
+        assertFalse(r.getSuccess());
+        assertEquals("不能重复下单", r.getErrorMsg());
+        verify(seckillMetrics).incrementDuplicateOrder();
+    }
+
+    @Test
+    void 脚本返回3_key缺失_走专门指标且不与库存不足混淆() {
+        scriptReturns(3L);
+        Result r = service.seckillVoucher(1L);
+        assertFalse(r.getSuccess());
+        verify(seckillMetrics).incrementRedisStockMissing();
+        verify(seckillMetrics, never()).incrementStockInsufficient();
+    }
+
+    @Test
+    void 脚本返回null_按key缺失处理不抛NPE() {
+        scriptReturns(null);
+        Result r = service.seckillVoucher(1L);
+        assertFalse(r.getSuccess());
+        verify(seckillMetrics).incrementRedisStockMissing();
+    }
+
+    @Test
+    void 脚本返回0_消息发送成功_返回订单号且计成功() {
+        scriptReturns(0L);
+        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(true);
+
+        Result r = service.seckillVoucher(1L);
+
+        assertTrue(r.getSuccess());
+        assertEquals(9001L, r.getData());
+        verify(seckillMetrics).incrementSeckillSuccess();
+        verify(seckillMetrics).incrementMqSendSuccess();
+    }
+
+    @Test
+    void 脚本返回0_消息发送失败_返回失败且回滚预扣_不计成功() {
+        scriptReturns(0L);
+        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(false);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(mock(org.springframework.data.redis.core.SetOperations.class));
+        when(stringRedisTemplate.opsForHash()).thenReturn(mock(org.springframework.data.redis.core.HashOperations.class));
+
+        Result r = service.seckillVoucher(1L);
+
+        assertFalse(r.getSuccess());
+        // 回滚三件事：库存 +1、移除用户标记、删除明细
+        verify(stringRedisTemplate, times(1)).opsForValue();
+        verify(stringRedisTemplate, times(1)).opsForSet();
+        verify(stringRedisTemplate, times(1)).opsForHash();
+        verify(seckillMetrics).incrementMqSendFail();
+        verify(seckillMetrics, never()).incrementSeckillSuccess();
+    }
+
+    @Test
+    void 未登录时返回失败而非NPE() {
+        UserHolder.removeUser();
+        Result r = service.seckillVoucher(1L);
+        assertFalse(r.getSuccess());
+        assertEquals("未登录，请先登录", r.getErrorMsg());
+    }
+}

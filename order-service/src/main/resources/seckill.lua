@@ -1,10 +1,13 @@
 -- 优惠券秒杀Lua脚本
 -- 实现库存预检和一人一单校验的原子操作
--- 返回值: 0-成功, 1-库存不足, 2-重复下单
+-- 返回值: 0-成功, 1-库存不足, 2-重复下单, 3-库存key缺失(需预热)
+--
+-- 【库存 owner 约定】seckill:stock:{voucherId} 的扣减权只属于本脚本（order-service 是秒杀流量入口）。
+-- voucher-service 只扣 DB 库存，不得再操作该 key——两侧同时扣减会造成 2 倍速消耗（SPEC-03 §1.2）。
 --
 -- 此脚本在秒杀流程中起到核心作用，保证在高并发场景下库存扣减和一人一单校验的原子性。
 -- 通过Redis单线程执行特性，避免了并发导致的超卖和重复购买问题。
--- 脚本执行成功后，会将订单信息写入Redis队列，供下游消费者异步处理，实现秒杀流量的削峰填谷。
+-- 脚本执行成功后，订单消息由 Java 端同步发送到 MQ，供下游消费者异步处理，实现秒杀流量的削峰填谷。
 
 local voucherId = ARGV[1]
 local userId = ARGV[2]
@@ -18,7 +21,8 @@ local orderDetailKey = 'seckill:order:detail:' .. voucherId
 -- 1. 检查库存是否存在
 local stock = tonumber(redis.call('GET', stockKey))
 if stock == nil then
-    return 1
+    -- 分开返回：key 缺失是运维态（Redis 重启/flush/过期），与真实"库存不足"必须可区分
+    return 3
 end
 
 -- 2. 检查库存是否充足
