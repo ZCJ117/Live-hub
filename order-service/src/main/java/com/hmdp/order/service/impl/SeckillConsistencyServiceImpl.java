@@ -39,7 +39,7 @@ public class SeckillConsistencyServiceImpl implements ISeckillConsistencyService
     public Result checkOrderConsistency(Long orderId) {
         log.info("开始检查订单一致性: orderId={}", orderId);
 
-        String orderDetailKey = "seckill:order:detail:";
+        String orderDetailKey = RedisConstants.SECKILL_ORDER_DETAIL_KEY;
         Map<Object, Object> orderInfo = stringRedisTemplate.opsForHash().entries(orderDetailKey);
 
         VoucherOrder dbOrder = voucherOrderMapper.selectById(orderId);

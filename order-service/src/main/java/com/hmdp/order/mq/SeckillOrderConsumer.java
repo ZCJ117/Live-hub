@@ -13,6 +13,7 @@ import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -89,8 +90,9 @@ public class SeckillOrderConsumer implements RocketMQListener<SeckillOrderMessag
         try {
             boolean locked = lock.tryLock(10, 30, TimeUnit.SECONDS);
             if (!locked) {
-                log.warn("获取订单锁失败，可能正在处理中: orderId={}", orderId);
-                return;
+                // 不能静默 ACK：return 在 RocketMQ 语义下等于"消费成功"，
+                // 消息不会重投、订单永久丢失且 Redis 预扣不回滚（SPEC-03 §1.4）
+                throw new IllegalStateException("获取订单锁失败，触发重试: orderId=" + orderId);
             }
 
             try {
@@ -108,15 +110,23 @@ public class SeckillOrderConsumer implements RocketMQListener<SeckillOrderMessag
                 );
                 if (count > 0) {
                     log.warn("用户已购买过该优惠券，一人一单校验失败: userId={}, voucherId={}", userId, voucherId);
-                    rollbackRedisData(voucherId, userId);
+                    releaseUserMark(voucherId, userId);
                     seckillMetrics.incrementMqConsumeFail();
                     return;
                 }
 
-                Result deductResult = voucherFeignClient.deductStock(voucherId, orderId);
-                if (!deductResult.getSuccess()) {
-                    log.error("扣减库存失败: voucherId={}, result={}", voucherId, deductResult.getErrorMsg());
-                    rollbackRedisData(voucherId, userId);
+                Result deductResult;
+                try {
+                    deductResult = voucherFeignClient.deductStock(voucherId, orderId);
+                } catch (Exception e) {
+                    // 内部端点不可达/网络异常：属于"应该重试"，不能当作业务失败丢弃（SPEC-03 §1.7）
+                    log.error("调用库存扣减失败，触发重试: voucherId={}, orderId={}", voucherId, orderId, e);
+                    throw new RuntimeException("库存服务调用失败", e);
+                }
+                if (deductResult == null || !Boolean.TRUE.equals(deductResult.getSuccess())) {
+                    log.warn("扣减库存业务失败: voucherId={}, orderId={}, result={}",
+                            voucherId, orderId, deductResult == null ? null : deductResult.getErrorMsg());
+                    releaseUserMark(voucherId, userId);
                     seckillMetrics.incrementMqConsumeFail();
                     return;
                 }
@@ -127,19 +137,25 @@ public class SeckillOrderConsumer implements RocketMQListener<SeckillOrderMessag
                 voucherOrder.setVoucherId(voucherId);
                 voucherOrder.setStatus(1);
 
-                int insertResult = voucherOrderMapper.insert(voucherOrder);
-                if (insertResult > 0) {
+                try {
+                    int insertResult = voucherOrderMapper.insert(voucherOrder);
+                    if (insertResult <= 0) {
+                        seckillMetrics.incrementMqConsumeFail();
+                        throw new RuntimeException("订单插入失败: orderId=" + orderId);
+                    }
+                } catch (DuplicateKeyException e) {
+                    // tb_voucher_order 的 uk_user_voucher（SPEC-02）拦下的并发重复：
+                    // 幂等跳过，不重试。库存已在 (voucherId, orderId) 幂等保护下只扣一次。
+                    log.warn("并发重复订单，幂等跳过: orderId={}, userId={}, voucherId={}",
+                            orderId, userId, voucherId);
                     seckillMetrics.incrementMqConsumeSuccess();
-                    log.info("订单创建成功: orderId={}, userId={}, voucherId={}", orderId, userId, voucherId);
-                    stringRedisTemplate.opsForHash().delete(
-                            RedisConstants.SECKILL_STOCK_KEY + "order:detail:" + voucherId,
-                            orderId.toString()
-                    );
-                } else {
-                    log.error("订单插入失败: orderId={}", orderId);
-                    seckillMetrics.incrementMqConsumeFail();
-                    throw new RuntimeException("订单插入失败");
+                    return;
                 }
+
+                seckillMetrics.incrementMqConsumeSuccess();
+                log.info("订单创建成功: orderId={}, userId={}, voucherId={}", orderId, userId, voucherId);
+                stringRedisTemplate.opsForHash().delete(
+                        RedisConstants.SECKILL_ORDER_DETAIL_KEY + voucherId, orderId.toString());
 
             } finally {
                 if (lock.isHeldByCurrentThread()) {
@@ -165,21 +181,21 @@ public class SeckillOrderConsumer implements RocketMQListener<SeckillOrderMessag
     }
 
     /**
-     * 回滚Redis预扣数据
-     * 
-     * 在消息消费失败时调用，用于恢复Redis中的库存和用户购买记录。
-     * 保证Redis预扣数据与数据库最终状态的一致性。
-     * 
-     * @param voucherId 优惠券ID
-     * @param userId 用户ID
+     * 消费侧业务失败回滚（SPEC-03 §5.6）：只移除用户标记。
+     *
+     * <p>库存**不恢复**——原实现的无条件 INCR 会在该用户此前已成功下单的场景下
+     * 凭空多出库存，是超卖的潜在来源（SPEC-03 §1.6）。
+     *
+     * <p>已知取舍：本分支仅在 Redis 的 {@code seckill:order:{vid}} 集合丢失后可达
+     * （否则 Lua 的 SISMEMBER 已在入口拦下）。此情形下保留 DECR 会让 Redis 库存偏少，
+     * 方向上是少卖而非超卖，属安全侧。
      */
-    private void rollbackRedisData(Long voucherId, Long userId) {
+    private void releaseUserMark(Long voucherId, Long userId) {
         try {
-            stringRedisTemplate.opsForValue().increment(RedisConstants.SECKILL_STOCK_KEY + voucherId);
-            stringRedisTemplate.opsForSet().remove("seckill:order:" + voucherId, userId.toString());
-            log.info("Redis数据回滚成功: voucherId={}, userId={}", voucherId, userId);
+            stringRedisTemplate.opsForSet().remove(
+                    RedisConstants.SECKILL_ORDER_SET_KEY + voucherId, userId.toString());
         } catch (Exception e) {
-            log.error("Redis数据回滚失败: voucherId={}, userId={}, error={}", voucherId, userId, e.getMessage(), e);
+            log.error("移除用户秒杀标记失败: voucherId={}, userId={}", voucherId, userId, e);
         }
     }
 }

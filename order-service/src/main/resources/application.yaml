@@ -123,8 +123,6 @@ management:
 
 # Feign配置
 feign:
-  circuitbreaker:
-    enabled: true
   client:
     config:
       default:
