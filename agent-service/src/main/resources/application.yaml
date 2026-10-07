@@ -85,6 +85,10 @@ management:
     tags:
       application: agent-service
 
+# 内部端点共享密钥（SPEC-06 §5.2）
+hmdp:
+  internal-token: ${INTERNAL_TOKEN:}
+
 sa-token:
   token-name: Authorization
   timeout: 2592000

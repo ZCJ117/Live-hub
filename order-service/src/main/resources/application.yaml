@@ -131,6 +131,10 @@ feign:
         connectTimeout: 5000
         readTimeout: 5000
 
+# 内部端点共享密钥（SPEC-06 §5.2）
+hmdp:
+  internal-token: ${INTERNAL_TOKEN:}
+
 # Sa-Token 配置
 sa-token:
   token-name: Authorization

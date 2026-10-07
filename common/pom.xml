@@ -85,6 +85,16 @@
             <version>${sa-token.version}</version>
         </dependency>
 
+        <!-- Sa-Token Servlet 支持（SaInterceptor / WebMvcConfigurer 注册用）
+             必须 provided：网关是 WebFlux，不能把 servlet starter 传递过去；
+             各业务服务本就各自声明了 sa-token-spring-boot3-starter，运行期不缺 -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-spring-boot3-starter</artifactId>
+            <version>${sa-token.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- 测试（SPEC-02 §8.1 SchemaConsistencyTest 的前置：common 原无 test 依赖） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
