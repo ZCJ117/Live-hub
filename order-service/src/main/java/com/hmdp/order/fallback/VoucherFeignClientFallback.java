@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
 public class VoucherFeignClientFallback implements VoucherFeignClient {
 
     @Override
-    public Result deductStock(Long voucherId) {
-        log.warn("voucher-service服务不可用，扣减库存降级处理: voucherId={}", voucherId);
+    public Result deductStock(Long voucherId, Long orderId) {
+        log.warn("voucher-service服务不可用，扣减库存降级处理: voucherId={}, orderId={}", voucherId, orderId);
         return Result.fail("库存服务暂时不可用，订单将异步处理");
     }
 

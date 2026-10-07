@@ -151,7 +151,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return;
         }
 
-        Result result = voucherFeignClient.deductStock(voucherOrder.getVoucherId());
+        Result result = voucherFeignClient.deductStock(voucherOrder.getVoucherId(), voucherOrder.getId());
         if (!result.getSuccess()) {
             log.error("库存不足！");
             return;

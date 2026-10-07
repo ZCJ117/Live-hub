@@ -68,14 +68,4 @@ public class VoucherController {
         }
         return Result.ok(voucher);
     }
-
-    /**
-     * 扣减优惠券库存
-     * @param voucherId 优惠券id
-     * @return 扣减结果
-     */
-    @PutMapping("/seckill/{id}/stock")
-    public Result deductStock(@PathVariable("id") Long voucherId) {
-        return voucherService.deductStock(voucherId);
-    }
 }

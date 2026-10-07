@@ -113,7 +113,7 @@ public class SeckillOrderConsumer implements RocketMQListener<SeckillOrderMessag
                     return;
                 }
 
-                Result deductResult = voucherFeignClient.deductStock(voucherId);
+                Result deductResult = voucherFeignClient.deductStock(voucherId, orderId);
                 if (!deductResult.getSuccess()) {
                     log.error("扣减库存失败: voucherId={}, result={}", voucherId, deductResult.getErrorMsg());
                     rollbackRedisData(voucherId, userId);
