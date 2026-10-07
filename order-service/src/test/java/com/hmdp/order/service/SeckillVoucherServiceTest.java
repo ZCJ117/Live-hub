@@ -16,6 +16,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -32,6 +34,8 @@ class SeckillVoucherServiceTest {
     @Mock private SeckillOrderProducer seckillOrderProducer;
     @Mock private SeckillMetrics seckillMetrics;
     @Mock private ValueOperations<String, String> valueOperations;
+    @Mock private SetOperations<String, String> setOperations;
+    @Mock private HashOperations<String, Object, Object> hashOperations;
     @InjectMocks private VoucherOrderServiceImpl service;
 
     @BeforeEach
@@ -104,16 +108,18 @@ class SeckillVoucherServiceTest {
         scriptReturns(0L);
         when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(false);
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(stringRedisTemplate.opsForSet()).thenReturn(mock(org.springframework.data.redis.core.SetOperations.class));
-        when(stringRedisTemplate.opsForHash()).thenReturn(mock(org.springframework.data.redis.core.HashOperations.class));
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
 
         Result r = service.seckillVoucher(1L);
 
         assertFalse(r.getSuccess());
-        // 回滚三件事：库存 +1、移除用户标记、删除明细
-        verify(stringRedisTemplate, times(1)).opsForValue();
-        verify(stringRedisTemplate, times(1)).opsForSet();
-        verify(stringRedisTemplate, times(1)).opsForHash();
+        // 回滚三件事：库存 +1、移除用户标记、删除明细。
+        // 只断言"取过 handles"不足以证明回滚发生——取了不用照样能通过，
+        // 而静默失败会让用户被永久标记"已购买"且库存凭空少 1，故必须锁定具体键与参数。
+        verify(valueOperations).increment("seckill:stock:1");
+        verify(setOperations).remove("seckill:order:1", "7");
+        verify(hashOperations).delete("seckill:order:detail:1", "9001");
         verify(seckillMetrics).incrementMqSendFail();
         verify(seckillMetrics, never()).incrementSeckillSuccess();
     }
