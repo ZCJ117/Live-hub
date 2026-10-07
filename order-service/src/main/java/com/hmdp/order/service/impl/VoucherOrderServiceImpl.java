@@ -31,9 +31,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Collections;
+import java.util.Objects;
 
 /**
  * 优惠券订单服务实现类
@@ -220,23 +223,40 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         wrapper.last("LIMIT " + s + " OFFSET " + (long) (p - 1) * s);
         List<VoucherOrder> records = list(wrapper);
 
-        // 联查券信息，组装 VO（订单字段 + 券标题/金额），一次返回避免 agent 侧二次调用
-        List<OrderQueryVO> vos = records.stream().map(order -> {
-            OrderQueryVO vo = OrderQueryVO.of(order);
+        // 联查券信息，组装 VO：先按 voucherId 去重后**一次**批量拉取，避免逐条远程调用（N+1）
+        List<OrderQueryVO> vos = new ArrayList<>();
+        if (!records.isEmpty()) {
+            List<Long> voucherIds = records.stream()
+                    .map(VoucherOrder::getVoucherId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+
+            Map<Long, Voucher> voucherMap = new HashMap<>();
             try {
-                Result voucherResult = voucherFeignClient.getVoucherById(order.getVoucherId());
-                if (voucherResult.getSuccess() && voucherResult.getData() != null) {
-                    Voucher voucher = BeanUtil.mapToBean((Map<?, ?>) voucherResult.getData(), Voucher.class, false, null);
+                Result voucherResult = voucherFeignClient.getVouchersByIds(voucherIds);
+                if (voucherResult.getSuccess() && voucherResult.getData() instanceof List<?> list) {
+                    for (Object item : list) {
+                        Voucher v = BeanUtil.mapToBean((Map<?, ?>) item, Voucher.class, false, null);
+                        voucherMap.put(v.getId(), v);
+                    }
+                }
+            } catch (Exception e) {
+                // 券信息联查失败不阻塞订单返回（降级：仅订单字段）
+                log.warn("批量联查券信息失败: voucherIds={}", voucherIds, e);
+            }
+
+            for (VoucherOrder order : records) {
+                OrderQueryVO vo = OrderQueryVO.of(order);
+                Voucher voucher = voucherMap.get(order.getVoucherId());
+                if (voucher != null) {
                     vo.setVoucherTitle(voucher.getTitle());
                     vo.setPayValue(voucher.getPayValue());
                     vo.setActualValue(voucher.getActualValue());
                 }
-            } catch (Exception e) {
-                // 券信息联查失败不阻塞订单返回（降级：仅订单字段）
-                log.warn("联查券信息失败: voucherId={}", order.getVoucherId(), e);
+                vos.add(vo);
             }
-            return vo;
-        }).toList();
+        }
 
         Result r = Result.ok(vos);
         r.setTotal(total);

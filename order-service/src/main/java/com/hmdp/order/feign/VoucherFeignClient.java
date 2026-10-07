@@ -6,8 +6,12 @@ import com.hmdp.dto.Result;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.List;
 
 @FeignClient(name = "voucher-service",
         configuration = {InternalTokenFeignConfig.class, FeignTokenRelayConfig.class})
@@ -21,4 +25,10 @@ public interface VoucherFeignClient {
 
     @GetMapping("voucher/{id}")
     Result getVoucherById(@PathVariable("id") Long voucherId);
+
+    /**
+     * 批量查询券详情（消除 queryMyOrders 的 N+1）
+     */
+    @PostMapping("/voucher/batch")
+    Result getVouchersByIds(@RequestBody List<Long> ids);
 }

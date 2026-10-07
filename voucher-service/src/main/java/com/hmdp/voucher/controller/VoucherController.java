@@ -8,6 +8,9 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * <p>
  *  前端控制器
@@ -67,5 +70,19 @@ public class VoucherController {
             return Result.fail("券不存在");
         }
         return Result.ok(voucher);
+    }
+
+    /**
+     * 批量查询券（order-service 的 queryMyOrders 联查用，SPEC-07 §5.4 消除 N+1）
+     */
+    @PostMapping("/batch")
+    public Result queryVouchersByIds(@RequestBody List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Result.ok(Collections.emptyList());
+        }
+        if (ids.size() > 100) {
+            return Result.fail("批量查询数量不能超过 100");
+        }
+        return Result.ok(voucherService.listByIds(ids));
     }
 }
