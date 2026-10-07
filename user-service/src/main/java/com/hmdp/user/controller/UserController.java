@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpSession;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * <p>
  * 前端控制器
@@ -109,6 +112,23 @@ public class UserController {
     @GetMapping("/sign/count")
     public Result signCount(){
         return userService.signCount();
+    }
+
+    /**
+     * 批量查询用户（供 social-service 的点赞排行榜与共同关注，SPEC-07 G1）
+     * 脱敏：复用既有 UserDTO 投影，仅返回 id/nickName/icon
+     */
+    @PostMapping("/list")
+    public Result queryUserByIds(@RequestBody List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Result.ok(Collections.emptyList());
+        }
+        if (ids.size() > 100) {
+            return Result.fail("批量查询数量不能超过 100");
+        }
+        return Result.ok(userService.listByIds(ids).stream()
+                .map(u -> BeanUtil.copyProperties(u, UserDTO.class))
+                .toList());
     }
 
 }

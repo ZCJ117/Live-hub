@@ -23,8 +23,8 @@ public interface UserFeignClient {
     Result getUserById(@PathVariable("id") Long id);
 
     /**
-     * 根据用户id列表查询用户信息
+     * 根据用户id列表批量查询用户信息（点赞排行榜 / 共同关注）
      */
-    @GetMapping("/user/list")
+    @PostMapping("/user/list")
     Result getUserByIds(@RequestBody List<Long> ids);
 }
