@@ -39,8 +39,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class GatewayRouteContractTest {
 
-    /** 有意不对网关暴露的内部端点前缀（服务间 Feign 调用专用，见 InternalRetrievalController）。 */
-    private static final Set<String> INTERNAL_PREFIXES = Set.of("/internal/rag");
+    /**
+     * 有意不对网关暴露的内部端点前缀：服务间 Feign 调用专用，由共享密钥拦截器保护。
+     * 新增这类端点（如 {@code /internal/xxx}）时须登记到此白名单，否则断言 B 会误报无路由。
+     */
+    private static final Set<String> INTERNAL_PREFIXES = Set.of("/internal/rag", "/internal/voucher");
 
     /** 仅匹配类级映射：@RequestMapping(...) 与其后的 class 声明之间不含 ; 或 {。 */
     private static final Pattern CLASS_LEVEL_MAPPING = Pattern.compile(
