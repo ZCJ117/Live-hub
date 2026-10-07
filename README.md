@@ -494,6 +494,12 @@ spring:
 | RAG_DB_PASSWORD | rag-service | 是 | PostgreSQL密码 |
 | RAG_DB_USER | rag-service | 否 | PostgreSQL用户（默认 rag_user） |
 | RAG_UPLOAD_DIR | rag-service | 否 | 文档上传目录（默认 ./data/rag-uploads） |
+| MYSQL_PASSWORD | 全部服务 | 是 | MySQL 密码；各服务 `application.yaml` 中为 `${MYSQL_PASSWORD:}` |
+| REDIS_PASSWORD | 全部服务 | 是 | Redis 密码；各服务 `application.yaml` 中为 `${REDIS_PASSWORD:}` |
+| INTERNAL_TOKEN | voucher-service, rag-service, order-service, agent-service | 是 | `/internal/**` 内部端点的共享密钥（SPEC-06 §5.2）。**未设置时内部调用一律 401**，秒杀扣减、RAG 检索会失败 |
+| ADMIN_USER_IDS | shop-service, voucher-service, order-service | 否 | 管理员用户 id，逗号分隔；决定 `@SaCheckRole("admin")` 的判定（SPEC-06 §5.3）。留空则无人拥有 admin 角色，管理接口对所有登录用户返回 403 |
+
+本地开发把上述变量写进仓库根目录的 `.env`（模板见 `.env.example`），`.env` 已被 `.gitignore` 忽略、不会入库。各服务通过 `application.yaml` 的 `spring.config.import: optional:file:.env[.properties],optional:file:../.env[.properties]` 载入它，两个相对路径分别覆盖"从仓库根 `java -jar`"与"从模块目录 `mvn -pl x test`"两种工作目录。环境变量优先级高于 `.env`：`export MYSQL_PASSWORD=...` 会覆盖 `.env` 中的同名值（Spring Boot 的属性源顺序中 Config data 位于 OS environment variables 之前，后者胜出），因此也可以在启动前用 `set -a; source .env; set +a` 导出。仓库内不含任何明文口令。
 
 ### 6.3 快速启动
 
