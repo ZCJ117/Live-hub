@@ -1,5 +1,6 @@
 server:
   port: 8087
+  address: 127.0.0.1 # 仅绑定回环，业务端口不发布到公网（SPEC-06 §5.2）
 
 #NOTE 这里向量数据库选择 PostgreSQL+pgvector(扩展),是用来存文档和向量的
 spring:

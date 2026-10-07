@@ -1,5 +1,6 @@
 server:
   port: 8088 # agent-service 端口（8081~8087 已占用）
+  address: 127.0.0.1 # 仅绑定回环，业务端口不发布到公网（SPEC-06 §5.2）
 
 spring:
   # 本地凭据（SPEC-06 G8）：optional 保证文件缺失时不阻塞启动；环境变量优先级更高，可覆盖

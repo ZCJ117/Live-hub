@@ -1,6 +1,7 @@
 # 服务器配置
 server:
   port: 8085 # 服务端口，用于接收HTTP请求
+  address: 127.0.0.1 # 仅绑定回环，业务端口不发布到公网（SPEC-06 §5.2）
 
 # Spring 配置
 spring:
