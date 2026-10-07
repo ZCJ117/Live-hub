@@ -1,5 +1,6 @@
 package com.hmdp.social.feign;
 
+import com.hmdp.config.FeignTokenRelayConfig;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -13,7 +14,7 @@ import java.util.List;
 /**
  * 用户服务Feign客户端
  */
-@FeignClient(name = "user-service")
+@FeignClient(name = "user-service", configuration = FeignTokenRelayConfig.class)
 public interface UserFeignClient {
 
     /**

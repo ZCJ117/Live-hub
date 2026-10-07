@@ -1,5 +1,6 @@
 package com.hmdp.order.feign;
 
+import com.hmdp.config.FeignTokenRelayConfig;
 import com.hmdp.config.InternalTokenFeignConfig;
 import com.hmdp.dto.Result;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -8,7 +9,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-@FeignClient(name = "voucher-service", configuration = InternalTokenFeignConfig.class)
+@FeignClient(name = "voucher-service",
+        configuration = {InternalTokenFeignConfig.class, FeignTokenRelayConfig.class})
 public interface VoucherFeignClient {
 
     /**
