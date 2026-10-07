@@ -26,8 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 里匹配到「HTTP 方法 + 路径」的唯一映射——杜绝 {@code /user/list} 这类
  * "调用方按设想编写、提供方从未实现"的死契约。
  *
- * <p>断言二：不存在 {@code @GetMapping} + {@code @RequestBody} 的组合——违反 HTTP 语义，
- * 多数客户端与代理会丢弃 GET 的 body。
+ * <p>断言二：{@code @FeignClient} 接口中不存在 {@code @GetMapping} + {@code @RequestBody}
+ * 的组合——违反 HTTP 语义，多数客户端与代理会丢弃 GET 的 body。本测试是 Feign 契约测试，
+ * 只扫 {@code @FeignClient} 接口，Controller 侧的同类写法不在其范围内。
  *
  * <p>纯单元测试，不依赖 Spring 上下文，可入 CI。
  */
@@ -95,9 +96,10 @@ class FeignContractTest {
                 while (m.find()) {
                     if ("Get".equals(m.group(1))) {
                         // 只看到本方法声明语句的 ';' 为止：固定 400 字窗口会跨过下一个方法，
-                        // 把 @PostMapping 方法上的 @RequestBody 误判为本 GET 的 body
+                        // 把 @PostMapping 方法上的 @RequestBody 误判为本 GET 的 body。
+                        // 找不到 ';' 时收敛到文件末尾，绝不放宽窗口——护栏不该 fail-open
                         int end = src.indexOf(';', m.end());
-                        int bound = Math.min(src.length(), end < 0 ? m.end() + 400 : end + 1);
+                        int bound = end < 0 ? src.length() : end + 1;
                         String tail = src.substring(m.end(), bound);
                         if (REQUEST_BODY.matcher(tail).find()) {
                             violations.add(f.getFileName() + " → " + m.group(0));
