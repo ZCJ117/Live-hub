@@ -6,6 +6,7 @@ import com.hmdp.entity.VoucherOrder;
 import com.hmdp.order.feign.VoucherFeignClient;
 import com.hmdp.order.mapper.VoucherOrderMapper;
 import com.hmdp.order.metrics.SeckillMetrics;
+import com.hmdp.utils.RedisConstants;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -19,6 +20,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.concurrent.TimeUnit;
 
@@ -38,6 +40,7 @@ class SeckillOrderConsumerTest {
     @Mock private SeckillMetrics seckillMetrics;
     @Mock private SetOperations<String, String> setOperations;
     @Mock private HashOperations<String, Object, Object> hashOperations;
+    @Mock private ValueOperations<String, String> valueOperations;
     @InjectMocks private SeckillOrderConsumer consumer;
 
     private final SeckillOrderMessage msg = new SeckillOrderMessage(9001L, 7L, 1L);
@@ -72,13 +75,14 @@ class SeckillOrderConsumerTest {
         when(voucherOrderMapper.selectById(9001L)).thenReturn(null);
         when(voucherOrderMapper.selectCount(any())).thenReturn(0L);
         when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(voucherFeignClient.deductStock(1L, 9001L)).thenReturn(Result.fail("库存不足"));
 
         assertDoesNotThrow(() -> consumer.onMessage(msg));
 
         verify(setOperations).remove("seckill:order:1", "7");
         // 关键：不得恢复库存——原实现的无条件 INCR 会凭空造出库存（超卖源）
-        verify(stringRedisTemplate, never()).opsForValue();
+        verify(valueOperations, never()).increment(RedisConstants.SECKILL_STOCK_KEY + "1");
     }
 
     @Test
