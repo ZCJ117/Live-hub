@@ -84,6 +84,13 @@
             <artifactId>sa-token-core</artifactId>
             <version>${sa-token.version}</version>
         </dependency>
+
+        <!-- 测试（SPEC-02 §8.1 SchemaConsistencyTest 的前置：common 原无 test 依赖） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
