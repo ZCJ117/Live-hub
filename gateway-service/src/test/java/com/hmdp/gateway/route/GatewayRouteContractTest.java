@@ -106,6 +106,23 @@ class GatewayRouteContractTest {
                 "以下 Controller 文件未解析出类级 @RequestMapping（正则可能已失配，需同步调整）：" + unparsed);
     }
 
+    /**
+     * 内部端点不得经网关暴露（SPEC-06 §5.2 方案 C）。
+     * 网关本就没有 /internal/** 路由，此处把该隐式约定变成可回归的显式约束：
+     * 一旦有人新增这样的路由，本测试立即失败。
+     */
+    @Test
+    void noRouteExposesInternalEndpoints() throws IOException {
+        Set<String> routes = routePrefixes(repoRoot());
+
+        List<String> leaked = routes.stream()
+                .filter(r -> covers(r, "/internal"))
+                .toList();
+
+        assertTrue(leaked.isEmpty(),
+                "内部端点不得经网关暴露（SPEC-06 §5.2 C）：" + leaked);
+    }
+
     /** 扫描根定位自检：文件数明显偏少即说明 repoRoot() 找错了目录。 */
     @Test
     void scanFindsTheExpectedControllerFiles() throws IOException {

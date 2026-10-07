@@ -40,10 +40,13 @@ public class AgentRateLimitFilter implements GlobalFilter, Ordered {
         }
         String token = exchange.getRequest().getHeaders().getFirst("Authorization");
         if (token == null || token.isBlank()) {
-            return chain.filter(exchange); // 未登录由 Sa-Token 鉴权拦截，此处不重复处理
+            // 有意放行（SPEC-06 §1.8）：未登录流量紧接着会被 SaTokenGatewayConfig 在本过滤器之后拒绝，
+            // 此处不重复处理。属已知的纵深防御缺口，非漏洞。
+            return chain.filter(exchange);
         }
         Object loginId = StpUtil.getLoginIdByToken(token);
         if (loginId == null) {
+            // 同上：无效 token 由 SaTokenGatewayConfig 拦截
             return chain.filter(exchange);
         }
         if (limiter.tryAcquire("agent:rl:" + loginId)) {
