@@ -14,7 +14,7 @@ spring:
         - id: user-route # 路由唯一标识
           uri: lb://user-service # 目标服务URI，lb://表示使用负载均衡，user-service是服务名称
           predicates: # 路由断言，匹配条件
-            - Path=/user/**,/auth/** # 路径匹配，匹配以/user/或/auth/开头的请求
+            - Path=/user/** # 路径匹配，匹配以/user/开头的请求
         # 商户服务路由
         - id: shop-route
           uri: lb://shop-service
@@ -25,16 +25,21 @@ spring:
           uri: lb://voucher-service
           predicates:
             - Path=/voucher/** # 匹配以/voucher/开头的请求
-        # 订单服务路由
-        - id: order-route
+        # 订单服务路由 - 券订单（VoucherOrderController，agent-service 的 OrderFeignClient 亦复用此路径）
+        - id: order-voucher-route
           uri: lb://order-service
           predicates:
-            - Path=/order/** # 匹配以/order/开头的请求
+            - Path=/voucher-order/** # 匹配以/voucher-order/开头的请求
+        # 订单服务路由 - 秒杀一致性运维接口
+        - id: order-seckill-consistency-route
+          uri: lb://order-service
+          predicates:
+            - Path=/seckill/consistency/** # 匹配以/seckill/consistency/开头的请求
         # 社交服务路由
         - id: social-route
           uri: lb://social-service
           predicates:
-            - Path=/blog/**,/comment/**,/follow/**,/notification/** # 匹配以/blog/、/comment/、/follow/或/notification/开头的请求
+            - Path=/blog/**,/follow/**,/notification/** # 匹配以/blog/、/follow/或/notification/开头的请求
         # RAG知识库服务路由
         - id: rag-route
           uri: lb://rag-service

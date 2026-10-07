@@ -353,7 +353,7 @@ spring:
         - id: user-route
           uri: lb://user-service
           predicates:
-            - Path=/user/**,/auth/**
+            - Path=/user/**
         - id: shop-route
           uri: lb://shop-service
           predicates:
@@ -362,14 +362,18 @@ spring:
           uri: lb://voucher-service
           predicates:
             - Path=/voucher/**
-        - id: order-route
+        - id: order-voucher-route
           uri: lb://order-service
           predicates:
-            - Path=/order/**
+            - Path=/voucher-order/**
+        - id: order-seckill-consistency-route
+          uri: lb://order-service
+          predicates:
+            - Path=/seckill/consistency/**
         - id: social-route
           uri: lb://social-service
           predicates:
-            - Path=/blog/**,/comment/**,/follow/**,/notification/**
+            - Path=/blog/**,/follow/**,/notification/**
         - id: rag-route
           uri: lb://rag-service
           predicates:
