@@ -9,6 +9,8 @@ import com.hmdp.entity.Shop;
 import com.hmdp.shop.service.IShopService;
 import com.hmdp.shop.service.ShopCacheService;
 import com.hmdp.utils.SystemConstants;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.annotation.Resource;
@@ -21,6 +23,7 @@ import jakarta.annotation.Resource;
  */
 @RestController
 @RequestMapping("/shop")
+@Validated
 public class ShopController {
 
     @Resource
@@ -76,7 +79,7 @@ public class ShopController {
     @GetMapping("/of/type")
     public Result queryShopByType(
             @RequestParam("typeId") Integer typeId,
-            @RequestParam(value = "current", defaultValue = "1") Integer current,
+            @RequestParam(value = "current", defaultValue = "1") @Min(value = 1, message = "页码必须大于等于 1") Integer current,
             @RequestParam(value = "x",required = false) Double x,
             @RequestParam(value = "y",required = false) Double y
     ) {

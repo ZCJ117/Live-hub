@@ -14,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.geo.Distance;
 import org.springframework.data.geo.GeoResult;
 import org.springframework.data.geo.GeoResults;
+import org.springframework.data.geo.Metrics;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.domain.geo.GeoReference;
@@ -51,6 +53,10 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Resource
     private ShopCacheService shopCacheService;
+
+    /** 附近店铺检索半径（公里）。SPEC-05 §5.5：单位显式且可配，默认 5 公里 */
+    @Value("${hmdp.shop.search-radius-km:5}")
+    private double searchRadiusKm;
 
     @Override
     public Result queryById(Long id) {
@@ -93,7 +99,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Override
     public Result queryShopByType(Integer typeId, Integer current, Double x, Double y) {
-        logger.info("查询类型为 {} 的店铺，页码: {}, 坐标: ({}, {})");
+        logger.info("查询类型为 {} 的店铺，页码: {}, 坐标: ({}, {})", typeId, current, x, y);
 
         // 1.判断是否需要根据坐标查询
         if (x == null || y == null) {
@@ -111,7 +117,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         int from = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
         int end = current * SystemConstants.DEFAULT_PAGE_SIZE;
 
-        logger.info("执行地理位置查询，从第 {} 条到第 {} 条", from, end);
+        logger.info("执行地理位置查询，从第 {} 条到第 {} 条，半径 {} 公里", from, end, searchRadiusKm);
 
         // 3.查询redis、按照距离排序、分页。结果：shopId、distance
         String key = SHOP_GEO_KEY + typeId;
@@ -119,7 +125,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
                 .search(
                         key,
                         GeoReference.fromCoordinate(x, y),
-                        new org.springframework.data.geo.Distance(5000),
+                        new Distance(searchRadiusKm, Metrics.KILOMETERS),
                         RedisGeoCommands.GeoSearchCommandArgs.newGeoSearchArgs().includeDistance().limit(end)
                 );
         // 4.解析出id
@@ -151,7 +157,10 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         String idStr = StrUtil.join(",", ids);
         List<Shop> shops = query().in("id", ids).last("ORDER BY FIELD(id," + idStr + ")").list();
         for (Shop shop : shops) {
-            shop.setDistance(distanceMap.get(shop.getId().toString()).getValue());
+            Distance distance = distanceMap.get(shop.getId().toString());
+            if (distance != null) {
+                shop.setDistance(distance.getValue());
+            }
         }
 
         logger.info("成功获取 {} 个店铺详细信息", shops.size());
