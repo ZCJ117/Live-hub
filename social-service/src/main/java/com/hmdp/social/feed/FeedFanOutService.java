@@ -30,11 +30,6 @@ public class FeedFanOutService {
 
     private final Executor feedFanOutExecutor;
 
-    /** 供测试构造：字段由 {@code ReflectionTestUtils} 注入。 */
-    FeedFanOutService() {
-        this(null, null, null);
-    }
-
     public FeedFanOutService(IFollowService followService,
                              StringRedisTemplate stringRedisTemplate,
                              @Qualifier("feedFanOutExecutor") Executor feedFanOutExecutor) {

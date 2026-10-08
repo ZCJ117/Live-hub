@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -35,15 +37,12 @@ class FeedFanOutServiceTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        service = new FeedFanOutService();
         followService = mock(IFollowService.class);
         stringRedisTemplate = mock(StringRedisTemplate.class);
         zSetOperations = mock(ZSetOperations.class);
         when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        ReflectionTestUtils.setField(service, "followService", followService);
-        ReflectionTestUtils.setField(service, "stringRedisTemplate", stringRedisTemplate);
         // 同步 Executor：让断言可以观察到任务体
-        ReflectionTestUtils.setField(service, "feedFanOutExecutor", (Executor) Runnable::run);
+        service = new FeedFanOutService(followService, stringRedisTemplate, (Executor) Runnable::run);
     }
 
     @Test
@@ -80,10 +79,10 @@ class FeedFanOutServiceTest {
 
     @Test
     void 线程池拒绝时记账而不抛出() {
-        ReflectionTestUtils.setField(service, "feedFanOutExecutor",
-                (Executor) task -> { throw new RejectedExecutionException("queue full"); });
+        FeedFanOutService rejecting = new FeedFanOutService(followService, stringRedisTemplate,
+                task -> { throw new RejectedExecutionException("queue full"); });
 
-        service.submit(BLOG_ID, AUTHOR_ID); // 不得抛出
+        rejecting.submit(BLOG_ID, AUTHOR_ID); // 不得抛出
 
         verifyNoInteractions(zSetOperations);
     }
@@ -91,13 +90,40 @@ class FeedFanOutServiceTest {
     @Test
     void 提交不等待任务执行() {
         java.util.concurrent.atomic.AtomicBoolean ran = new java.util.concurrent.atomic.AtomicBoolean();
-        ReflectionTestUtils.setField(service, "feedFanOutExecutor",
-                (Executor) task -> { /* 故意不执行 */ ran.set(false); });
+        FeedFanOutService nonExecuting = new FeedFanOutService(followService, stringRedisTemplate,
+                task -> { /* 故意不执行 */ ran.set(false); });
         when(followService.queryFollowerIds(AUTHOR_ID)).thenReturn(List.of(10L));
 
-        service.submit(BLOG_ID, AUTHOR_ID);
+        nonExecuting.submit(BLOG_ID, AUTHOR_ID);
 
         verify(followService, never()).queryFollowerIds(anyLong());
         assertTrue(!ran.get(), "submit 不得同步执行任务体");
+    }
+
+    /**
+     * SPEC-09 §5.4 装配护栏：只允许一个构造器。
+     *
+     * <p>若再出现第二个（比如为测试便利补的包私有 no-arg 构造器），Spring 的
+     * {@code determineConstructorsFromBeanPostProcessors} 会因「声明构造器数 ≠ 1」而不走
+     * 「唯一构造器免 {@code @Autowired}」的捷径，最终回落到无参构造器，注入出三个 null 协作者，
+     * 使 {@code POST /blog} 的 fan-out 首次调用即 NPE。此测试用真实容器锁死该不变量。
+     */
+    @Test
+    void 容器装配后三个协作者均非空_防止多构造器导致Spring走无参构造() {
+        try (AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext()) {
+            ctx.registerBean(IFollowService.class, () -> mock(IFollowService.class));
+            ctx.registerBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class));
+            ctx.registerBean("feedFanOutExecutor", Executor.class, () -> (Executor) Runnable::run);
+            ctx.register(FeedFanOutService.class);
+            ctx.refresh();
+
+            FeedFanOutService assembled = ctx.getBean(FeedFanOutService.class);
+            assertNotNull(ReflectionTestUtils.getField(assembled, "followService"),
+                    "followService 在容器装配后不得为 null");
+            assertNotNull(ReflectionTestUtils.getField(assembled, "stringRedisTemplate"),
+                    "stringRedisTemplate 在容器装配后不得为 null");
+            assertNotNull(ReflectionTestUtils.getField(assembled, "feedFanOutExecutor"),
+                    "feedFanOutExecutor 在容器装配后不得为 null");
+        }
     }
 }
