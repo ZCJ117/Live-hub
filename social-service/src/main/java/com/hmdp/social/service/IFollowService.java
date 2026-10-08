@@ -19,4 +19,7 @@ public interface IFollowService extends IService<Follow> {
     Result isFollow(Long followUserId);
 
     Result followCommons(Long id);
+
+    /** 查询某作者的全部粉丝 userId（供 Feed 写扩散使用，SPEC-09 §5.4） */
+    java.util.List<Long> queryFollowerIds(Long authorId);
 }

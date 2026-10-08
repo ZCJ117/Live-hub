@@ -1,7 +1,7 @@
 package com.hmdp.social.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Follow;
@@ -39,26 +39,35 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
     @Override
     public Result follow(Long followUserId, Boolean isFollow) {
         //1.获取登录用户
-        Long userId = UserHolder.getUser().getId();
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("未登录");
+        }
+        Long userId = user.getId();
         String key = "follows:" + userId;
-        if(isFollow){
+        if (isFollow) {
             //2.关注
             Follow follow = new Follow();
             follow.setUserId(userId);
             follow.setFollowUserId(followUserId);
             boolean isSuccess = save(follow);
-            if(isSuccess){
+            if (isSuccess) {
                 //把关注的用户id 放入redis的set集合 sadd userId followerUserId
                 stringRedisTemplate.opsForSet().add(key, followUserId.toString());
             }
-        }else {
-            //3.取关，删除
-            boolean isSuccess = remove(new QueryWrapper<Follow>()
-                    .eq("user_id", userId).eq("follow_user_id", followUserId));
-            if(isSuccess){
-                //把关注用户的id从redis集合中移除
-                stringRedisTemplate.opsForSet().remove(key, followUserId.toString());
+        } else {
+            //3.取关。MyBatis-Plus 的 remove 返回的是"语句是否执行成功"而非"是否删除了行"，
+            //  未关注状态下同样返回 true，故必须先查存在性再删（SPEC-09 §1.11）
+            Long exists = count(Wrappers.<Follow>lambdaQuery()
+                    .eq(Follow::getUserId, userId)
+                    .eq(Follow::getFollowUserId, followUserId));
+            if (exists != null && exists > 0) {
+                remove(Wrappers.<Follow>lambdaQuery()
+                        .eq(Follow::getUserId, userId)
+                        .eq(Follow::getFollowUserId, followUserId));
             }
+            //4.无论 DB 侧是否有行，都清理 Redis，使两侧收敛到"未关注"
+            stringRedisTemplate.opsForSet().remove(key, followUserId.toString());
         }
         return Result.ok();
     }
@@ -66,16 +75,26 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
     @Override
     public Result isFollow(Long followUserId) {
         //1.获取登录用户
-        Long userId = UserHolder.getUser().getId();
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("未登录");
+        }
+        Long userId = user.getId();
         //2.查询是否关注 select count(*) from tb_follow where user_id = ? and follow_user_id = ?
-        Long count = query().eq("user_id", userId).eq("follow_user_id", followUserId).count();
+        Long count = count(Wrappers.<Follow>lambdaQuery()
+                .eq(Follow::getUserId, userId)
+                .eq(Follow::getFollowUserId, followUserId));
         return Result.ok(count > 0);
     }
 
     @Override
     public Result followCommons(Long id) {
         // 1.获取当前用户
-        Long userId = UserHolder.getUser().getId();
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("未登录");
+        }
+        Long userId = user.getId();
         String key = "follows:" + userId;
         // 2.求交集
         String key2 = "follows:" + id;
@@ -88,10 +107,18 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
         List<Long> ids = intersect.stream().map(Long::valueOf).collect(Collectors.toList());
         // 4.查询用户
         Result result = userFeignClient.getUserByIds(ids);
-        if (!result.getSuccess()) {
+        if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
             return Result.fail("获取用户信息失败");
         }
         List<UserDTO> userDTOS = (List<UserDTO>) result.getData();
         return Result.ok(userDTOS);
+    }
+
+    @Override
+    public List<Long> queryFollowerIds(Long authorId) {
+        return list(Wrappers.<Follow>lambdaQuery().eq(Follow::getFollowUserId, authorId))
+                .stream()
+                .map(Follow::getUserId)
+                .collect(Collectors.toList());
     }
 }
