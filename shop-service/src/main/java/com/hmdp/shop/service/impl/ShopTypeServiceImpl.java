@@ -7,6 +7,7 @@ import com.hmdp.dto.Result;
 import com.hmdp.entity.ShopType;
 import com.hmdp.shop.mapper.ShopTypeMapper;
 import com.hmdp.shop.service.IShopTypeService;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,9 +15,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
-import static com.hmdp.utils.RedisConstants.SHOP_LIST_KEY;
+import static com.hmdp.utils.RedisConstants.*;
 
 /**
  * <p>
@@ -57,15 +59,21 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
             log.info("商铺分类查询成功，从缓存返回{}个分类", types.size());
             return Result.ok(types);
         }
+        // 命中空值标记：DB 已经确认过为空，直接返回，不再穿透（SPEC-05 G5）
+        if (shopTypeStr != null) {
+            log.info("命中空值标记，直接返回");
+            return Result.fail("列表信息不存在");
+        }
 
         log.info("Redis中未找到商铺分类缓存，开始查询数据库");
 
         //redis中没有，查询数据库
-        List<ShopType> typeList = query().orderByAsc("sort").list();
+        List<ShopType> typeList = list(Wrappers.<ShopType>query().orderByAsc("sort"));
 
-        //数据库中没有，报错
+        //数据库中没有，写入短 TTL 空值标记并报错
         if (CollectionUtil.isEmpty(typeList)) {
             log.warn("数据库中未找到任何商铺分类信息");
+            redisTemplate.opsForValue().set(SHOP_LIST_KEY, "", CACHE_NULL_TTL, TimeUnit.SECONDS);
             return Result.fail("列表信息不存在");
         }
 
@@ -77,10 +85,11 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
                     shopType.getId(), shopType.getName(), shopType.getIcon(), shopType.getSort());
         }
 
-        //数据库中有，存到redis
+        //数据库中有，存到redis（TTL 带抖动，SPEC-05 G7）
         String jsonStr = JSONUtil.toJsonStr(typeList);
+        long ttl = CACHE_TTL_BASE_SECONDS + ThreadLocalRandom.current().nextInt(CACHE_TTL_JITTER_SECONDS);
         try {
-            redisTemplate.opsForValue().set(SHOP_LIST_KEY, jsonStr, 30, TimeUnit.MINUTES);
+            redisTemplate.opsForValue().set(SHOP_LIST_KEY, jsonStr, ttl, TimeUnit.SECONDS);
             log.info("成功将商铺分类数据存入Redis缓存，数据长度：{}", jsonStr.length());
         } catch (Exception e) {
             log.error("将商铺分类数据存入Redis时发生异常", e);
