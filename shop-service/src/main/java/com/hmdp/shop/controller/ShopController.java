@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.shop.service.IShopService;
+import com.hmdp.shop.service.ShopCacheService;
 import com.hmdp.utils.SystemConstants;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +25,9 @@ public class ShopController {
 
     @Resource
     public IShopService shopService;
+
+    @Resource
+    ShopCacheService shopCacheService;
 
     /**
      * 根据id查询商铺信息
@@ -45,6 +49,8 @@ public class ShopController {
     public Result saveShop(@RequestBody Shop shop) {
         // 写入数据库
         shopService.save(shop);
+        // SPEC-05 §5.1：打断该 id 可能已存在的空值标记/旧值，保证新增后立即可见
+        shopCacheService.evict(shop.getId());
         // 返回店铺id
         return Result.ok(shop.getId());
     }

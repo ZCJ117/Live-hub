@@ -88,19 +88,6 @@
             <version>4.1.2</version>
         </dependency>
 
-        <!-- Caffeine 本地缓存 -->
-        <dependency>
-            <groupId>com.github.ben-manes.caffeine</groupId>
-            <artifactId>caffeine</artifactId>
-            <version>3.1.8</version>
-        </dependency>
-
-        <!-- Spring Cache 支持 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-cache</artifactId>
-        </dependency>
-
         <!-- 测试（JUnit 5 + Mockito + AssertJ + MockMvc） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
