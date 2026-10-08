@@ -14,8 +14,10 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -28,9 +30,10 @@ import static com.hmdp.utils.RedisConstants.SHOP_GEO_KEY;
  * 这是全仓唯一的 GEO 索引写入点，{@code ShopServiceImpl.queryShopByType} 的带坐标
  * 分支依赖它，因此不可删除。
  *
- * <p>按 {@code id} 做 keyset 分页（每批 {@value #PAGE_SIZE} 条），避免启动阶段一次性
- * 把整表读入内存。不使用 {@code selectPage}——本仓未配置 MyBatis-Plus 分页插件，
- * {@code selectPage} 不会真正限量。
+ * <p>按 {@code id} 做 keyset 分页（每批 {@value #PAGE_SIZE} 条），<b>每批写完即清空
+ * 累积器</b>，因此峰值内存是一批坐标而非整表。不使用 {@code selectPage}——本仓未配置
+ * MyBatis-Plus 分页插件（无 {@code PaginationInnerInterceptor} 实现），{@code selectPage}
+ * 不会真正限量。
  */
 @Component
 @Slf4j
@@ -60,9 +63,9 @@ public class ShopGeoIndexWarmUp implements ApplicationRunner {
 
     void warmUpGeoIndex() {
         try {
-            Map<Long, List<RedisGeoCommands.GeoLocation<String>>> byType = new HashMap<>();
             long lastId = 0L;
-            int total = 0;
+            int written = 0;
+            Set<Long> types = new HashSet<>();
 
             while (true) {
                 List<Shop> chunk = shopMapper.selectList(new QueryWrapper<Shop>()
@@ -75,7 +78,11 @@ public class ShopGeoIndexWarmUp implements ApplicationRunner {
                 if (chunk.isEmpty()) {
                     break;
                 }
+
+                Map<Long, List<RedisGeoCommands.GeoLocation<String>>> byType = new HashMap<>();
                 for (Shop shop : chunk) {
+                    // 游标必须对每一行前进：整页都被空值守卫跳过时，否则会反复读到同一页
+                    lastId = shop.getId();
                     if (shop.getTypeId() == null || shop.getX() == null || shop.getY() == null) {
                         continue;
                     }
@@ -83,18 +90,21 @@ public class ShopGeoIndexWarmUp implements ApplicationRunner {
                             .add(new RedisGeoCommands.GeoLocation<>(
                                     shop.getId().toString(),
                                     new Point(shop.getX(), shop.getY())));
-                    lastId = shop.getId();
                 }
-                total += chunk.size();
+
+                // 每批写完即清空，峰值内存收敛为一批坐标；GEOADD 按 member 覆盖，分批重写安全
+                for (Map.Entry<Long, List<RedisGeoCommands.GeoLocation<String>>> entry : byType.entrySet()) {
+                    stringRedisTemplate.opsForGeo().add(SHOP_GEO_KEY + entry.getKey(), entry.getValue());
+                    written += entry.getValue().size();
+                    types.add(entry.getKey());
+                }
+
                 if (chunk.size() < PAGE_SIZE) {
                     break;
                 }
             }
 
-            for (Map.Entry<Long, List<RedisGeoCommands.GeoLocation<String>>> entry : byType.entrySet()) {
-                stringRedisTemplate.opsForGeo().add(SHOP_GEO_KEY + entry.getKey(), entry.getValue());
-            }
-            log.info("GEO 索引预热完成，共 {} 个店铺，覆盖 {} 种类型", total, byType.size());
+            log.info("GEO 索引预热完成，共写入 {} 个店铺坐标，覆盖 {} 种类型", written, types.size());
         } catch (Exception e) {
             log.error("GEO 索引预热失败", e);
         }
