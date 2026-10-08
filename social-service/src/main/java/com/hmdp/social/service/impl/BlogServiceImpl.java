@@ -3,6 +3,7 @@ package com.hmdp.social.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.ScrollResult;
@@ -99,47 +100,43 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     @Override
     public Result likeBlog(Long id) {
         //1.获取登录用户
-        Long userId = UserHolder.getUser().getId();
-        //2.判断当前登录用户是否已经点赞
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("未登录");
+        }
+        Long userId = user.getId();
+
+        //2.校验博客存在（SPEC-09 §1.3：不存在时必须明确失败，不得静默返回成功）
+        if (getById(id) == null) {
+            return Result.fail("博客不存在");
+        }
+
+        //3.判断当前登录用户是否已经点赞
         String key = BLOG_LIKED_KEY + id;
         Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
 
         if (score == null) {
-            //3.如果没有点赞，可以点赞
-            //3.1数据库点赞 +1
-            boolean isSuccess = update().setSql("liked = liked + 1").eq("id", id).update();
-            //3.2保存用户到Redis的set集合中
-            if (isSuccess) {
-                stringRedisTemplate.opsForZSet().add(key, userId.toString(), System.currentTimeMillis());
+            //4.未点赞 → 点赞
+            //4.1数据库点赞 +1
+            boolean isSuccess = update(Wrappers.<Blog>lambdaUpdate()
+                    .setSql("liked = liked + 1")
+                    .eq(Blog::getId, id));
+            if (!isSuccess) {
+                return Result.fail("操作失败，请重试");
             }
+            //4.2保存用户到Redis的ZSet中
+            stringRedisTemplate.opsForZSet().add(key, userId.toString(), System.currentTimeMillis());
         } else {
-            //4.如果已经点赞
-            //4.1数据库点赞数 -1
-            boolean isSuccess = update().setSql("liked = liked - 1").eq("id", id).update();
-            //4.2把用户从Redis的set集合中移除
-            if (isSuccess) {
-                stringRedisTemplate.opsForZSet().remove(key, userId.toString());
-            }
-        }
-        return Result.ok();
-    }
-
-    @Override
-    public Result dislikeBlog(Long id) {
-        //1.获取登录用户
-        Long userId = UserHolder.getUser().getId();
-        //2.判断当前登录用户是否已经点赞
-        String key = BLOG_LIKED_KEY + id;
-        Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
-
-        if (score != null) {
-            //3.如果已经点赞，可以取消点赞
-            //3.1数据库点赞 -1
-            boolean isSuccess = update().setSql("liked = liked - 1").eq("id", id).update();
-            //3.2把用户从Redis的set集合中移除
-            if (isSuccess) {
-                stringRedisTemplate.opsForZSet().remove(key, userId.toString());
-            }
+            //5.已点赞 → 取消点赞
+            //5.1数据库点赞 -1，带 liked > 0 下限守卫，杜绝负值（SPEC-09 A4）
+            update(Wrappers.<Blog>lambdaUpdate()
+                    .setSql("liked = liked - 1")
+                    .eq(Blog::getId, id)
+                    .gt(Blog::getLiked, 0));
+            //5.2无论 DB 是否真的递减，都把用户移出 Redis：
+            //   守卫挡回（liked 已为 0）时若不移除，用户会永久卡在
+            //   "Redis 说已点赞、DB 已归零"的死锁态——两级状态必须收敛到"未点赞"
+            stringRedisTemplate.opsForZSet().remove(key, userId.toString());
         }
         return Result.ok();
     }

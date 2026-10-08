@@ -43,16 +43,6 @@ public class BlogController {
     }
 
     /**
-     * 取消点赞
-     * @param id 探店笔记id
-     * @return 取消点赞结果
-     */
-    @PutMapping("/dislike/{id}")
-    public Result dislikeBlog(@PathVariable("id") Long id) {
-        return blogService.dislikeBlog(id);
-    }
-
-    /**
      * 查询探店笔记详情
      * @param id 探店笔记id
      * @return 探店笔记详情
