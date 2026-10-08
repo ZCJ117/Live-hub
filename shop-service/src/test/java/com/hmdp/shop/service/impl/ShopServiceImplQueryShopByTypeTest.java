@@ -1,8 +1,10 @@
 package com.hmdp.shop.service.impl;
 
 import com.hmdp.dto.Result;
+import com.hmdp.utils.SystemConstants;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -49,6 +51,14 @@ class ShopServiceImplQueryShopByTypeTest {
         when(geoOperations.search(anyString(), any(), any(Distance.class), any())).thenReturn(emptyResults);
     }
 
+    /** 取回本次地理位置检索实际使用的 limit，即服务层算出的 end */
+    private long searchLimit() {
+        ArgumentCaptor<RedisGeoCommands.GeoSearchCommandArgs> captor =
+                ArgumentCaptor.forClass(RedisGeoCommands.GeoSearchCommandArgs.class);
+        verify(geoOperations).search(anyString(), any(), any(Distance.class), captor.capture());
+        return captor.getValue().getLimit();
+    }
+
     @Test
     void 页码为0时服务层兜底为第一页不再抛异常() {
         mockEmptyGeoSearch();
@@ -56,6 +66,8 @@ class ShopServiceImplQueryShopByTypeTest {
         Result result = shopService.queryShopByType(1, 0, 116.4, 39.9);
 
         assertEquals(Collections.emptyList(), result.getData());
+        // 兜底后 end = 1 * 5 = 5；修复前 end = 0，limit(0) 抛 IllegalArgumentException
+        assertEquals(SystemConstants.DEFAULT_PAGE_SIZE, searchLimit());
     }
 
     @Test
@@ -63,15 +75,17 @@ class ShopServiceImplQueryShopByTypeTest {
         mockEmptyGeoSearch();
 
         assertDoesNotThrow(() -> shopService.queryShopByType(1, null, 116.4, 39.9));
+
+        assertEquals(SystemConstants.DEFAULT_PAGE_SIZE, searchLimit());
     }
 
-    /** 兜底不应改变合法页码的行为：仍按该页码发起检索 */
+    /** 兜底不应改变合法页码的行为：第 2 页仍以 end = 2 * 5 发起检索 */
     @Test
-    void 合法页码仍按原页码检索() {
+    void 合法页码不被兜底改写() {
         mockEmptyGeoSearch();
 
         shopService.queryShopByType(1, 2, 116.4, 39.9);
 
-        verify(geoOperations).search(anyString(), any(), any(Distance.class), any());
+        assertEquals(2 * SystemConstants.DEFAULT_PAGE_SIZE, searchLimit());
     }
 }
