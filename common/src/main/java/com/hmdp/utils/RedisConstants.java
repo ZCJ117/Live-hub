@@ -7,22 +7,16 @@ public class RedisConstants {
     public static final String LOGIN_CODE_LIMIT_KEY = "login:code:limit:phone:";
     public static final String LOGIN_CODE_COUNT_KEY = "login:code:count:phone:";
     public static final String LOGIN_CODE_IP_COUNT_KEY = "login:code:count:ip:";
-    public static final String LOGIN_USER_KEY = "login:token:";
-    public static final Long LOGIN_USER_TTL = 36000L;
 
     /** 空值标记 TTL，单位：秒（SPEC-05 §5.1：把负缓存窗口从 30 分钟压到 60 秒） */
     public static final Long CACHE_NULL_TTL = 60L;
 
-    public static final Long CACHE_SHOP_TTL = 30L;
     public static final String CACHE_SHOP_KEY = "cache:shop:";
 
     /** 缓存基础 TTL，单位：秒（商铺与商铺分类共用，SPEC-05 G7） */
     public static final Long CACHE_TTL_BASE_SECONDS = 1800L;
     /** 缓存 TTL 抖动上限，单位：秒；实际 TTL = 基础值 + [0, 抖动) */
     public static final Integer CACHE_TTL_JITTER_SECONDS = 300;
-
-    public static final String LOCK_SHOP_KEY = "lock:shop:";
-    public static final Long LOCK_SHOP_TTL = 10L;
 
     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
     /** 已购用户 Set —— 与 seckill.lua 的 orderKey 同拼法 */
@@ -37,10 +31,5 @@ public class RedisConstants {
     public static final String USER_SIGN_KEY = "sign:";
 
     public static final String SHOP_LIST_KEY = "shop:list:";
-
-    // JetCache 配置（可根据需要调整）
-    public static final Integer JETCACHE_LOCAL_LIMIT = 100;
-    public static final Long JETCACHE_EXPIRE = 7200L; // 2小时
-    public static final Long JETCACHE_REFRESH = 1800L; // 30分钟自动刷新
 
 }

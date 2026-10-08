@@ -1,367 +1,0 @@
-﻿GET     /api/v1/acp/endpoints                                   [ACP Endpoints (RFC-090 Phase 7)] List ACP endpoints
-POST    /api/v1/acp/endpoints                                   [ACP Endpoints (RFC-090 Phase 7)] Create a custom ACP endpoint
-DELETE  /api/v1/acp/endpoints/{id}                              [ACP Endpoints (RFC-090 Phase 7)] Delete an ACP endpoint (builtins are protected)
-GET     /api/v1/acp/endpoints/{id}                              [ACP Endpoints (RFC-090 Phase 7)] Get ACP endpoint by id
-PUT     /api/v1/acp/endpoints/{id}                              [ACP Endpoints (RFC-090 Phase 7)] Update an ACP endpoint
-POST    /api/v1/acp/endpoints/{id}/test                         [ACP Endpoints (RFC-090 Phase 7)] Test ACP endpoint connection (initialize handshake)
-PUT     /api/v1/acp/endpoints/{id}/toggle                       [ACP Endpoints (RFC-090 Phase 7)] Enable / disable an ACP endpoint
-GET     /api/v1/activity/feed                                   [Activity Feed (RFC-090)] Unified activity feed (audit + approval + tool calls)
-POST    /api/v1/admin/agent-runtime/runs/{conversationId}/recycle [Agent Runtime (Live)] Force recycle â dispose flux + drop RunState; use after friendly stop ignored
-POST    /api/v1/admin/agent-runtime/runs/{conversationId}/stop  [Agent Runtime (Live)] Friendly stop â request the run to wind down at its next checkpoint
-GET     /api/v1/admin/agent-runtime/snapshot                    [Agent Runtime (Live)] Snapshot of every in-flight agent turn
-POST    /api/v1/admin/agent-runtime/subagents/{subagentId}/interrupt [Agent Runtime (Live)] Interrupt one sub-agent (admin override of ownership check)
-POST    /api/v1/admin/agent-runtime/sweep                       [Agent Runtime (Live)] Recycle every run currently flagged as stuck
-GET     /api/v1/agents                                          [Agentç®¡ç         ] è·åAgentåè¡¨
-POST    /api/v1/agents                                          [Agentç®¡ç         ] åå»ºAgent
-GET     /api/v1/agents/{agentId}/provider-preferences           [Agentè½åç»å®   ] è·å Agent çåå¥½ Provider é¡ºåº
-PUT     /api/v1/agents/{agentId}/provider-preferences           [Agentè½åç»å®   ] æ¹éè®¾ç½® Agent çåå¥½ Provider é¡ºåºï¼æ¿æ¢æ¨¡å¼ï¼
-GET     /api/v1/agents/{agentId}/skills                         [Agentè½åç»å®   ] è·å Agent å·²ç»å®ç Skills
-PUT     /api/v1/agents/{agentId}/skills                         [Agentè½åç»å®   ] æ¹éè®¾ç½® Agent ç Skill ç»å®
-DELETE  /api/v1/agents/{agentId}/skills/{skillId}               [Agentè½åç»å®   ] è§£ç»åä¸ª Skill
-POST    /api/v1/agents/{agentId}/skills/{skillId}               [Agentè½åç»å®   ] ç»å®åä¸ª Skill
-GET     /api/v1/agents/{agentId}/tools                          [Agentè½åç»å®   ] è·å Agent å·²ç»å®ç Tools
-PUT     /api/v1/agents/{agentId}/tools                          [Agentè½åç»å®   ] æ¹éè®¾ç½® Agent ç Tool ç»å®
-GET     /api/v1/agents/{agentId}/workspace/files                [å·¥ä½åºæä»¶ç®¡ç] ååºå·¥ä½åºæä»¶
-DELETE  /api/v1/agents/{agentId}/workspace/files/**             [å·¥ä½åºæä»¶ç®¡ç] å é¤å·¥ä½åºæä»¶
-GET     /api/v1/agents/{agentId}/workspace/files/**             [å·¥ä½åºæä»¶ç®¡ç] è¯»åå·¥ä½åºæä»¶
-PUT     /api/v1/agents/{agentId}/workspace/files/**             [å·¥ä½åºæä»¶ç®¡ç] ä¿å­å·¥ä½åºæä»¶
-GET     /api/v1/agents/{agentId}/workspace/memory/export        [å·¥ä½åºæä»¶ç®¡ç] å¯¼åº Agent è®°å¿å¿«ç§ï¼ZIPï¼
-POST    /api/v1/agents/{agentId}/workspace/memory/import        [å·¥ä½åºæä»¶ç®¡ç] å¯¼å¥ Agent è®°å¿å¿«ç§ï¼åå¥ï¼
-POST    /api/v1/agents/{agentId}/workspace/memory/import/preview [å·¥ä½åºæä»¶ç®¡ç] é¢è§å¯¼å¥ Agent è®°å¿å¿«ç§ï¼ä¸åå¥ï¼
-GET     /api/v1/agents/{agentId}/workspace/prompt-files         [å·¥ä½åºæä»¶ç®¡ç] è·åç³»ç»æç¤ºæä»¶åè¡¨
-PUT     /api/v1/agents/{agentId}/workspace/prompt-files         [å·¥ä½åºæä»¶ç®¡ç] è®¾ç½®ç³»ç»æç¤ºæä»¶åè¡¨
-DELETE  /api/v1/agents/{id}                                     [Agentç®¡ç         ] å é¤Agent
-GET     /api/v1/agents/{id}                                     [Agentç®¡ç         ] è·åAgentè¯¦æ
-PUT     /api/v1/agents/{id}                                     [Agentç®¡ç         ] æ´æ°Agent
-GET     /api/v1/agents/{id}/capabilities                        [Agentç®¡ç         ] è·åAgentå½åè½åï¼modality éå + sidecar éç½®ï¼ï¼ç¨äºèå¤©é¡µæç¤ºæ¡
-POST    /api/v1/agents/{id}/chat                                [Agentç®¡ç         ] åæ­¥å¯¹è¯
-GET     /api/v1/agents/{id}/chat/stream                         [Agentç®¡ç         ] æµå¼å¯¹è¯ï¼SSEï¼
-POST    /api/v1/agents/{id}/execute                             [Agentç®¡ç         ] æ§è¡å¤æä»»å¡ï¼Plan-Executeï¼
-GET     /api/v1/agents/{id}/state                               [Agentç®¡ç         ] è·åAgentè¿è¡ç¶æ
-GET     /api/v1/audit/events                                    [å®¡è®¡äºä»¶        ] åé¡µæ¥è¯¢å®¡è®¡äºä»¶
-POST    /api/v1/auth/login                                      [è®¤è¯ç®¡ç        ] ç¨æ·ç»å½
-GET     /api/v1/auth/tokens                                     [Personal Access Tokens] List my PATs (metadata only â plaintext is never returned after creation)
-POST    /api/v1/auth/tokens                                     [Personal Access Tokens] Mint a new PAT â returned plaintext is shown once and cannot be recovered
-DELETE  /api/v1/auth/tokens/{id}                                [Personal Access Tokens] Revoke a PAT â soft-delete; further auth attempts with this token will fail
-GET     /api/v1/auth/users                                      [è®¤è¯ç®¡ç        ] è·åç¨æ·åè¡¨
-POST    /api/v1/auth/users                                      [è®¤è¯ç®¡ç        ] åå»ºç¨æ·
-PUT     /api/v1/auth/users/{id}/password                        [è®¤è¯ç®¡ç        ] ä¿®æ¹å¯ç 
-GET     /api/v1/channels                                        [æ¸ éç®¡ç        ] è·åæ¸ éåè¡¨
-POST    /api/v1/channels                                        [æ¸ éç®¡ç        ] åå»ºæ¸ é
-DELETE  /api/v1/channels/{id}                                   [æ¸ éç®¡ç        ] å é¤æ¸ é
-GET     /api/v1/channels/{id}                                   [æ¸ éç®¡ç        ] è·åæ¸ éè¯¦æ
-PUT     /api/v1/channels/{id}                                   [æ¸ éç®¡ç        ] æ´æ°æ¸ é
-GET     /api/v1/channels/{id}/health                            [æ¸ éç®¡ç        ] è·åæå®æ¸ éçå®æ¶å¥åº·ç¶æï¼çè¿æ¥ç¶æï¼åç«¯ç»¿ç¹åºè¯¥ç»è¿ä¸ªï¼
-PUT     /api/v1/channels/{id}/toggle                            [æ¸ éç®¡ç        ] å¯ç¨/ç¦ç¨æ¸ é
-GET     /api/v1/channels/health                                 [æ¸ éç®¡ç        ] æ¹éè·åæææ¸ éå¥åº·ç¶æ
-POST    /api/v1/channels/preflight                              [æ¸ éç®¡ç        ] Pre-flight: validate draft channel config without persisting
-POST    /api/v1/channels/qrcode/{channelType}/begin             [æ¸ éQRæ«ç ææï¼ç»ä¸ï¼] å¯å¨æå®æ¸ éçæ«ç æææµç¨
-GET     /api/v1/channels/qrcode/{channelType}/status            [æ¸ éQRæ«ç ææï¼ç»ä¸ï¼] æ¥è¯¢æå®æ¸ éçæ«ç ææç¶æ
-GET     /api/v1/channels/status                                 [æ¸ éç®¡ç        ] è·åæ¸ éè¿è¡ç¶æï¼å¨å±ç³»ç»è§å¾ï¼ä»ç®¡çåå¯è§ï¼
-GET     /api/v1/channels/type/{channelType}                     [æ¸ éç®¡ç        ] æç±»åè·åæ¸ éåè¡¨
-GET     /api/v1/channels/webchat/config                         [WebChat åµå¥å¼å¯¹è¯] è·å WebChat éç½®
-POST    /api/v1/channels/webchat/stream                         [WebChat åµå¥å¼å¯¹è¯] WebChat SSE æµå¼å¯¹è¯
-POST    /api/v1/channels/webhook/dingtalk                       [æ¸ éWebhook       ] ééæ¶æ¯åè°
-POST    /api/v1/channels/webhook/dingtalk/register/begin        [æ¸ éWebhook       ] å¯å¨ééæ«ç æ³¨ååºç¨æµç¨
-GET     /api/v1/channels/webhook/dingtalk/register/status       [æ¸ éWebhook       ] æ¥è¯¢ééæ«ç æ³¨åç¶æ
-POST    /api/v1/channels/webhook/discord                        [æ¸ éWebhook       ] Discord æ¶æ¯åè°ï¼å·²åºå¼ï¼Discord å·²åæ¢ä¸º Gateway WebSocket æ¨¡å¼ï¼
-POST    /api/v1/channels/webhook/feishu                         [æ¸ éWebhook       ] é£ä¹¦æ¶æ¯åè°
-POST    /api/v1/channels/webhook/feishu/register/begin          [æ¸ éWebhook       ] å¯å¨é£ä¹¦æ«ç æ³¨ååºç¨æµç¨
-GET     /api/v1/channels/webhook/feishu/register/status         [æ¸ éWebhook       ] æ¥è¯¢é£ä¹¦æ«ç æ³¨åç¶æ
-POST    /api/v1/channels/webhook/slack                          [æ¸ éWebhook       ] Slack Events API åè°
-GET     /api/v1/channels/webhook/status                         [æ¸ éWebhook       ] è·åæ¸ éè¿è¡ç¶æ
-POST    /api/v1/channels/webhook/telegram                       [æ¸ éWebhook       ] Telegram æ¶æ¯åè°
-POST    /api/v1/channels/webhook/wecom                          [æ¸ éWebhook       ] ä¼ä¸å¾®ä¿¡æ¶æ¯åè°ï¼æºè½æºå¨äººæ¨¡å¼ä¸ä½¿ç¨ï¼ä¿çå¼å®¹ï¼
-GET     /api/v1/channels/webhook/weixin/qrcode                  [æ¸ éWebhook       ] è·åå¾®ä¿¡ç»å½äºç»´ç 
-GET     /api/v1/channels/webhook/weixin/qrcode/status           [æ¸ éWebhook       ] æ¥è¯¢å¾®ä¿¡äºç»´ç æ«ç ç¶æ
-POST    /api/v1/chat                                            [Webèå¤©           ] åæ­¥å¯¹è¯
-POST    /api/v1/chat/{conversationId}/interrupt                 [Webèå¤©           ] æéåç»­æ¶æ¯ï¼ä¸ææ­å½åæµï¼
-GET     /api/v1/chat/{conversationId}/pending-approvals         [å·¥å·å®¡æ¹        ] æ¥è¯¢å¾å®¡æ¹è®°å½
-POST    /api/v1/chat/{conversationId}/stop                      [Webèå¤©           ] åæ­¢æµå¼çæ
-GET     /api/v1/chat/files/{conversationId}/{storedName}        [Webèå¤©           ] è¯»åèå¤©éä»¶
-POST    /api/v1/chat/stream                                     [Webèå¤©           ] ç»æå SSE æµå¼å¯¹è¯ï¼æ¯æéè¿ï¼
-POST    /api/v1/chat/upload                                     [Webèå¤©           ] ä¸ä¼ èå¤©éä»¶
-GET     /api/v1/conversations                                   [ä¼è¯ç®¡ç        ] è·åä¼è¯åè¡¨
-DELETE  /api/v1/conversations/{conversationId}                  [ä¼è¯ç®¡ç        ] å é¤ä¼è¯
-DELETE  /api/v1/conversations/{conversationId}/messages         [ä¼è¯ç®¡ç        ] æ¸ç©ºä¼è¯æ¶æ¯
-GET     /api/v1/conversations/{conversationId}/messages         [ä¼è¯ç®¡ç        ] è·åä¼è¯æ¶æ¯åå²ï¼æ¯æåé¡µï¼
-PUT     /api/v1/conversations/{conversationId}/model            [ä¼è¯ç®¡ç        ] åæ¢ä¼è¯ä½¿ç¨çæ¨¡å (provider + model name)
-PUT     /api/v1/conversations/{conversationId}/pin              [ä¼è¯ç®¡ç        ] ç½®é¡¶æåæ¶ç½®é¡¶ä¼è¯
-GET     /api/v1/conversations/{conversationId}/status           [ä¼è¯ç®¡ç        ] è·åä¼è¯æµç¶æ
-PUT     /api/v1/conversations/{conversationId}/title            [ä¼è¯ç®¡ç        ] éå½åä¼è¯
-POST    /api/v1/conversations/batch-delete                      [ä¼è¯ç®¡ç        ] æ¹éå é¤ä¼è¯
-GET     /api/v1/conversations/page                              [ä¼è¯ç®¡ç        ] åé¡µæ¥è¯¢ä¼è¯åè¡¨
-GET     /api/v1/cron-jobs                                       [å®æ¶ä»»å¡ç®¡ç  ] è·åå®æ¶ä»»å¡åè¡¨
-POST    /api/v1/cron-jobs                                       [å®æ¶ä»»å¡ç®¡ç  ] åå»ºå®æ¶ä»»å¡
-DELETE  /api/v1/cron-jobs/{id}                                  [å®æ¶ä»»å¡ç®¡ç  ] å é¤å®æ¶ä»»å¡
-GET     /api/v1/cron-jobs/{id}                                  [å®æ¶ä»»å¡ç®¡ç  ] è·åå®æ¶ä»»å¡è¯¦æ
-PUT     /api/v1/cron-jobs/{id}                                  [å®æ¶ä»»å¡ç®¡ç  ] æ´æ°å®æ¶ä»»å¡
-POST    /api/v1/cron-jobs/{id}/run                              [å®æ¶ä»»å¡ç®¡ç  ] ç«å³æ§è¡å®æ¶ä»»å¡
-PUT     /api/v1/cron-jobs/{id}/toggle                           [å®æ¶ä»»å¡ç®¡ç  ] å¯ç¨/ç¦ç¨å®æ¶ä»»å¡
-GET     /api/v1/cron-jobs/active-runs                           [å®æ¶ä»»å¡ç®¡ç  ] æ¥è¯¢ä¼è¯ä¸æ­£å¨æ§è¡çå®æ¶ä»»å¡è¿è¡
-GET     /api/v1/dashboard/cron-runs                             [Dashboard           ] è·åæè¿æ§è¡è®°å½ï¼å½å workspace å³èç CronJobï¼
-GET     /api/v1/dashboard/cron-runs/{cronJobId}                 [Dashboard           ] è·å CronJob æ§è¡åå²
-GET     /api/v1/dashboard/overview                              [Dashboard           ] è·åæ¦è§ç»è®¡
-GET     /api/v1/dashboard/trend                                 [Dashboard           ] è·åæ¥ç¨éè¶å¿
-GET     /api/v1/datasources                                     [æ°æ®æºç®¡ç     ] è·åæ°æ®æºåè¡¨
-POST    /api/v1/datasources                                     [æ°æ®æºç®¡ç     ] åå»ºæ°æ®æº
-DELETE  /api/v1/datasources/{id}                                [æ°æ®æºç®¡ç     ] å é¤æ°æ®æº
-GET     /api/v1/datasources/{id}                                [æ°æ®æºç®¡ç     ] è·åæ°æ®æºè¯¦æ
-PUT     /api/v1/datasources/{id}                                [æ°æ®æºç®¡ç     ] æ´æ°æ°æ®æº
-POST    /api/v1/datasources/{id}/test                           [æ°æ®æºç®¡ç     ] æµè¯æ°æ®æºè¿æ¥
-PUT     /api/v1/datasources/{id}/toggle                         [æ°æ®æºç®¡ç     ] å¯ç¨/ç¦ç¨æ°æ®æº
-GET     /api/v1/feature-flags                                   [feature-flag-controller] 
-PUT     /api/v1/feature-flags/{flagKey}                         [feature-flag-controller] 
-GET     /api/v1/files/generated/{id}                            [Generated Files     ] Download a tool-generated file by its one-time id
-GET     /api/v1/llm/provider-pool                               [Provider å¯ç¨æ±   ] æ¥è¯¢ææ provider çæ± ç¶æ + å·å´ä¿¡æ¯
-POST    /api/v1/llm/provider-pool/{providerId}/reprobe          [Provider å¯ç¨æ±   ] æå¨éæ°æ¢æµæä¸ª providerï¼ç«å³æ´æ°æ± ç¶æ
-GET     /api/v1/mcp/servers                                     [MCP Server ç®¡ç   ] è·å MCP Server åè¡¨
-POST    /api/v1/mcp/servers                                     [MCP Server ç®¡ç   ] åå»º MCP Server
-DELETE  /api/v1/mcp/servers/{id}                                [MCP Server ç®¡ç   ] å é¤ MCP Server
-GET     /api/v1/mcp/servers/{id}                                [MCP Server ç®¡ç   ] è·å MCP Server è¯¦æ
-PUT     /api/v1/mcp/servers/{id}                                [MCP Server ç®¡ç   ] æ´æ° MCP Server
-POST    /api/v1/mcp/servers/{id}/test                           [MCP Server ç®¡ç   ] æµè¯ MCP Server è¿æ¥
-PUT     /api/v1/mcp/servers/{id}/toggle                         [MCP Server ç®¡ç   ] å¯ç¨/ç¦ç¨ MCP Server
-GET     /api/v1/mcp/servers/{id}/tools                          [MCP Server ç®¡ç   ] ååº MCP Server å·²åç°çå·¥å·
-POST    /api/v1/mcp/servers/refresh                             [MCP Server ç®¡ç   ] å·æ°ææ MCP Server è¿æ¥
-GET     /api/v1/memory/{agentId}/dream/events                   [Dream Reports       ] Subscribe to dream events (SSE)
-GET     /api/v1/memory/{agentId}/dream/morning-card             [Dream Reports       ] Get morning card for current user + agent
-POST    /api/v1/memory/{agentId}/dream/morning-card/seen        [Dream Reports       ] Mark morning card as seen
-GET     /api/v1/memory/{agentId}/dream/reports                  [Dream Reports       ] List dream reports (paginated, newest first)
-GET     /api/v1/memory/{agentId}/dream/reports/{reportId}       [Dream Reports       ] Get a single dream report by ID
-POST    /api/v1/memory/{agentId}/dream/reports/{reportId}/entries/{key}/confirm [Dream Reports       ] Confirm a memory entry (no-op acknowledgment)
-POST    /api/v1/memory/{agentId}/dream/reports/{reportId}/entries/{key}/edit [Dream Reports       ] Edit a memory entry â writes back to the target memory file with user-edited metadata
-GET     /api/v1/memory/{agentId}/dreaming/candidates            [è®°å¿ç®¡ç        ] æ¥è¯¢å¬ååéåè¡¨ï¼å«è¯åè¯¦æï¼
-GET     /api/v1/memory/{agentId}/dreaming/dreams                [è®°å¿ç®¡ç        ] æ¥è¯¢ DREAMS.md æ´åæ¥è®°
-POST    /api/v1/memory/{agentId}/dreaming/focused               [è®°å¿ç®¡ç        ] Focused Dream â å´ç»æå®ä¸»é¢è§¦åè®°å¿æ´å
-GET     /api/v1/memory/{agentId}/dreaming/status                [è®°å¿ç®¡ç        ] æ¥è¯¢ Dreaming ç¶æï¼éç½®ãç»è®¡ãä¸æ¬¡è¿è¡æ¶é´ï¼
-POST    /api/v1/memory/{agentId}/emergence                      [è®°å¿ç®¡ç        ] æå¨è§¦åè®°å¿æ´åï¼daily notes â MEMORY.mdï¼NIGHTLY æ¨¡å¼ï¼
-GET     /api/v1/memory/{agentId}/facts                          [Facts               ] List facts for an agent
-POST    /api/v1/memory/{agentId}/facts/{factId}/feedback        [Facts               ] Submit feedback on a fact (HELPFUL/UNHELPFUL)
-POST    /api/v1/memory/{agentId}/facts/{factId}/forget          [Facts               ] Forget a fact â writes canonical metadata, rebuilds projection
-GET     /api/v1/memory/{agentId}/facts/contradictions           [Facts               ] List unresolved contradictions
-POST    /api/v1/memory/{agentId}/facts/contradictions/{contradictionId}/resolve [Facts               ] Resolve a contradiction (KEEP_A / KEEP_B / MERGE / IGNORE)
-POST    /api/v1/memory/{agentId}/summarize/{conversationId}     [è®°å¿ç®¡ç        ] æå¨è§¦åå¯¹è¯è®°å¿æå
-GET     /api/v1/models                                          [æ¨¡åéç½®ç®¡ç  ] è·å Provider åè¡¨ï¼ä» enabledï¼
-POST    /api/v1/models                                          [æ¨¡åéç½®ç®¡ç  ] åå»ºæ¨¡å
-DELETE  /api/v1/models/{id}                                     [æ¨¡åéç½®ç®¡ç  ] å é¤æ¨¡å
-GET     /api/v1/models/{id}                                     [æ¨¡åéç½®ç®¡ç  ] è·åæ¨¡åè¯¦æ
-PUT     /api/v1/models/{id}                                     [æ¨¡åéç½®ç®¡ç  ] æ´æ°æ¨¡å
-POST    /api/v1/models/{id}/default                             [æ¨¡åéç½®ç®¡ç  ] è®¾ç½®é»è®¤æ¨¡å
-PUT     /api/v1/models/{providerId}/config                      [æ¨¡åéç½®ç®¡ç  ] æ´æ° Provider éç½®
-POST    /api/v1/models/{providerId}/disable                     [æ¨¡åéç½®ç®¡ç  ] RFC-074: ç¦ç¨ Providerï¼å¦å¶ä¸æ¨¡åä¸ºå½åé»è®¤ä¼èªå¨åæ¢ï¼
-POST    /api/v1/models/{providerId}/discover                    [æ¨¡åéç½®ç®¡ç  ] åç°è¿ç«¯æ¨¡å
-POST    /api/v1/models/{providerId}/discover/apply              [æ¨¡åéç½®ç®¡ç  ] æ¹éæ·»å åç°çæ¨¡å
-POST    /api/v1/models/{providerId}/enable                      [æ¨¡åéç½®ç®¡ç  ] RFC-074: å¯ç¨ Provider
-DELETE  /api/v1/models/{providerId}/models                      [æ¨¡åéç½®ç®¡ç  ] ä» Provider å é¤æ¨¡å
-POST    /api/v1/models/{providerId}/models                      [æ¨¡åéç½®ç®¡ç  ] å Provider æ·»å æ¨¡å
-POST    /api/v1/models/{providerId}/models/test                 [æ¨¡åéç½®ç®¡ç  ] æµè¯åä¸ªæ¨¡åå¯ç¨æ§
-POST    /api/v1/models/{providerId}/test-connection             [æ¨¡åéç½®ç®¡ç  ] æµè¯ä¾åºåè¿æ¥
-GET     /api/v1/models/active                                   [æ¨¡åéç½®ç®¡ç  ] è·åå½åæ¿æ´»æ¨¡å
-PUT     /api/v1/models/active                                   [æ¨¡åéç½®ç®¡ç  ] è®¾ç½®å½åæ¿æ´»æ¨¡å
-GET     /api/v1/models/by-type                                  [æ¨¡åéç½®ç®¡ç  ] æç±»åç­éæ¨¡åï¼chat / embeddingï¼ï¼å¯é modality è¿æ»¤
-GET     /api/v1/models/catalog                                  [æ¨¡åéç½®ç®¡ç  ] RFC-074: è·å Provider å¨éç®å½ï¼å«æªå¯ç¨ï¼ï¼ä¾ Add Provider æ½å±ä½¿ç¨
-DELETE  /api/v1/models/custom-providers                         [æ¨¡åéç½®ç®¡ç  ] å é¤èªå®ä¹ Providerï¼æ¥è¯¢åæ°åä½ï¼å¼å®¹å«ç¹æ®å­ç¬¦çæ§ IDï¼
-POST    /api/v1/models/custom-providers                         [æ¨¡åéç½®ç®¡ç  ] åå»ºèªå®ä¹ Provider
-DELETE  /api/v1/models/custom-providers/{providerId}            [æ¨¡åéç½®ç®¡ç  ] å é¤èªå®ä¹ Provider
-GET     /api/v1/models/default                                  [æ¨¡åéç½®ç®¡ç  ] è·åé»è®¤æ¨¡å
-POST    /api/v1/models/embedding/{modelId}/test                 [æ¨¡åéç½®ç®¡ç  ] æµè¯ Embedding æ¨¡åè¿éæ§ï¼åµå¥ä¸ä¸ªç­ææ¬éªè¯ API keyï¼
-GET     /api/v1/models/embedding/default                        [æ¨¡åéç½®ç®¡ç  ] è·åç³»ç»é»è®¤ Embedding æ¨¡å ID
-POST    /api/v1/models/embedding/default                        [æ¨¡åéç½®ç®¡ç  ] è®¾ç½®ç³»ç»é»è®¤ Embedding æ¨¡å
-GET     /api/v1/models/enabled                                  [æ¨¡åéç½®ç®¡ç  ] è·åå¯ç¨æ¨¡ååè¡¨
-GET     /api/v1/notifications/summary                           [Notifications       ] Aggregated counts for the sidebar attention badges
-POST    /api/v1/oauth/anthropic/reload                          [Anthropic Claude Code OAuth] Force re-detect credentials and refresh if near expiry
-GET     /api/v1/oauth/anthropic/status                          [Anthropic Claude Code OAuth] Read current Claude Code OAuth credential status from local disk
-GET     /api/v1/oauth/openai/authorize                          [OpenAI OAuth        ] è·å OAuth ææ URLï¼èªå¨é LOCAL / MANUAL_PASTE æ¨¡å¼ï¼
-POST    /api/v1/oauth/openai/callback-paste                     [OpenAI OAuth        ] MANUAL_PASTE æ¨¡å¼ï¼ç¨æ·ç²è´´æµè§å¨åè° URL å®æ OAuth
-POST    /api/v1/oauth/openai/device/cancel                      [OpenAI OAuth        ] Device flow: cancel a pending session
-POST    /api/v1/oauth/openai/device/poll                        [OpenAI OAuth        ] Device flow: poll for completion
-POST    /api/v1/oauth/openai/device/start                       [OpenAI OAuth        ] Device flow: start â request user_code
-POST    /api/v1/oauth/openai/refresh                            [OpenAI OAuth        ] æå¨å·æ° Token
-DELETE  /api/v1/oauth/openai/revoke                             [OpenAI OAuth        ] æ¸é¤ OAuth å­è¯
-GET     /api/v1/oauth/openai/status                             [OpenAI OAuth        ] è·å OAuth è¿æ¥ç¶æ
-GET     /api/v1/plans                                           [ä»»å¡è§å        ] è·å Agent çè®¡ååè¡¨
-GET     /api/v1/plans/{id}                                      [ä»»å¡è§å        ] è·åè®¡åè¯¦æï¼å«æ­¥éª¤ï¼
-GET     /api/v1/plugins                                         [Plugin Management   ] List all plugins
-GET     /api/v1/plugins/{name}                                  [Plugin Management   ] Get plugin detail
-PUT     /api/v1/plugins/{name}/config                           [Plugin Management   ] Update plugin configuration
-POST    /api/v1/plugins/{name}/disable                          [Plugin Management   ] Disable a plugin
-POST    /api/v1/plugins/{name}/enable                           [Plugin Management   ] Enable a plugin
-GET     /api/v1/security/approvals                              [å®å¨ç®¡ç        ] å®¡æ¹è®°å½ï¼ç®¡çè§è§ï¼
-GET     /api/v1/security/audit/logs                             [å®å¨ç®¡ç        ] å®¡è®¡æ¥å¿
-GET     /api/v1/security/audit/stats                            [å®å¨ç®¡ç        ] å®¡è®¡ç»è®¡
-GET     /api/v1/security/guard/config                           [å®å¨ç®¡ç        ] è·å Guard éç½®
-PUT     /api/v1/security/guard/config                           [å®å¨ç®¡ç        ] æ´æ° Guard éç½®
-GET     /api/v1/security/guard/config/file-guard                [å®å¨ç®¡ç        ] è·å File Guard éç½®
-PUT     /api/v1/security/guard/config/file-guard                [å®å¨ç®¡ç        ] æ´æ° File Guard éç½®
-GET     /api/v1/security/guard/rules                            [å®å¨ç®¡ç        ] è§ååè¡¨
-POST    /api/v1/security/guard/rules                            [å®å¨ç®¡ç        ] æ°å¢èªå®ä¹è§å
-DELETE  /api/v1/security/guard/rules/{ruleId}                   [å®å¨ç®¡ç        ] å é¤èªå®ä¹è§å
-PUT     /api/v1/security/guard/rules/{ruleId}                   [å®å¨ç®¡ç        ] æ´æ°è§å
-PUT     /api/v1/security/guard/rules/{ruleId}/toggle            [å®å¨ç®¡ç        ] å¯ç¨/ç¦ç¨è§å
-GET     /api/v1/security/guard/rules/builtin                    [å®å¨ç®¡ç        ] åç½®è§ååè¡¨
-DELETE  /api/v1/security/guard/rules/by-id/{id}                 [å®å¨ç®¡ç        ] æä¸»é® ID å é¤èªå®ä¹è§åï¼ååºï¼rule_id å¼å¸¸æ¶ä½¿ç¨ï¼
-GET     /api/v1/security/guard/rules/export                     [å®å¨ç®¡ç        ] å¯¼åºå¨é¨è§åä¸º JSON
-POST    /api/v1/security/guard/rules/import                     [å®å¨ç®¡ç        ] ä» JSON æ¹éå¯¼å¥è§åï¼upsert è¯­ä¹ï¼
-GET     /api/v1/settings                                        [ç³»ç»è®¾ç½®        ] è·åç³»ç»è®¾ç½®
-PUT     /api/v1/settings                                        [ç³»ç»è®¾ç½®        ] ä¿å­ç³»ç»è®¾ç½®
-GET     /api/v1/settings/language                               [ç³»ç»è®¾ç½®        ] è·åå½åè¯­è¨
-PUT     /api/v1/settings/language                               [ç³»ç»è®¾ç½®        ] æ´æ°å½åè¯­è¨
-PUT     /api/v1/settings/sidecar                                [ç³»ç»è®¾ç½®        ] æ´æ°å¤æ¨¡æ sidecar éç½®
-POST    /api/v1/setup/init                                      [setup-controller    ] 
-GET     /api/v1/setup/onboarding-status                         [setup-controller    ] 
-GET     /api/v1/setup/status                                    [setup-controller    ] 
-GET     /api/v1/skills                                          [æè½ç®¡ç        ] è·åæè½åé¡µåè¡¨ï¼RFC-042 Â§2.1ï¼
-POST    /api/v1/skills                                          [æè½ç®¡ç        ] åå»ºæè½
-DELETE  /api/v1/skills/{id}                                     [æè½ç®¡ç        ] ç¡¬å é¤æè½ (admin only â ç©çå é¤ + å·¥ä½åºæ¸ç©º)
-GET     /api/v1/skills/{id}                                     [æè½ç®¡ç        ] è·åæè½è¯¦æ
-PUT     /api/v1/skills/{id}                                     [æè½ç®¡ç        ] æ´æ°æè½
-POST    /api/v1/skills/{id}/archive                             [æè½ç®¡ç        ] æå¨å½æ¡£æè½
-GET     /api/v1/skills/{id}/employees                           [æè½ç®¡ç        ] List agents that can use this skill (RFC-090 Â§14.2)
-POST    /api/v1/skills/{id}/export-workspace                    [æè½ç®¡ç        ] å° skill å¯¼åºå°å·¥ä½åºç®å½
-GET     /api/v1/skills/{id}/lessons                             [æè½ç®¡ç        ] Read per-skill LESSONS.md (RFC-090 Â§11.4)
-POST    /api/v1/skills/{id}/lessons/clear                       [æè½ç®¡ç        ] Clear all lessons for a skill (RFC-090 Â§11.4)
-POST    /api/v1/skills/{id}/pin                                 [æè½ç®¡ç        ] éä½/åæ¶éä½æè½ï¼éä½çæè½ä¸ä¼è¢«èªå¨å½æ¡£ï¼
-GET     /api/v1/skills/{id}/requirements                        [æè½ç®¡ç        ] Pre-flight requirement statuses for a skill (RFC-090)
-POST    /api/v1/skills/{id}/rescan                              [æè½ç®¡ç        ] éæ°æ«æåä¸ªæè½ï¼RFC-042 Â§2.3.4ï¼
-POST    /api/v1/skills/{id}/restore                             [æè½ç®¡ç        ] æ¢å¤å·²å½æ¡£çæè½
-POST    /api/v1/skills/{id}/sync-files                          [æè½ç®¡ç        ] Re-sync this skill's bundle files from DB â local workspace cache
-PUT     /api/v1/skills/{id}/toggle                              [æè½ç®¡ç        ] å¯ç¨/ç¦ç¨æè½
-GET     /api/v1/skills/{id}/workspace                           [æè½ç®¡ç        ] è·å skill å·¥ä½åºä¿¡æ¯
-GET     /api/v1/skills/{skillId}/secrets                        [Skill Secrets       ] List secret keys + masked previews for a skill
-POST    /api/v1/skills/{skillId}/secrets                        [Skill Secrets       ] Upsert a secret value (empty value deletes it)
-DELETE  /api/v1/skills/{skillId}/secrets/{key}                  [Skill Secrets       ] Delete a single secret by key
-GET     /api/v1/skills/counts                                   [æè½ç®¡ç        ] è·ååç±»åæè½è®¡æ°ï¼tab å¾½ç« ç¨ï¼
-POST    /api/v1/skills/curator/activate                         [æè½ç®¡ç        ] æ¿æ´»/åæ¶æ¿æ´» curatorï¼çæ­£å½æ¡£ vs ä»é¢è§ï¼
-POST    /api/v1/skills/curator/dry-run                          [æè½ç®¡ç        ] ç«å³è¿è¡ä¸æ¬¡ curator é¢è§ï¼dry-runï¼
-POST    /api/v1/skills/curator/pause                            [æè½ç®¡ç        ] æå curator å®æ¶æ«æ
-GET     /api/v1/skills/curator/reports                          [æè½ç®¡ç        ] ååºæè¿ç curator è¿è¡æ¥å
-GET     /api/v1/skills/curator/reports/{runId}                  [æè½ç®¡ç        ] è¯»åææ¬¡ curator è¿è¡æ¥å
-POST    /api/v1/skills/curator/resume                           [æè½ç®¡ç        ] æ¢å¤ curator å®æ¶æ«æ
-GET     /api/v1/skills/curator/status                           [æè½ç®¡ç        ] curator æ§å¶é¢ç¶æ
-GET     /api/v1/skills/enabled                                  [æè½ç®¡ç        ] è·åå·²å¯ç¨æè½åè¡¨
-DELETE  /api/v1/skills/install/{skillName}                      [æè½å®è£        ] å¸è½½ skill
-POST    /api/v1/skills/install/cancel/{taskId}                  [æè½å®è£        ] åæ¶å®è£ä»»å¡
-GET     /api/v1/skills/install/hub/search                       [æè½å®è£        ] æç´¢ ClawHub å¸åº
-POST    /api/v1/skills/install/start                            [æè½å®è£        ] å¼å§å¼æ­¥å®è£ skill
-GET     /api/v1/skills/install/status/{taskId}                  [æè½å®è£        ] æ¥è¯¢å®è£ä»»å¡ç¶æ
-POST    /api/v1/skills/install/upload                           [æè½å®è£        ] ä¸ä¼  ZIP å®è£ skill
-GET     /api/v1/skills/prompt-preview                           [æè½ç®¡ç        ] é¢è§æè½ Prompt å¢å¼ºææï¼è°è¯ç¨ï¼ä¸ Agent çå®è¿è¡æ¶ä¸è´ï¼
-GET     /api/v1/skills/runtime/active                           [æè½ç®¡ç        ] è·å active skills è¿è¡æ¶è§å¾
-POST    /api/v1/skills/runtime/refresh                          [æè½ç®¡ç        ] å·æ° active skills ç¼å­ï¼resync=true æ¶åæ­¥åç½®æè½å° workspace
-GET     /api/v1/skills/runtime/status                           [æè½ç®¡ç        ] è·åæææè½çè¿è¡æ¶è§£æç¶æï¼ç®¡çé¡µé¢ä½¿ç¨ï¼
-GET     /api/v1/skills/summary                                  [æè½ç®¡ç        ] è·åå·²å¯ç¨æè½æè¦ï¼æç±»ååç»ï¼
-POST    /api/v1/skills/sync-files                               [æè½ç®¡ç        ] Re-sync every skill's bundle files (admin)
-POST    /api/v1/skills/synthesize-from-conversation             [æè½ç®¡ç        ] ä»å¯¹è¯åå²åæ Skillï¼RFC-023ï¼
-GET     /api/v1/skills/type/{skillType}                         [æè½ç®¡ç        ] æç±»åè·åæè½åè¡¨
-GET     /api/v1/skill-templates                                 [Skill Template Wizard] List skill templates (RFC-091)
-GET     /api/v1/skill-templates/{id}                            [Skill Template Wizard] Get a single skill template
-POST    /api/v1/skill-templates/{id}/instantiate                [Skill Template Wizard] Instantiate a template into a skill
-POST    /api/v1/stt/transcribe                                  [stt-controller      ] 
-POST    /api/v1/subagents/{subagentId}/interrupt                [Sub-agents          ] Interrupt a running sub-agent
-GET     /api/v1/subagents/active                                [Sub-agents          ] List active sub-agents under a parent conversation
-POST    /api/v1/subagents/spawn-pause                           [Sub-agents          ] Set sub-agent spawn-pause for a conversation
-GET     /api/v1/system/browser-health                           [System Health       ] Browser launch diagnostics
-GET     /api/v1/system/health                                   [System Health       ] System health check
-GET     /api/v1/templates                                       [Agent Templates     ] è·åæ¨¡æ¿åè¡¨
-POST    /api/v1/templates/{id}/apply                            [Agent Templates     ] åºç¨æ¨¡æ¿åå»ºAgent
-GET     /api/v1/token-usage                                     [Token Usage ç»è®¡  ] è·å Token ä½¿ç¨ç»è®¡
-GET     /api/v1/tools                                           [å·¥å·ç®¡ç        ] è·åå·¥å·åè¡¨
-POST    /api/v1/tools                                           [å·¥å·ç®¡ç        ] åå»ºå·¥å·ï¼MCPï¼
-DELETE  /api/v1/tools/{id}                                      [å·¥å·ç®¡ç        ] å é¤å·¥å·
-GET     /api/v1/tools/{id}                                      [å·¥å·ç®¡ç        ] è·åå·¥å·è¯¦æ
-PUT     /api/v1/tools/{id}                                      [å·¥å·ç®¡ç        ] æ´æ°å·¥å·
-PUT     /api/v1/tools/{id}/toggle                               [å·¥å·ç®¡ç        ] å¯ç¨/ç¦ç¨å·¥å·
-GET     /api/v1/tools/available                                 [å·¥å·ç®¡ç        ] è·ååå·¥å¯ç»å®çå¨é¨åå­å·¥å·ï¼å« MCPï¼
-GET     /api/v1/tools/enabled                                   [å·¥å·ç®¡ç        ] è·åå·²å¯ç¨å·¥å·åè¡¨
-GET     /api/v1/triggers                                        [è§¦åå¨ç®¡ç     ] List triggers in the caller's workspace.
-POST    /api/v1/triggers                                        [è§¦åå¨ç®¡ç     ] Create a trigger; if enabled, registers it with the scheduler.
-DELETE  /api/v1/triggers/{id}                                   [è§¦åå¨ç®¡ç     ] Delete a trigger and unregister its schedule.
-GET     /api/v1/triggers/{id}                                   [è§¦åå¨ç®¡ç     ] Get a trigger by id, scoped to the caller's workspace.
-PUT     /api/v1/triggers/{id}                                   [è§¦åå¨ç®¡ç     ] Update a trigger; pattern_version bumps when the cron expression changes.
-POST    /api/v1/triggers/events                                 [è§¦åå¨ç®¡ç     ] Ingest one event envelope; returns per-trigger fire / drop summary.
-POST    /api/v1/tts/synthesize                                  [tts-controller      ] 
-GET     /api/v1/tts/voices                                      [tts-controller      ] 
-POST    /api/v1/wiki/admin/backfill-tokens                      [Wiki Admin          ] Force-run the token-count backfill batch now
-POST    /api/v1/wiki/admin/kb/{kbId}/rebuild-overview           [Wiki Admin          ] Ensure overview/log scaffold + rebuild overview stats now
-GET     /api/v1/wiki/chunks/{chunkId}/pages                     [wiki-relation-controller] 
-DELETE  /api/v1/wiki/hot-cache/{kbId}                           [Wiki Hot Cache      ] Soft-delete the hot cache row
-GET     /api/v1/wiki/hot-cache/{kbId}                           [Wiki Hot Cache      ] Get the current hot cache snapshot for a KB
-POST    /api/v1/wiki/hot-cache/{kbId}/regenerate                [Wiki Hot Cache      ] Schedule a manual rebuild of the hot cache
-GET     /api/v1/wiki/kb/{kbId}/jobs                             [wiki-relation-controller] 
-GET     /api/v1/wiki/kb/{kbId}/pages/{pageId}/citations         [wiki-relation-controller] 
-POST    /api/v1/wiki/kb/{kbId}/pages/{slug}/enrich              [wiki-relation-controller] 
-GET     /api/v1/wiki/kb/{kbId}/pages/{slug}/related             [wiki-relation-controller] 
-POST    /api/v1/wiki/kb/{kbId}/pages/{slug}/repair              [wiki-relation-controller] 
-GET     /api/v1/wiki/kb/{kbId}/pages/{slugA}/relation/{slugB}   [wiki-relation-controller] 
-POST    /api/v1/wiki/kb/{kbId}/search-preview                   [wiki-relation-controller] 
-GET     /api/v1/wiki/kb/{kbId}/stats                            [wiki-relation-controller] 
-GET     /api/v1/wiki/knowledge-bases                            [Wiki ç¥è¯åº      ] è·åææç¥è¯åº
-POST    /api/v1/wiki/knowledge-bases                            [Wiki ç¥è¯åº      ] åå»ºç¥è¯åº
-DELETE  /api/v1/wiki/knowledge-bases/{id}                       [Wiki ç¥è¯åº      ] å é¤ç¥è¯åº
-GET     /api/v1/wiki/knowledge-bases/{id}                       [Wiki ç¥è¯åº      ] è·åç¥è¯åºè¯¦æ
-PUT     /api/v1/wiki/knowledge-bases/{id}                       [Wiki ç¥è¯åº      ] æ´æ°ç¥è¯åº
-GET     /api/v1/wiki/knowledge-bases/{id}/config                [Wiki ç¥è¯åº      ] è·åç¥è¯åºéç½®
-PUT     /api/v1/wiki/knowledge-bases/{id}/config                [Wiki ç¥è¯åº      ] æ´æ°ç¥è¯åºéç½®
-POST    /api/v1/wiki/knowledge-bases/{id}/scan                  [Wiki ç¥è¯åº      ] æ«æå³èç®å½å¯¼å¥æä»¶
-PUT     /api/v1/wiki/knowledge-bases/{id}/source-directory      [Wiki ç¥è¯åº      ] è®¾ç½®ç¥è¯åºå³èç®å½
-GET     /api/v1/wiki/knowledge-bases/{kbId}/pages               [Wiki ç¥è¯åº      ] è·å Wiki é¡µé¢åè¡¨ï¼å¯æåå§ææè¿æ»¤ï¼
-DELETE  /api/v1/wiki/knowledge-bases/{kbId}/pages/{slug}        [Wiki ç¥è¯åº      ] å é¤ Wiki é¡µé¢
-GET     /api/v1/wiki/knowledge-bases/{kbId}/pages/{slug}        [Wiki ç¥è¯åº      ] è·å Wiki é¡µé¢åå®¹
-PUT     /api/v1/wiki/knowledge-bases/{kbId}/pages/{slug}        [Wiki ç¥è¯åº      ] æå¨ç¼è¾ Wiki é¡µé¢
-POST    /api/v1/wiki/knowledge-bases/{kbId}/pages/{slug}/archive [Wiki ç¥è¯åº      ] å½æ¡£åä¸ªé¡µé¢ï¼è½¯å½æ¡£ï¼å¯æ¢å¤ï¼
-GET     /api/v1/wiki/knowledge-bases/{kbId}/pages/{slug}/backlinks [Wiki ç¥è¯åº      ] è·åååé¾æ¥
-POST    /api/v1/wiki/knowledge-bases/{kbId}/pages/{slug}/unarchive [Wiki ç¥è¯åº      ] åæ¶å½æ¡£
-GET     /api/v1/wiki/knowledge-bases/{kbId}/pages/archived      [Wiki ç¥è¯åº      ] ååºç¥è¯åºä¸­ææ archived=1 çé¡µé¢ï¼ä¸å« contentï¼
-DELETE  /api/v1/wiki/knowledge-bases/{kbId}/pages/batch         [Wiki ç¥è¯åº      ] æ¹éå é¤ Wiki é¡µé¢
-POST    /api/v1/wiki/knowledge-bases/{kbId}/process             [Wiki ç¥è¯åº      ] è§¦åç¥è¯åºå¤çï¼å¼æ­¥ï¼ï¼force=true æ¶æ¸ç©ºææ last_processed_hash å¹¶éæ°å¥éå¨é¨ææ
-GET     /api/v1/wiki/knowledge-bases/{kbId}/processing-status   [Wiki ç¥è¯åº      ] è·åå¤çç¶æ
-GET     /api/v1/wiki/knowledge-bases/{kbId}/progress            [Wiki ç¥è¯åº      ] è®¢éå¤çè¿åº¦ SSE
-GET     /api/v1/wiki/knowledge-bases/{kbId}/raw                 [Wiki ç¥è¯åº      ] è·ååå§ææåè¡¨ï¼å«æ¯æ¡ææçæçé¡µé¢æ°ï¼
-DELETE  /api/v1/wiki/knowledge-bases/{kbId}/raw/{rawId}         [Wiki ç¥è¯åº      ] å é¤åå§ææ
-POST    /api/v1/wiki/knowledge-bases/{kbId}/raw/{rawId}/cancel  [Wiki ç¥è¯åº      ] è¯·æ±åæ¶æ­£å¨è¿è¡çå¤çï¼ä»å¨ processing ç¶æææï¼
-GET     /api/v1/wiki/knowledge-bases/{kbId}/raw/{rawId}/download [Wiki ç¥è¯åº      ] ä¸è½½åå§ææ
-POST    /api/v1/wiki/knowledge-bases/{kbId}/raw/{rawId}/reprocess [Wiki ç¥è¯åº      ] éæ°å¤çåå§ææï¼force=true æ¶ç»è¿ content_hash ç­è·¯ï¼
-POST    /api/v1/wiki/knowledge-bases/{kbId}/raw/text            [Wiki ç¥è¯åº      ] æ·»å ææ¬ææ
-POST    /api/v1/wiki/knowledge-bases/{kbId}/raw/upload          [Wiki ç¥è¯åº      ] ä¸ä¼ æä»¶ææ
-GET     /api/v1/wiki/knowledge-bases/agent/{agentId}            [Wiki ç¥è¯åº      ] æ Agent è·åç¥è¯åº
-GET     /api/v1/wiki/raw/{rawId}/pages                          [wiki-relation-controller] 
-POST    /api/v1/wiki/research/start                             [Wiki Deep Research  ] å¯å¨ Deep Researchï¼è¿å SSE sessionId
-GET     /api/v1/wiki/research/stream/{sessionId}                [Wiki Deep Research  ] è®¢é Deep Research SSE äºä»¶æµ
-GET     /api/v1/wiki/transformations                            [Wiki Transformations] List transformations available to a KB
-POST    /api/v1/wiki/transformations                            [Wiki Transformations] 
-DELETE  /api/v1/wiki/transformations/{id}                       [Wiki Transformations] 
-GET     /api/v1/wiki/transformations/{id}                       [Wiki Transformations] 
-PUT     /api/v1/wiki/transformations/{id}                       [Wiki Transformations] 
-POST    /api/v1/wiki/transformations/{id}/aggregate             [Wiki Transformations] Aggregate all completed runs of a template into one KB-level synthesis page
-POST    /api/v1/wiki/transformations/{id}/apply                 [Wiki Transformations] Run a transformation against a raw material or wiki page
-GET     /api/v1/wiki/transformations/runs                       [Wiki Transformations] 
-DELETE  /api/v1/wiki/transformations/runs/{runId}               [Wiki Transformations] 
-GET     /api/v1/wiki/transformations/runs/{runId}               [Wiki Transformations] 
-POST    /api/v1/wiki/transformations/runs/{runId}/cancel        [Wiki Transformations] Cancel a still-running transformation run
-POST    /api/v1/wiki/transformations/runs/{runId}/save-as-page  [Wiki Transformations] Save a completed run's output as a synthesis wiki page
-GET     /api/v1/workflows                                       [å·¥ä½æµç®¡ç     ] List workflows in the workspace
-POST    /api/v1/workflows                                       [å·¥ä½æµç®¡ç     ] Create a workflow row (draft starts empty).
-DELETE  /api/v1/workflows/{id}                                  [å·¥ä½æµç®¡ç     ] Soft-delete a workflow row.
-GET     /api/v1/workflows/{id}                                  [å·¥ä½æµç®¡ç     ] Get a workflow by id (includes inline draft + latest published graph).
-PUT     /api/v1/workflows/{id}                                  [å·¥ä½æµç®¡ç     ] Update workflow metadata (name / description / enabled).
-POST    /api/v1/workflows/{id}/compile                          [å·¥ä½æµç®¡ç     ] Compile the draft and surface diagnostics without persisting a revision.
-PUT     /api/v1/workflows/{id}/draft                            [å·¥ä½æµç®¡ç     ] Save the inline draft graph_json without compiling.
-POST    /api/v1/workflows/{id}/publish                          [å·¥ä½æµç®¡ç     ] Compile the draft and persist a new revision pointed at by latest_revision_id.
-GET     /api/v1/workflows/{id}/runs                             [å·¥ä½æµç®¡ç     ] List the most recent runs for a workflow.
-POST    /api/v1/workflows/draft/generate                        [å·¥ä½æµç®¡ç     ] Generate a workflow draft from a natural-language description.
-POST    /api/v1/workflows/draft/preview-compile                 [å·¥ä½æµç®¡ç     ] Compile arbitrary draft JSON without persisting â used by the template picker / generator preview to surface real ACL + schema diagnostics before a workflow row exists.
-GET     /api/v1/workflows/draft/templates                       [å·¥ä½æµç®¡ç     ] List the canonical workflow templates the generator can apply directly.
-GET     /api/v1/workflows/runs/{runId}                          [å·¥ä½æµç®¡ç     ] Inspect a single run with its step rows for replay / debugging.
-POST    /api/v1/workflows/runs/{runId}/resume                   [å·¥ä½æµæ¢å¤     ] Resume a paused workflow run with the given outcome.
-GET     /api/v1/workflows/runs/paused                           [å·¥ä½æµç®¡ç     ] List paused runs across the workspace so operators can resume them.
-GET     /api/v1/workspaces                                      [å·¥ä½åºç®¡ç     ] è·åå½åç¨æ·çå·¥ä½åºåè¡¨ï¼å« memberRole ä¸ effectiveRoleï¼
-POST    /api/v1/workspaces                                      [å·¥ä½åºç®¡ç     ] åå»ºå·¥ä½åº
-DELETE  /api/v1/workspaces/{id}                                 [å·¥ä½åºç®¡ç     ] å é¤å·¥ä½åº
-GET     /api/v1/workspaces/{id}                                 [å·¥ä½åºç®¡ç     ] è·åå·¥ä½åºè¯¦æ
-PUT     /api/v1/workspaces/{id}                                 [å·¥ä½åºç®¡ç     ] æ´æ°å·¥ä½åº
-GET     /api/v1/workspaces/{id}/access                          [å·¥ä½åºç®¡ç     ] è·åå½åç¨æ·å¨æå®å·¥ä½åºçè®¿é®è½åï¼è·¯ç±å®å«æ¶è´¹ï¼
-GET     /api/v1/workspaces/{id}/members                         [å·¥ä½åºç®¡ç     ] è·åå·¥ä½åºæååè¡¨
-POST    /api/v1/workspaces/{id}/members                         [å·¥ä½åºç®¡ç     ] æ·»å å·¥ä½åºæå
-DELETE  /api/v1/workspaces/{id}/members/{memberId}              [å·¥ä½åºç®¡ç     ] ç§»é¤å·¥ä½åºæå
-PUT     /api/v1/workspaces/{id}/members/{memberId}              [å·¥ä½åºç®¡ç     ] æ´æ°æåè§è²
