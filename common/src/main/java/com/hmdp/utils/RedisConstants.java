@@ -39,6 +39,8 @@ public class RedisConstants {
     public static final String SECKILL_DEDUCT_KEY = "seckill:deduct:";
     public static final String BLOG_LIKED_KEY = "blog:liked:";
     public static final String FEED_KEY = "feed:";
+    /** 关注流收件箱 ZSet 的 TTL（天）。SPEC-09 §1.5：避免僵尸用户的收件箱永久驻留 */
+    public static final Long FEED_KEY_TTL_DAYS = 30L;
     public static final String SHOP_GEO_KEY = "shop:geo:";
     public static final String USER_SIGN_KEY = "sign:";
 

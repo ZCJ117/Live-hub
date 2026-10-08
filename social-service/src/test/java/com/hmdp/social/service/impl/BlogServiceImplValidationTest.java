@@ -3,6 +3,7 @@ package com.hmdp.social.service.impl;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.social.feed.FeedFanOutService;
 import com.hmdp.social.feign.ShopFeignClient;
 import com.hmdp.utils.UserHolder;
 import org.junit.jupiter.api.AfterEach;
@@ -29,6 +30,8 @@ class BlogServiceImplValidationTest {
         service = Mockito.spy(new BlogServiceImpl());
         shopFeignClient = mock(ShopFeignClient.class);
         ReflectionTestUtils.setField(service, "shopFeignClient", shopFeignClient);
+        // 发布成功后 saveBlog 会委派写扩散（SPEC-09 §5.4），此处仅需一个不抛异常的桩
+        ReflectionTestUtils.setField(service, "feedFanOutService", mock(FeedFanOutService.class));
 
         UserDTO user = new UserDTO();
         user.setId(7L);

@@ -9,6 +9,7 @@ import com.hmdp.dto.Result;
 import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.social.feed.FeedFanOutService;
 import com.hmdp.social.feign.ShopFeignClient;
 import com.hmdp.social.feign.UserFeignClient;
 import com.hmdp.social.mapper.BlogMapper;
@@ -54,6 +55,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     @Resource
     private ShopFeignClient shopFeignClient;
+
+    @Resource
+    private FeedFanOutService feedFanOutService;
 
     @Override
     public Result queryHotBlog(Integer current) {
@@ -186,7 +190,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         if (!isSuccess) {
             return Result.fail("新增笔记失败");
         }
-        //5.返回id
+        //5.异步推送笔记id给所有粉丝（SPEC-09 §5.4：不阻塞主请求，失败可观测）
+        feedFanOutService.submit(blog.getId(), user.getId());
+        //6.返回id
         return Result.ok(blog.getId());
     }
 
