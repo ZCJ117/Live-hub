@@ -70,9 +70,10 @@ spring:
   # Redis 配置（Sa-Token 会话持久化）
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      database: 0 # 必须与业务服务同库，否则 Sa-Token 会话无法跨服务识别（SPEC-10 §5.6）
       lettuce:
         pool:
           max-active: 10

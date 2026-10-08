@@ -11,14 +11,15 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     # 独立 schema agent_service，复用既有 MySQL 实例（PRD 4.4）
-    url: jdbc:mysql://127.0.0.1:3306/agent_service?useSSL=false&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/agent_service?useSSL=false&serverTimezone=Asia/Shanghai
     username: root
     password: ${MYSQL_PASSWORD:}
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      database: 0 # Redis 库索引（SPEC-10 §5.6）
       lettuce:
         pool:
           max-active: 10
@@ -104,7 +105,7 @@ sa-token:
 
 # RocketMQ（T4.7 工单路由通知，与 order/rag 同一实例）
 rocketmq:
-  name-server: 127.0.0.1:9876
+  name-server: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
   producer:
     group: agent-ticket-producer-group
     send-message-timeout: 3000

@@ -11,16 +11,17 @@ spring:
       - optional:file:../.env[.properties]
   datasource:
     driver-class-name: org.postgresql.Driver     # PostgreSQL 驱动
-    url: jdbc:postgresql://localhost:5433/rag_db    # PostgreSQL 驱动
+    url: jdbc:postgresql://${RAG_DB_HOST:localhost}:${RAG_DB_PORT:5433}/rag_db    # PostgreSQL 驱动
     username: ${RAG_DB_USER:rag_user}
     password: ${RAG_DB_PASSWORD}
   jackson:
     default-property-inclusion: non_null
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      database: 0 # Redis 库索引：全服务统一 DB 0，仅靠 key 前缀隔离（SPEC-10 §5.6）
 
 mybatis-plus:
   type-aliases-package: com.hmdp.rag.entity
@@ -49,7 +50,7 @@ rag:
     max-size: 20MB
 
 rocketmq:
-  name-server: 127.0.0.1:9876
+  name-server: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
   consumer:
     group: rag-doc-process-group
     topic: rag-document-process

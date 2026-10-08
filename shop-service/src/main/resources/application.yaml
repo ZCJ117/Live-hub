@@ -13,15 +13,16 @@ spring:
   # 数据库配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver # 数据库驱动类名，MySQL 8.x 使用 com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC # 数据库连接URL，格式：jdbc:mysql://ip:port/数据库名?参数
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/hmdp?useSSL=false&serverTimezone=Asia/Shanghai # 数据库连接URL，格式：jdbc:mysql://ip:port/数据库名?参数
     username: root # 数据库用户名
     password: ${MYSQL_PASSWORD:} # 数据库密码
   # Redis 配置（统一使用 spring.redis 路径）
   data:
     redis:
-     host: localhost  # Redis 主机地址，统一为本地地址
-     port: 6379 # Redis 端口，默认 6379
+     host: ${REDIS_HOST:localhost}  # Redis 主机地址，可用 REDIS_HOST 覆盖
+     port: ${REDIS_PORT:6379} # Redis 端口，默认 6379
      password: ${REDIS_PASSWORD:} # Redis 密码
+     database: 0 # Redis 库索引：全服务统一 DB 0，仅靠 key 前缀隔离（SPEC-10 §5.6）
     # Redis 连接池配置（使用 Lettuce 客户端）
      lettuce:
       pool:

@@ -503,6 +503,34 @@ spring:
 
 本地开发把上述变量写进仓库根目录的 `.env`（模板见 `.env.example`），`.env` 已被 `.gitignore` 忽略、不会入库。各服务通过 `application.yaml` 的 `spring.config.import: optional:file:.env[.properties],optional:file:../.env[.properties]` 载入它，两个相对路径分别覆盖"从仓库根 `java -jar`"与"从模块目录 `mvn -pl x test`"两种工作目录。环境变量优先级高于 `.env`：`export MYSQL_PASSWORD=...` 会覆盖 `.env` 中的同名值（Spring Boot 的属性源顺序中 Config data 位于 OS environment variables 之前，后者胜出），因此也可以在启动前用 `set -a; source .env; set +a` 导出。仓库内不含任何明文口令。
 
+### 中间件地址环境变量（SPEC-10 §5.7）
+
+所有中间件地址均可通过环境变量覆盖，括号内为本地开发默认值，不设环境变量时行为与改造前一致：
+
+| 环境变量 | 默认值 | 用途 |
+|---|---|---|
+| `MYSQL_HOST` / `MYSQL_PORT` | `127.0.0.1` / `3306` | MySQL（agent-service 用独立 schema `agent_service`） |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | Redis（Redisson 与 Sa-Token 同源） |
+| `NACOS_ADDR` | `localhost:8848` | Nacos 注册与配置中心 |
+| `ROCKETMQ_NAMESRV` | `127.0.0.1:9876` | RocketMQ NameServer |
+| `RAG_DB_HOST` / `RAG_DB_PORT` | `localhost` / `5433` | PostgreSQL + pgvector |
+
+### Redis key 前缀约定（SPEC-10 §5.6）
+
+全服务共用 **DB 0**，靠 key 前缀隔离（网关与业务服务必须同库，否则 Sa-Token 会话无法跨服务识别）：
+
+| 前缀 | 归属 | 说明 |
+|---|---|---|
+| `login:code:` / `login:code:limit:` / `login:code:count:` | user-service | 登录验证码与频控 |
+| `cache:shop:` / `shop:list:` / `shop:geo:` | shop-service | 商户缓存、分类、GEO 索引 |
+| `seckill:stock:` / `seckill:order:` / `seckill:order:detail:` / `seckill:deduct:` | voucher/order-service | 秒杀库存、已购用户、订单明细、扣减幂等 |
+| `icr:` | order-service | 全局自增 ID |
+| `blog:liked:` / `feed:` / `follows:` | social-service | 点赞 ZSet、关注流收件箱、关注关系 Set |
+| `sign:` | user-service | 签到 |
+| `agent:` | agent-service | 会话、记忆、流程状态、分布式锁 |
+
+> `FLUSHDB` 会同时清空全部服务的缓存与会话，运维操作前请确认影响面。
+
 ### 6.3 快速启动
 
 #### 6.3.1 数据库初始化
