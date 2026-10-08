@@ -237,7 +237,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     /**
      * 退款受理（FR-08 第二道闸门，T4.3/T4.4）
      * 双闸门语义：agent confirm 接口为第一道（actionId/归属/时效），本接口独立复核为最终裁决——
-     * 原子 UPDATE ... WHERE status=2（已支付未核销）防并发漏单；影响 0 行返回具体原因
+     * 原子 UPDATE ... WHERE status=2（已支付未核销）防并发漏单；影响 0 行返回具体原因。
+     *
+     * <p><b>状态口径（SPEC-09 §5.3 方案 B）</b>：退款是**受理登记**，线上状态推进到
+     * {@code 5-退款受理} 即为**终态**；资金退还原路为线下流转，不含线上资金/库存回滚。
+     * 故此处不再有 5 → 6 的推进逻辑，状态定义中也不再有 6（原定义的 6 从未被任何代码写入）。
      */
     @Override
     public Result refund(Long userId, Long orderId, String reason) {

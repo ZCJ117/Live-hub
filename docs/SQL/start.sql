@@ -122,7 +122,7 @@ CREATE TABLE `tb_voucher_order` (
                                     `user_id` bigint NOT NULL COMMENT '下单用户id',
                                     `voucher_id` bigint NOT NULL COMMENT '代金券id',
                                     `pay_type` tinyint DEFAULT NULL COMMENT '支付方式：1-余额，2-支付宝，3-微信',
-                                    `status` tinyint DEFAULT '1' COMMENT '订单状态：1-未支付，2-已支付，3-已撤销，4-已取消，5-退款中，6-已退款',
+                                    `status` tinyint DEFAULT '1' COMMENT '订单状态：1-未支付，2-已支付，3-已撤销，4-已取消，5-退款受理（终态，资金线下流转）',
                                     `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '下单时间',
                                     `pay_time` timestamp DEFAULT NULL COMMENT '支付时间',
                                     `use_time` timestamp DEFAULT NULL COMMENT '核销时间',

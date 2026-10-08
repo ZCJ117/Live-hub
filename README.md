@@ -421,6 +421,9 @@ spring:
 | POST | /voucher-order/seckill/{id} | 秒杀下单 | id |
 | GET  | /voucher-order/my | 我的订单查询（userId从登录态注入） | orderId, status, days, page, size（均可选） |
 | POST | /voucher-order/refund | 退款受理（userId从登录态注入） | RefundRequest（orderId, reason） |
+
+> **退款语义**：退款为**受理登记**。受理成功后订单状态推进到 `5-退款受理`，该状态即**终态**；
+> 资金退还原路为线下流转（agent 侧回执「预计 1-3 个工作日原路退回」），**不含线上资金/库存回滚**。
 | GET  | /seckill/consistency/order/{orderId} | 对账：查订单一致性 | orderId |
 | POST | /seckill/consistency/stock/sync/{voucherId} | 对账：同步Redis与DB库存 | voucherId |
 | GET  | /seckill/consistency/pending | 对账：待处理订单列表 | - |
@@ -430,7 +433,6 @@ spring:
 | 方法 | 路径 | 描述 | 参数 |
 |------|------|------|------|
 | PUT  | /blog/like/{id} | 点赞博客 | id |
-| PUT  | /blog/dislike/{id} | 取消点赞 | id |
 | GET  | /blog/{id} | 查询博客详情 | id |
 | GET  | /blog/likes/{id} | 最早点赞用户列表（Top5） | id |
 | GET  | /blog/of/user | 查询用户博客 | id（作者）, current |
