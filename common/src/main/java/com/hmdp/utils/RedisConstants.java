@@ -1,5 +1,7 @@
 package com.hmdp.utils;
 
+import java.util.concurrent.ThreadLocalRandom;
+
 public class RedisConstants {
     public static final String LOGIN_CODE_KEY = "login:code:";
     public static final Long LOGIN_CODE_TTL = 2L;
@@ -17,6 +19,16 @@ public class RedisConstants {
     public static final Long CACHE_TTL_BASE_SECONDS = 1800L;
     /** 缓存 TTL 抖动上限，单位：秒；实际 TTL = 基础值 + [0, 抖动) */
     public static final Integer CACHE_TTL_JITTER_SECONDS = 300;
+
+    /**
+     * 计算带抖动的缓存 TTL（秒）：基础值 + [0, 抖动上限)。
+     *
+     * <p>SPEC-05 G7：同一时刻写入的缓存若 TTL 完全相同，会集体失效并同时回源 DB。
+     * 抖动规则集中在此，避免各调用点各写一份而漏改。
+     */
+    public static long cacheTtlSeconds() {
+        return CACHE_TTL_BASE_SECONDS + ThreadLocalRandom.current().nextInt(CACHE_TTL_JITTER_SECONDS);
+    }
 
     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
     /** 已购用户 Set —— 与 seckill.lua 的 orderKey 同拼法 */

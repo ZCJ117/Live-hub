@@ -7,7 +7,6 @@ import com.hmdp.shop.mapper.ShopMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
@@ -58,8 +57,8 @@ public class ShopCacheService {
             return null;
         }
 
-        // 4. 回填，TTL 带抖动
-        long ttl = CACHE_TTL_BASE_SECONDS + ThreadLocalRandom.current().nextInt(CACHE_TTL_JITTER_SECONDS);
+        // 4. 回填，TTL 带抖动（SPEC-05 G7）
+        long ttl = cacheTtlSeconds();
         stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(shop), ttl, TimeUnit.SECONDS);
         return shop;
     }

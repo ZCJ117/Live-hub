@@ -101,21 +101,25 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     public Result queryShopByType(Integer typeId, Integer current, Double x, Double y) {
         logger.info("查询类型为 {} 的店铺，页码: {}, 坐标: ({}, {})", typeId, current, x, y);
 
+        // 服务层兜底（SPEC-05 §5.5）：HTTP 入口已加 @Min(1)，但本方法是对外接口，
+        // 内部调用可绕过 MVC 参数校验；页码 <=0 会让 from 变负，skip(负数) 抛 IllegalArgumentException
+        int pageNum = (current == null || current < 1) ? 1 : current;
+
         // 1.判断是否需要根据坐标查询
         if (x == null || y == null) {
             // 不需要坐标查询，按数据库查询
             logger.info("执行无坐标查询");
             Page<Shop> page = query()
                     .eq("type_id", typeId)
-                    .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
+                    .page(new Page<>(pageNum, SystemConstants.DEFAULT_PAGE_SIZE));
             // 返回数据
             logger.info("查询到 {} 条记录", page.getRecords().size());
             return Result.ok(page.getRecords());
         }
 
         // 2.计算分页参数
-        int from = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
-        int end = current * SystemConstants.DEFAULT_PAGE_SIZE;
+        int from = (pageNum - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
+        int end = pageNum * SystemConstants.DEFAULT_PAGE_SIZE;
 
         logger.info("执行地理位置查询，从第 {} 条到第 {} 条，半径 {} 公里", from, end, searchRadiusKm);
 

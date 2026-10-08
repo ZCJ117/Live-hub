@@ -7,7 +7,6 @@ import com.hmdp.dto.Result;
 import com.hmdp.entity.ShopType;
 import com.hmdp.shop.mapper.ShopTypeMapper;
 import com.hmdp.shop.service.IShopTypeService;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +14,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
@@ -68,7 +66,7 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
         log.info("Redis中未找到商铺分类缓存，开始查询数据库");
 
         //redis中没有，查询数据库
-        List<ShopType> typeList = list(Wrappers.<ShopType>query().orderByAsc("sort"));
+        List<ShopType> typeList = query().orderByAsc("sort").list();
 
         //数据库中没有，写入短 TTL 空值标记并报错
         if (CollectionUtil.isEmpty(typeList)) {
@@ -92,7 +90,7 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
 
         //数据库中有，存到redis（TTL 带抖动，SPEC-05 G7）
         String jsonStr = JSONUtil.toJsonStr(typeList);
-        long ttl = CACHE_TTL_BASE_SECONDS + ThreadLocalRandom.current().nextInt(CACHE_TTL_JITTER_SECONDS);
+        long ttl = cacheTtlSeconds();
         try {
             redisTemplate.opsForValue().set(SHOP_LIST_KEY, jsonStr, ttl, TimeUnit.SECONDS);
             log.info("成功将商铺分类数据存入Redis缓存，数据长度：{}", jsonStr.length());
