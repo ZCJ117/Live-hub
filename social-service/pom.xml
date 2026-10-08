@@ -113,6 +113,13 @@
             <artifactId>spring-cloud-starter-bootstrap</artifactId>
             <version>4.1.2</version>
         </dependency>
+
+        <!-- 测试（SPEC-09 §8.8 的前置：social-service 原无 test 依赖） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
