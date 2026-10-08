@@ -10,10 +10,16 @@ public class RedisConstants {
     public static final String LOGIN_USER_KEY = "login:token:";
     public static final Long LOGIN_USER_TTL = 36000L;
 
-    public static final Long CACHE_NULL_TTL = 2L;
+    /** 空值标记 TTL，单位：秒（SPEC-05 §5.1：把负缓存窗口从 30 分钟压到 60 秒） */
+    public static final Long CACHE_NULL_TTL = 60L;
 
     public static final Long CACHE_SHOP_TTL = 30L;
     public static final String CACHE_SHOP_KEY = "cache:shop:";
+
+    /** 缓存基础 TTL，单位：秒（商铺与商铺分类共用，SPEC-05 G7） */
+    public static final Long CACHE_TTL_BASE_SECONDS = 1800L;
+    /** 缓存 TTL 抖动上限，单位：秒；实际 TTL = 基础值 + [0, 抖动) */
+    public static final Integer CACHE_TTL_JITTER_SECONDS = 300;
 
     public static final String LOCK_SHOP_KEY = "lock:shop:";
     public static final Long LOCK_SHOP_TTL = 10L;
