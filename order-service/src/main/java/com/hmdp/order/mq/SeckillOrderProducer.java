@@ -1,9 +1,6 @@
 package com.hmdp.order.mq;
 
 import com.hmdp.dto.SeckillOrderMessage;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.messaging.support.MessageBuilder;
@@ -18,12 +15,12 @@ import jakarta.annotation.Resource;
  * 核心作用：
  * 1. 流量削峰：将瞬时高并发请求转化为异步消息处理
  * 2. 解耦：分离秒杀资格校验和订单创建两个关键步骤
- * 3. 可靠性：提供同步发送和异步发送两种模式，支持重试机制
- * 
+ * 3. 可靠性：提供同步发送与异步发送两种模式；**发送失败不重试、无补偿**，
+ *    由调用方决定回滚（见 sendSeckillOrderMessage 的返回值语义）
+ *
  * 消息主题：
  * - seckill-order-topic: 正常秒杀订单处理
- * - seckill-order-dlq-topic: 死信队列，处理失败消息
- * - stock-sync-topic: 库存同步主题（用于一致性保证）
+ * - seckill-order-dlq-topic: 死信队列（消费端见 SeckillOrderDLQConsumer）
  */
 @Component
 @Slf4j
@@ -32,8 +29,6 @@ public class SeckillOrderProducer {
     public static final String TOPIC_SECKILL_ORDER = "seckill-order-topic";
 
     public static final String TOPIC_SECKILL_ORDER_DLQ = "seckill-order-dlq-topic";
-
-    public static final String TOPIC_STOCK_SYNC = "stock-sync-topic";
 
     @Resource
     private RocketMQTemplate rocketMQTemplate;
@@ -100,53 +95,5 @@ public class SeckillOrderProducer {
             log.error("秒杀订单消息异步发送异常: orderId={}, error={}", message.getOrderId(), e.getMessage(), e);
             return false;
         }
-    }
-
-    public void sendToDeadLetterQueue(SeckillOrderMessage message, String reason) {
-        try {
-            message.setRetryCount(message.getRetryCount() + 1);
-            rocketMQTemplate.syncSend(
-                    TOPIC_SECKILL_ORDER_DLQ,
-                    MessageBuilder.withPayload(message)
-                            .setHeader("reason", reason)
-                            .setHeader("retryCount", message.getRetryCount())
-                            .build()
-            );
-            log.warn("订单消息发送到死信队列: orderId={}, reason={}, retryCount={}",
-                    message.getOrderId(), reason, message.getRetryCount());
-        } catch (Exception e) {
-            log.error("发送到死信队列失败: orderId={}, error={}", message.getOrderId(), e.getMessage(), e);
-        }
-    }
-
-    public void sendStockSyncMessage(Long voucherId, Integer stock) {
-        try {
-            rocketMQTemplate.asyncSend(
-                    TOPIC_STOCK_SYNC,
-                    MessageBuilder.withPayload(new StockSyncMessage(voucherId, stock)).build(),
-                    new org.apache.rocketmq.client.producer.SendCallback() {
-                        @Override
-                        public void onSuccess(org.apache.rocketmq.client.producer.SendResult sendResult) {
-                            log.info("库存同步消息发送成功: voucherId={}, stock={}", voucherId, stock);
-                        }
-
-                        @Override
-                        public void onException(Throwable e) {
-                            log.error("库存同步消息发送失败: voucherId={}, error={}", voucherId, e.getMessage());
-                        }
-                    },
-                    3000
-            );
-        } catch (Exception e) {
-            log.error("库存同步消息发送异常: voucherId={}, error={}", voucherId, e.getMessage(), e);
-        }
-    }
-
-    @Data
-    @AllArgsConstructor
-    @NoArgsConstructor
-    public static class StockSyncMessage {
-        private Long voucherId;
-        private Integer stock;
     }
 }

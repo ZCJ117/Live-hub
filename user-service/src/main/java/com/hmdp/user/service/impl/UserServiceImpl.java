@@ -174,11 +174,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         return user;
     }
 
-    private UserDTO convertToDTO(User user) {
-        UserDTO userDTO = new UserDTO();
-        org.springframework.beans.BeanUtils.copyProperties(user, userDTO);
-        return userDTO;
-    }
     @Override
     public Result sign() {
         // 1.获取当前登录用户

@@ -21,7 +21,6 @@ import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import io.micrometer.core.instrument.Timer;
-import io.seata.spring.annotation.GlobalTransactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -166,34 +165,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             log.error("回滚秒杀预扣失败，需人工核对: voucherId={}, userId={}, orderId={}",
                     voucherId, userId, orderId, e);
         }
-    }
-
-    /**
-     * 创建优惠券订单（供传统同步流程使用）
-     * 
-     * 注意：此方法在秒杀场景中已由异步流程替代，仅保留用于兼容传统调用。
-     * 方法通过分布式事务（Seata）保证数据库操作和库存扣减的一致性。
-     * 
-     * @param voucherOrder 优惠券订单实体
-     */
-    @GlobalTransactional(name = "createVoucherOrder", rollbackFor = Exception.class)
-    @Transactional
-    public void createVoucherOrder(VoucherOrder voucherOrder) {
-        Long userId = UserHolder.getUser().getId();
-
-        Long count = query().eq("user_id", userId).eq("voucher_id", voucherOrder.getVoucherId()).count();
-        if (count > 0) {
-            log.error("用户已经购买过一次！");
-            return;
-        }
-
-        Result result = voucherFeignClient.deductStock(voucherOrder.getVoucherId(), voucherOrder.getId());
-        if (!result.getSuccess()) {
-            log.error("库存不足！");
-            return;
-        }
-
-        save(voucherOrder);
     }
 
     /**

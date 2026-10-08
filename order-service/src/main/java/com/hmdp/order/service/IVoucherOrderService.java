@@ -16,8 +16,6 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
 
     Result seckillVoucher(Long voucherId);
 
-    void createVoucherOrder(VoucherOrder voucherOrder);
-
     /**
      * 按 userId 批量查询订单（PRD 附录 B：agent-service 工具调用，本 PRD 唯一业务服务改造点）
      * userId 由登录态强制注入，不接受外部传参（防越权，PRD 4.2 授权）

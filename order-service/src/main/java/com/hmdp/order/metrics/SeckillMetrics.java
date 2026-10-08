@@ -1,7 +1,6 @@
 package com.hmdp.order.metrics;
 
 import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
@@ -10,7 +9,6 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
-import java.util.concurrent.atomic.AtomicLong;
 
 @Component
 @Slf4j
@@ -33,8 +31,6 @@ public class SeckillMetrics {
     private Counter mqSendFailCounter;
     private Counter mqConsumeSuccessCounter;
     private Counter mqConsumeFailCounter;
-
-    private final AtomicLong pendingOrderCount = new AtomicLong(0);
 
     @PostConstruct
     public void init() {
@@ -92,10 +88,6 @@ public class SeckillMetrics {
                 .tag("type", "mq_consume")
                 .register(meterRegistry);
 
-        Gauge.builder("seckill.pending.orders", pendingOrderCount, AtomicLong::get)
-                .description("待处理订单数量")
-                .register(meterRegistry);
-
         log.info("秒杀监控指标初始化完成");
     }
 
@@ -147,16 +139,4 @@ public class SeckillMetrics {
         mqConsumeFailCounter.increment();
     }
 
-    public void updatePendingOrderCount(long count) {
-        pendingOrderCount.set(count);
-    }
-
-    public void logMetricsSummary() {
-        log.info("秒杀监控指标汇总 - 请求总数: {}, 成功: {}, 失败: {}, 库存不足: {}, 重复下单: {}",
-                seckillRequestCounter.count(),
-                seckillSuccessCounter.count(),
-                seckillFailCounter.count(),
-                stockInsufficientCounter.count(),
-                duplicateOrderCounter.count());
-    }
 }
