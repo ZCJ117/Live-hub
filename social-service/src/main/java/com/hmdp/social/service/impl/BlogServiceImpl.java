@@ -61,12 +61,14 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     @Override
     public Result queryHotBlog(Integer current) {
+        // 页码下限兜底（SPEC-09 §1.9）
+        int page = Math.max(current == null ? 1 : current, 1);
         // 根据用户查询
-        Page<Blog> page = query()
+        Page<Blog> pageResult = query()
                 .orderByDesc("liked")
-                .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+                .page(new Page<>(page, SystemConstants.MAX_PAGE_SIZE));
         // 获取当前页数据
-        List<Blog> records = page.getRecords();
+        List<Blog> records = pageResult.getRecords();
         // 查询用户
         records.forEach(blog -> {
             this.queryBlogUser(blog);
@@ -238,11 +240,17 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     @Override
     public Result queryBlogOfFollow(Long max, Integer offset) {
         //1.获取当前用户
-        Long userId = UserHolder.getUser().getId();
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("未登录");
+        }
+        Long userId = user.getId();
+        //1.1首屏未传 lastId 时以当前时间戳兜底，避免前端 400（SPEC-09 §1.7）
+        long maxScore = max == null ? System.currentTimeMillis() : max;
         //2.查询收件箱
         String key = FEED_KEY + userId;
         Set<ZSetOperations.TypedTuple<String>> typedTuples = stringRedisTemplate.opsForZSet()
-                .reverseRangeByScoreWithScores(key, 0, max, offset, 2);
+                .reverseRangeByScoreWithScores(key, 0, maxScore, offset, 2);
         //3.非空判断
         if(typedTuples == null || typedTuples.isEmpty()){
             return Result.ok();
@@ -263,10 +271,13 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 os = 1;
             }
         }
-        //5.根据id查询blog
-        List<Blog> blogs = query().in("id", ids).last("ORDER BY FIELD(id," + StrUtil.join(",", ids) + ")").list();
+        //5.根据id查询blog，并按收件箱顺序在内存中重排
+        //  （原实现用 last("ORDER BY FIELD(id, ...)") 拼接字符串，SPEC-09 §1.10 要求消除该范式）
+        List<Blog> blogs = list(Wrappers.<Blog>lambdaQuery().in(Blog::getId, ids));
+        Map<Long, Blog> byId = blogs.stream().collect(Collectors.toMap(Blog::getId, b -> b, (a, b) -> a));
+        List<Blog> ordered = ids.stream().map(byId::get).filter(Objects::nonNull).toList();
 
-        for(Blog blog : blogs){
+        for (Blog blog : ordered) {
             //5.1查询blog有关的用户
             queryBlogUser(blog);
             //5.2查询blog是否被点赞
@@ -275,7 +286,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
         //6.封装并返回
         ScrollResult r = new ScrollResult();
-        r.setList(blogs);
+        r.setList(ordered);
         r.setOffset(os);
         r.setMinTime(minTime);
 
@@ -308,12 +319,14 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     @Override
     public Result queryBlogByUserId(Integer current, Long id) {
+        // 页码下限兜底（SPEC-09 §1.9）
+        int page = Math.max(current == null ? 1 : current, 1);
         // 根据用户查询
-        Page<Blog> page = query()
+        Page<Blog> pageResult = query()
                 .eq("user_id", id)
-                .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+                .page(new Page<>(page, SystemConstants.MAX_PAGE_SIZE));
         // 获取当前页数据
-        List<Blog> records = page.getRecords();
+        List<Blog> records = pageResult.getRecords();
         // 查询用户：本页博客同属该用户，博主信息只在循环外取一次（SPEC-07 §1.5 消除逐条远程调用）
         Result userResult = userFeignClient.getUserById(id);
         UserDTO author = userResult.getSuccess()
