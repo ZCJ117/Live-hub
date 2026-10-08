@@ -90,7 +90,7 @@ class BlogCommentsServiceImplTest {
         assertEquals(7L, saved.getUserId(), "user_id 必须来自登录态");
         assertNull(saved.getId(), "主键必须清空，防前端指定");
         assertEquals(Boolean.FALSE, saved.getStatus(), "status 必须置为 0-正常");
-        assertEquals(0, saved.getLiked());
+        assertEquals(0, saved.getLiked().intValue());
         assertEquals(0L, saved.getParentId(), "一级评论 parentId 默认 0");
         assertEquals(1L, saved.getBlogId());
     }

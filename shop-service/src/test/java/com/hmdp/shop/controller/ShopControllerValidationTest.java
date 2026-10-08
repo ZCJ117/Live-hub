@@ -1,6 +1,9 @@
 package com.hmdp.shop.controller;
 
+import com.baomidou.mybatisplus.extension.conditions.query.QueryChainWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.config.SaTokenConfig;
+import com.hmdp.entity.Shop;
 import com.hmdp.shop.config.ShopValidationExceptionHandler;
 import com.hmdp.shop.service.IShopService;
 import com.hmdp.shop.service.ShopCacheService;
@@ -12,6 +15,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -59,6 +65,26 @@ class ShopControllerValidationTest {
     @Test
     void 合法页码不返回400() throws Exception {
         mockMvc.perform(get("/shop/of/type").param("typeId", "1").param("current", "1"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void 按名称查询分页参数越界返回400() throws Exception {
+        mockMvc.perform(get("/shop/of/name").param("name", "店").param("current", "0"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void 按名称查询合法页码不返回400() throws Exception {
+        // queryShopByName 走 IShopService.query() 的链式 API，mock 需返回链式替身，
+        // 否则校验通过后会在 page(...) 上 NPE，把"合法页码 200"误判为失败。
+        QueryChainWrapper<Shop> chain = mock(QueryChainWrapper.class);
+        when(shopService.query()).thenReturn(chain);
+        when(chain.like(any(Boolean.class), any(), any())).thenReturn(chain);
+        when(chain.page(any())).thenReturn(new Page<>());
+
+        mockMvc.perform(get("/shop/of/name").param("name", "店").param("current", "1"))
                 .andExpect(status().isOk());
     }
 }

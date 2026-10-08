@@ -310,11 +310,13 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private void queryBlogUser(Blog blog) {
         Long userId = blog.getUserId();
         Result result = userFeignClient.getUserById(userId);
-        if (result.getSuccess()) {
-            UserDTO user = BeanUtil.copyProperties(result.getData(), UserDTO.class);
-            blog.setName(user.getNickName());
-            blog.setIcon(user.getIcon());
+        // 与 FollowServiceImpl#followCommons 同口径：null 与 success=false 都视为"取不到用户"
+        if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
+            return;
         }
+        UserDTO user = BeanUtil.copyProperties(result.getData(), UserDTO.class);
+        blog.setName(user.getNickName());
+        blog.setIcon(user.getIcon());
     }
 
     @Override

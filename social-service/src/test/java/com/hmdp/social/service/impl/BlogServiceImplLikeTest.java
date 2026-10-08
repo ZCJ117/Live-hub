@@ -134,7 +134,7 @@ class BlogServiceImplLikeTest {
     void 守卫挡回递减时仍然清理Redis以收敛状态() {
         doReturn(new Blog().setId(BLOG_ID)).when(service).getById(BLOG_ID);
         when(zSetOperations.score(KEY, String.valueOf(USER_ID))).thenReturn(1.0);
-        // 模拟 "DB 成功、Redis 移除失败" 之后的重复调用：liked 已为 0，守卫让 UPDATE 影响 0 行
+        // 用户仍在 ZSet 中（score=1.0）走取消分支，但守卫让 UPDATE 影响 0 行（liked 已为 0）
         doReturn(false).when(service).update(any(Wrapper.class));
 
         assertTrue(service.likeBlog(BLOG_ID).getSuccess());
