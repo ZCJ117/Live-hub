@@ -9,11 +9,10 @@ import com.hmdp.dto.Result;
 import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
-import com.hmdp.entity.Follow;
+import com.hmdp.social.feign.ShopFeignClient;
 import com.hmdp.social.feign.UserFeignClient;
 import com.hmdp.social.mapper.BlogMapper;
 import com.hmdp.social.service.IBlogService;
-import com.hmdp.social.service.IFollowService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
@@ -40,6 +39,13 @@ import static com.hmdp.utils.RedisConstants.FEED_KEY;
 @Service
 public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IBlogService {
 
+    /** 标题长度上限，对齐 tb_blog.title varchar(255) */
+    private static final int MAX_TITLE_LENGTH = 255;
+    /** 图片串长度上限，对齐 tb_blog.images varchar(1024) */
+    private static final int MAX_IMAGES_LENGTH = 1024;
+    /** 正文长度上限（DDL 为 text 无上限，此处取 5000 作为业务上限） */
+    private static final int MAX_CONTENT_LENGTH = 5000;
+
     @Resource
     private UserFeignClient userFeignClient;
 
@@ -47,7 +53,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private StringRedisTemplate stringRedisTemplate;
 
     @Resource
-    private IFollowService followService;
+    private ShopFeignClient shopFeignClient;
 
     @Override
     public Result queryHotBlog(Integer current) {
@@ -165,25 +171,62 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     public Result saveBlog(Blog blog) {
         //1.获取登录用户
         UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("未登录");
+        }
+        //2.入参校验（SPEC-09 §1.8 / G7）
+        Result invalid = validateBlog(blog);
+        if (invalid != null) {
+            return invalid;
+        }
+        //3.强制覆盖作者，防伪造（不得采信前端传入的 userId）
         blog.setUserId(user.getId());
-        //2.保存探店笔记
+        //4.保存探店笔记
         boolean isSuccess = save(blog);
         if (!isSuccess) {
             return Result.fail("新增笔记失败");
         }
-        //3.查询笔记作者的所有粉丝
-        List<Follow> follows = followService.query().eq("follow_user_id", user.getId()).list();
-        //4.推送笔记id给所有粉丝
-        for(Follow follow : follows){
-            //4.1获取粉丝id
-            Long userId = follow.getUserId();
-            //4.2推送
-            String key = FEED_KEY + userId;
-            stringRedisTemplate.opsForZSet().add(key, blog.getId().toString(), System.currentTimeMillis());
-        }
-
-        //5返回id
+        //5.返回id
         return Result.ok(blog.getId());
+    }
+
+    /**
+     * 发布笔记的入参校验。
+     *
+     * @return 校验通过返回 {@code null}；否则返回带失败原因的 {@link Result}
+     */
+    private Result validateBlog(Blog blog) {
+        if (StrUtil.isBlank(blog.getTitle())) {
+            return Result.fail("标题不能为空");
+        }
+        if (blog.getTitle().length() > MAX_TITLE_LENGTH) {
+            return Result.fail("标题过长");
+        }
+        if (StrUtil.isBlank(blog.getContent())) {
+            return Result.fail("内容不能为空");
+        }
+        if (blog.getContent().length() > MAX_CONTENT_LENGTH) {
+            return Result.fail("内容过长");
+        }
+        if (blog.getImages() != null && blog.getImages().length() > MAX_IMAGES_LENGTH) {
+            return Result.fail("图片过多或地址过长");
+        }
+        if (blog.getShopId() == null) {
+            return Result.fail("商户不能为空");
+        }
+        // 外键存在性：fail-closed——商户服务不可用时宁可拒绝发布，也不写入挂到不存在商户的脏数据
+        try {
+            Result shopResult = shopFeignClient.queryShopById(blog.getShopId());
+            if (shopResult == null || !Boolean.TRUE.equals(shopResult.getSuccess())) {
+                return Result.fail("商户不存在");
+            }
+        } catch (Exception e) {
+            // 注意：ServiceImpl 的 log 是 org.apache.ibatis.logging.Log，只有 error(String, Throwable)，
+            // **不支持 SLF4J 的 {} 可变参数**
+            log.error("商户存在性校验失败: shopId=" + blog.getShopId(), e);
+            return Result.fail("商户信息校验失败，请稍后重试");
+        }
+        return null;
     }
 
     @Override
