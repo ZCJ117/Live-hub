@@ -73,7 +73,12 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
         //数据库中没有，写入短 TTL 空值标记并报错
         if (CollectionUtil.isEmpty(typeList)) {
             log.warn("数据库中未找到任何商铺分类信息");
-            redisTemplate.opsForValue().set(SHOP_LIST_KEY, "", CACHE_NULL_TTL, TimeUnit.SECONDS);
+            try {
+                redisTemplate.opsForValue().set(SHOP_LIST_KEY, "", CACHE_NULL_TTL, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.error("写入商铺分类空值标记时发生异常", e);
+                // 即使Redis操作失败，仍然返回「列表信息不存在」
+            }
             return Result.fail("列表信息不存在");
         }
 

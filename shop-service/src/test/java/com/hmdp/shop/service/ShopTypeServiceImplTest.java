@@ -94,6 +94,22 @@ class ShopTypeServiceImplTest {
                 "TTL 越界: " + ttl.getValue());
     }
 
+    /** 空值标记写入失败（Redis 抖动）时仍须优雅返回失败，不得把异常抛给调用方 */
+    @Test
+    void 空值标记写入失败时仍返回失败结果() {
+        when(valueOperations.get(SHOP_LIST_KEY)).thenReturn(null);
+        when(shopTypeMapper.selectList(any())).thenReturn(Collections.emptyList());
+        doThrow(new RuntimeException("Redis 连接失败"))
+                .when(valueOperations).set(eq(SHOP_LIST_KEY), eq(""), anyLong(), eq(TimeUnit.SECONDS));
+
+        Result result = assertDoesNotThrow(() -> shopTypeService.queryList(),
+                "空值标记写入失败不应把异常抛给调用方");
+
+        assertFalse(result.getSuccess());
+        assertEquals("列表信息不存在", result.getErrorMsg());
+        verify(shopTypeMapper, times(1)).selectList(any());
+    }
+
     /** 命中缓存时不查库 */
     @Test
     void 命中缓存不查库() {
