@@ -15,6 +15,9 @@ public class RedisConstants {
 
     public static final String CACHE_SHOP_KEY = "cache:shop:";
 
+    /** 二级缓存失效广播频道（二级缓存设计文档 §4.2）：消息体为被失效的 Redis 全键 */
+    public static final String CACHE_INVALIDATE_CHANNEL = "cache:invalidate";
+
     /** 缓存基础 TTL，单位：秒（商铺与商铺分类共用，SPEC-05 G7） */
     public static final Long CACHE_TTL_BASE_SECONDS = 1800L;
     /** 缓存 TTL 抖动上限，单位：秒；实际 TTL = 基础值 + [0, 抖动) */

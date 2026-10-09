@@ -46,6 +46,12 @@
             <artifactId>redisson</artifactId>
         </dependency>
 
+        <!-- Caffeine：二级缓存的 L1 本地缓存 -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- Jackson -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
