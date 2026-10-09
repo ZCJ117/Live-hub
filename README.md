@@ -9,7 +9,7 @@ Live-hub是一个基于微服务架构的仿大众点评系统，提供用户注
 - **微服务架构**：基于Spring Cloud Alibaba的完整微服务解决方案
 - **高并发秒杀**：支持高并发秒杀场景，通过Redis+Lua+RocketMQ实现异步削峰
 - **分布式事务**：集成Seata实现分布式事务管理
-- **缓存体系**：Spring Cache注解 + Redis缓存（Caffeine本地缓存为预留扩展项）
+- **缓存体系**：Caffeine 本地缓存（L1）+ Redis（L2）二级缓存，写路径经 Redis Pub/Sub 广播失效（当前接入商户详情与商户分类）
 - **统一认证**：Sa-Token + Redis会话共享，网关统一登录校验
 - **服务治理**：Nacos实现服务注册发现与配置管理
 - **RAG智能问答**：商户知识库上传、混合检索（向量+全文）、SSE流式问答
@@ -338,7 +338,7 @@ public Result queryById(Long id) {
 public Result update(Shop shop) { ... }
 ```
 
-> 说明：当前版本直接使用Redis作为缓存，本地一级缓存（Caffeine）为`CacheConfig`中预留的扩展建议，尚未启用。
+> 说明：当前版本采用 Caffeine 本地缓存（L1）+ Redis（L2）二级缓存，写路径经 Redis Pub/Sub 广播失效，当前接入商户详情与商户分类。
 
 ## 5. API接口说明
 
@@ -840,8 +840,7 @@ management:
 2. **推荐系统**：基于用户行为实现个性化推荐
 3. **实时通信**：集成WebSocket实现实时通知
 4. **数据分析**：集成大数据平台进行用户行为分析
-5. **本地缓存**：启用Caffeine一级本地缓存（`CacheConfig`已预留扩展建议）
-6. **密码登录**：user-service已预留password字段与分支，可补充实现
+5. **密码登录**：user-service已预留password字段与分支，可补充实现
 
 ### 10.2 性能扩展方案
 1. **水平扩展**：无状态服务可水平扩展
