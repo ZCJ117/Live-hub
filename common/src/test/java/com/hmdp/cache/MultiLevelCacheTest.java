@@ -93,9 +93,9 @@ class MultiLevelCacheTest {
         assertEquals(1, loads.get());
         ArgumentCaptor<Long> ttl = ArgumentCaptor.forClass(Long.class);
         verify(valueOperations).set(eq(key), anyString(), ttl.capture(), eq(TimeUnit.SECONDS));
-        assertTrue(ttl.getValue() >= CACHE_TTL_BASE_SECONDS
-                        && ttl.getValue() < CACHE_TTL_BASE_SECONDS + CACHE_TTL_JITTER_SECONDS,
-                "TTL 越界: " + ttl.getValue());
+        // 字面量边界是刻意为之：这两个数字是 SPEC-05 冻结的契约（1800 基础 + [0,300) 抖动）。
+        // 若断言引用 CACHE_TTL_BASE_SECONDS 等同款常量，常量被改动时用例不会红，等于不设防。
+        assertTrue(ttl.getValue() >= 1800L && ttl.getValue() < 2100L, "TTL 越界: " + ttl.getValue());
 
         // 第二次必须由 L1 命中，不再调 loader
         assertEquals("库里的店", cache.get(key, () -> {
@@ -114,7 +114,7 @@ class MultiLevelCacheTest {
         assertNull(cache.get(key, () -> null));
         ArgumentCaptor<Long> ttl = ArgumentCaptor.forClass(Long.class);
         verify(valueOperations).set(eq(key), eq(""), ttl.capture(), eq(TimeUnit.SECONDS));
-        assertTrue(ttl.getValue() <= 60L, "空值 TTL 必须 ≤60 秒，实际 " + ttl.getValue());
+        assertEquals(60L, ttl.getValue(), "空值标记 TTL 必须恰好 60 秒（SPEC-05 G5 冻结的负缓存窗口）");
 
         // 第二次仍打到 Redis（证明标记没进 L1），且不再回源
         assertNull(cache.get(key, () -> {
