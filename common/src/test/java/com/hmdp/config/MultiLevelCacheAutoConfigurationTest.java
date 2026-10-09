@@ -26,7 +26,12 @@ class MultiLevelCacheAutoConfigurationTest {
             .withBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class))
             .withBean(RedisConnectionFactory.class, () -> mock(RedisConnectionFactory.class));
 
-    /** D7 / 设计文档 §8：未开启开关时，其他 7 个服务不新增任何 Bean */
+    /**
+     * D7 / 设计文档 §8：未开启开关时，其他 7 个服务不新增任何 Bean。
+     *
+     * <p>{@link RedisMessageListenerContainer} 是「零新增 Redis 连接」红线的唯一主角：
+     * 它会真的开一条订阅连接，其余组件都只是内存对象（故本负向用例不预置 mock 容器）。
+     */
     @Test
     void 未开启开关时不装配任何二级缓存Bean() {
         runner.run(context -> {
@@ -34,6 +39,7 @@ class MultiLevelCacheAutoConfigurationTest {
             assertThat(context).doesNotHaveBean(LocalCacheRegistry.class);
             assertThat(context).doesNotHaveBean(CacheInvalidationPublisher.class);
             assertThat(context).doesNotHaveBean(CacheStatsLogger.class);
+            assertThat(context).doesNotHaveBean(RedisMessageListenerContainer.class);
         });
     }
 

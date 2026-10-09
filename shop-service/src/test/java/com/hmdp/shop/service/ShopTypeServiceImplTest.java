@@ -63,7 +63,7 @@ class ShopTypeServiceImplTest {
         baseMapperField.setAccessible(true);
         baseMapperField.set(shopTypeService, shopTypeMapper);
         assertNotNull(shopTypeService.getBaseMapper(),
-                "@InjectMocks 未注入 ServiceImpl.baseMapper，请改为显式反射注入");
+                "显式反射注入 ServiceImpl.baseMapper 失败");
     }
 
     /** A6：DB 为空时连续 10 次查询只应穿透一次 */

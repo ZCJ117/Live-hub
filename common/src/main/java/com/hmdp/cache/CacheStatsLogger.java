@@ -5,6 +5,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Duration;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -34,7 +35,10 @@ public class CacheStatsLogger {
 
     @PostConstruct
     public void start() {
-        long seconds = Math.max(1L, properties.getStatsLogInterval().toSeconds());
+        Duration interval = properties.getStatsLogInterval();
+        // 配置项写空值时 relaxed binding 会绑成 null；命中率日志只是观测手段，
+        // 不能因为一个空配置把服务带崩，这里退回默认周期（60 秒，与字段默认值一致）。
+        long seconds = interval == null ? 60L : Math.max(1L, interval.toSeconds());
         scheduler.scheduleWithFixedDelay(this::logStats, seconds, seconds, TimeUnit.SECONDS);
     }
 
