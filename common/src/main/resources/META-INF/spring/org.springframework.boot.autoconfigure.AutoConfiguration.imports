@@ -1,2 +1,3 @@
 com.hmdp.config.SaTokenConfig
 com.hmdp.config.RedissonConfig
+com.hmdp.config.MultiLevelCacheAutoConfiguration
