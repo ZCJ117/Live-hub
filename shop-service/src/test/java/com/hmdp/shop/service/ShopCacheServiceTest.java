@@ -69,7 +69,9 @@ class ShopCacheServiceTest {
         assertNull(result);
         ArgumentCaptor<Long> ttl = ArgumentCaptor.forClass(Long.class);
         verify(valueOperations).set(eq(CACHE_SHOP_KEY + 99999L), eq(""), ttl.capture(), eq(TimeUnit.SECONDS));
-        assertTrue(ttl.getValue() <= 60L, "空值 TTL 必须 ≤60 秒，实际 " + ttl.getValue());
+        // 字面量边界是刻意为之：60 是 SPEC-05 冻结的负缓存窗口契约，
+        // 引用 CACHE_NULL_TTL 会让常量被改时用例不红，等于不设防。
+        assertEquals(60L, ttl.getValue(), "空值标记 TTL 必须恰好 60 秒");
     }
 
     /** 命中真实缓存：不回查 DB */
@@ -109,9 +111,8 @@ class ShopCacheServiceTest {
         assertEquals("库里的店", result.getName());
         ArgumentCaptor<Long> ttl = ArgumentCaptor.forClass(Long.class);
         verify(valueOperations).set(eq(CACHE_SHOP_KEY + 7L), anyString(), ttl.capture(), eq(TimeUnit.SECONDS));
-        assertTrue(ttl.getValue() >= CACHE_TTL_BASE_SECONDS
-                        && ttl.getValue() < CACHE_TTL_BASE_SECONDS + CACHE_TTL_JITTER_SECONDS,
-                "TTL 越界: " + ttl.getValue());
+        // 字面量边界：1800 基础 + [0,300) 抖动是 SPEC-05 冻结的契约，不引用生产常量
+        assertTrue(ttl.getValue() >= 1800L && ttl.getValue() < 2100L, "TTL 越界: " + ttl.getValue());
     }
 
     /** A8：100 次写入的 TTL 必须有抖动（不全相同）且在区间内 */
@@ -130,8 +131,7 @@ class ShopCacheServiceTest {
         List<Long> ttls = ttl.getAllValues();
         assertEquals(100, ttls.size());
         for (Long v : ttls) {
-            assertTrue(v >= CACHE_TTL_BASE_SECONDS && v < CACHE_TTL_BASE_SECONDS + CACHE_TTL_JITTER_SECONDS,
-                    "TTL 越界: " + v);
+            assertTrue(v >= 1800L && v < 2100L, "TTL 越界: " + v);
         }
         assertTrue(ttls.stream().distinct().count() > 1, "TTL 无抖动嫌疑：100 次写入取值全相同");
     }

@@ -51,6 +51,12 @@ public class MultiLevelCacheAutoConfiguration {
         return new MultiLevelCacheFactory(stringRedisTemplate, publisher, registry, properties);
     }
 
+    /**
+     * 订阅端容器。{@code @ConditionalOnMissingBean} 在本类按**类型**匹配：应用若自建
+     * {@code RedisMessageListenerContainer}，本 Bean 会退避，以免两个容器争抢同一连接工厂。
+     * 退避的代价是广播订阅缺失、跨实例失效退化为只剩 L1 兜底 TTL —— 日后新增此类 Bean 时
+     * 必须一并挂上 {@link CacheInvalidationListener}。当前仓内无其他该类 Bean，故不会发生。
+     */
     @Bean
     @ConditionalOnMissingBean
     public RedisMessageListenerContainer cacheInvalidationListenerContainer(

@@ -86,7 +86,8 @@ class ShopTypeServiceImplTest {
         verify(shopTypeMapper, times(1)).selectList(any());
         ArgumentCaptor<Long> ttl = ArgumentCaptor.forClass(Long.class);
         verify(valueOperations, times(1)).set(eq(SHOP_LIST_KEY), eq(""), ttl.capture(), eq(TimeUnit.SECONDS));
-        assertTrue(ttl.getValue() <= 60L, "空值 TTL 必须 ≤60 秒，实际 " + ttl.getValue());
+        // 字面量边界是刻意为之：60 是 SPEC-05 冻结的负缓存窗口契约，不引用 CACHE_NULL_TTL
+        assertEquals(60L, ttl.getValue(), "空值标记 TTL 必须恰好 60 秒");
     }
 
     /** G7：有数据时写入的 TTL 必须带抖动且在区间内 */
@@ -101,9 +102,7 @@ class ShopTypeServiceImplTest {
         assertTrue(result.getSuccess());
         ArgumentCaptor<Long> ttl = ArgumentCaptor.forClass(Long.class);
         verify(valueOperations).set(eq(SHOP_LIST_KEY), anyString(), ttl.capture(), eq(TimeUnit.SECONDS));
-        assertTrue(ttl.getValue() >= CACHE_TTL_BASE_SECONDS
-                        && ttl.getValue() < CACHE_TTL_BASE_SECONDS + CACHE_TTL_JITTER_SECONDS,
-                "TTL 越界: " + ttl.getValue());
+        assertTrue(ttl.getValue() >= 1800L && ttl.getValue() < 2100L, "TTL 越界: " + ttl.getValue());
     }
 
     /** 空值标记写入失败（Redis 抖动）时仍须优雅返回失败，不得把异常抛给调用方 */
