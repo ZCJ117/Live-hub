@@ -1,6 +1,10 @@
 package com.hmdp.shop.service;
 
 import cn.hutool.json.JSONUtil;
+import com.hmdp.cache.CacheInvalidationPublisher;
+import com.hmdp.cache.LocalCacheRegistry;
+import com.hmdp.cache.MultiLevelCacheFactory;
+import com.hmdp.cache.MultiLevelCacheProperties;
 import com.hmdp.entity.Shop;
 import com.hmdp.shop.mapper.ShopMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +18,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -32,13 +37,25 @@ class ShopCacheServiceTest {
     private ValueOperations<String, String> valueOperations;
     @Mock
     private ShopMapper shopMapper;
+    @Mock
+    private CacheInvalidationPublisher publisher;
 
+    private LocalCacheRegistry registry;
     private ShopCacheService shopCacheService;
 
     @BeforeEach
     void setUp() {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        shopCacheService = new ShopCacheService(stringRedisTemplate, shopMapper);
+        registry = new LocalCacheRegistry();
+        shopCacheService = new ShopCacheService(factory(), shopMapper);
+    }
+
+    /** 每个用例用新建的工厂 ⇒ L1 为空 ⇒ 读路径仍落在 mock 的 Redis 交互上 */
+    private MultiLevelCacheFactory factory() {
+        MultiLevelCacheProperties properties = new MultiLevelCacheProperties();
+        properties.setL1MaxSize(1000);
+        properties.setL1Ttl(Duration.ofSeconds(10));
+        return new MultiLevelCacheFactory(stringRedisTemplate, publisher, registry, properties);
     }
 
     /** A1：空值标记的 TTL 必须是 60 秒级，而不是 30 分钟 */
@@ -124,5 +141,49 @@ class ShopCacheServiceTest {
         shopCacheService.evict(42L);
 
         verify(stringRedisTemplate).delete(CACHE_SHOP_KEY + 42L);
+    }
+
+    /** G1：L1 命中后不再访问 Redis（二级缓存的核心收益） */
+    @Test
+    void L1命中后不再访问Redis() {
+        when(valueOperations.get(CACHE_SHOP_KEY + 1L))
+                .thenReturn(JSONUtil.toJsonStr(new Shop().setId(1L).setName("缓存中的店")));
+
+        shopCacheService.getShop(1L);               // 第一次：L2 命中并回填 L1
+        clearInvocations(valueOperations);
+        Shop second = shopCacheService.getShop(1L); // 第二次：L1 命中
+
+        assertEquals("缓存中的店", second.getName());
+        verify(valueOperations, never()).get(anyString());
+    }
+
+    /** 写路径失效后本实例立即回源（不再吐旧值） */
+    @Test
+    void evict后本实例立即回源() {
+        String key = CACHE_SHOP_KEY + 42L;
+        when(valueOperations.get(key)).thenReturn(JSONUtil.toJsonStr(new Shop().setId(42L).setName("旧名")));
+        shopCacheService.getShop(42L);
+
+        shopCacheService.evict(42L);
+
+        when(valueOperations.get(key)).thenReturn(null);
+        when(shopMapper.selectById(42L)).thenReturn(new Shop().setId(42L).setName("新名"));
+        assertEquals("新名", shopCacheService.getShop(42L).getName());
+        verify(stringRedisTemplate).delete(key);
+        verify(publisher).publish(key);
+    }
+
+    /** 广播回调只清 L1：不动 Redis、不再广播（避免回环） */
+    @Test
+    void 广播回调只清L1不动Redis() {
+        String key = CACHE_SHOP_KEY + 5L;
+        when(valueOperations.get(key)).thenReturn(JSONUtil.toJsonStr(new Shop().setId(5L).setName("旧名")));
+        shopCacheService.getShop(5L);
+        clearInvocations(stringRedisTemplate, publisher);
+
+        registry.evictLocal(key);
+
+        verify(stringRedisTemplate, never()).delete(anyString());
+        verify(publisher, never()).publish(anyString());
     }
 }
