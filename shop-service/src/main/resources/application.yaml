@@ -47,6 +47,9 @@ logging:
 # hmdp 自定义配置
 hmdp:
   admin-user-ids: ${ADMIN_USER_IDS:} # 管理接口（商户增改、券创建等）的授权用户id白名单，逗号分隔
+  # 二级缓存（二级缓存设计文档 §8）：L1 Caffeine + L2 Redis + 失效广播
+  cache:
+    enabled: true
   shop:
     search-radius-km: 5 # 附近店铺检索半径（公里），SPEC-05 §5.5：单位显式且可配
 

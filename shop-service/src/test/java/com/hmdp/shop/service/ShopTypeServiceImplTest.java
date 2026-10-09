@@ -1,6 +1,10 @@
 package com.hmdp.shop.service;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.cache.CacheInvalidationPublisher;
+import com.hmdp.cache.LocalCacheRegistry;
+import com.hmdp.cache.MultiLevelCacheFactory;
+import com.hmdp.cache.MultiLevelCacheProperties;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.ShopType;
 import com.hmdp.shop.mapper.ShopTypeMapper;
@@ -9,7 +13,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -18,6 +21,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.lang.reflect.Field;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -39,12 +43,20 @@ class ShopTypeServiceImplTest {
     @Mock
     private ValueOperations<String, String> valueOperations;
 
-    @InjectMocks
+    @Mock
+    private CacheInvalidationPublisher publisher;
+
     private ShopTypeServiceImpl shopTypeService;
 
     @BeforeEach
     void setUp() throws Exception {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        MultiLevelCacheProperties properties = new MultiLevelCacheProperties();
+        properties.setL1MaxSize(1000);
+        properties.setL1Ttl(Duration.ofSeconds(10));
+        MultiLevelCacheFactory factory = new MultiLevelCacheFactory(
+                redisTemplate, publisher, new LocalCacheRegistry(), properties);
+        shopTypeService = new ShopTypeServiceImpl(factory);
         // Mockito 不会给 ServiceImpl 继承来的 protected baseMapper 注入 @Mock，
         // 这里显式反射注入（断言不放松，注入失败仍然响亮报错）
         Field baseMapperField = ServiceImpl.class.getDeclaredField("baseMapper");
