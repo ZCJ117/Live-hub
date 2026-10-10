@@ -25,9 +25,13 @@ import jakarta.annotation.Resource;
  * 反过来，同一个 producer group 挂第二个 producer 会让启动直接失败
  * （{@code MQClientException: ... has been created before}）。
  *
- * <p><b>线程池必须显式配置</b>：注解默认 {@code corePoolSize=1 / maximumPoolSize=1}，
- * 而 {@link #executeLocalTransaction} 里有一条 INSERT —— 用默认值等于给秒杀入口的 DB 写入
- * 加了一道单线程串行闸门。此处与 Hikari 的 {@code maximum-pool-size: 20} 对齐。
+ * <p><b>线程池必须显式配置</b>：注解线程池由 {@code DefaultMQProducerImpl.initTransactionEnv}
+ * 赋给字段 {@code checkExecutor}，该字段全文仅在 {@code checkTransactionState} 中被引用 ——
+ * 也就是说这个池<b>只服务回查路径</b>（{@link #checkLocalTransaction}）。
+ * {@link #executeLocalTransaction} 由 {@code sendMessageInTransaction} 在<b>调用方线程内联执行</b>，
+ * 不经过该池、不受其管辖。注解默认 {@code corePoolSize=1 / maximumPoolSize=1} 因而会把<b>回查</b>串行化：
+ * 一次崩溃留下大量半消息待查时，单线程回查成为吞吐瓶颈。此处与 Hikari 的
+ * {@code maximum-pool-size: 20} 对齐。
  */
 @Component
 @Slf4j

@@ -85,6 +85,17 @@ class SeckillOrderTransactionListenerTest {
     }
 
     @Test
+    void 本地事务_消息体不可解析_返回回滚且不落库() throws Exception {
+        Message<byte[]> broken = MessageBuilder.withPayload("not-json".getBytes()).build();
+
+        // 与回查侧不同：本地事务尚未提交，解析失败即无任何已提交状态需保护，直接 ROLLBACK 让 broker
+        // 丢弃 half message；绝不能落一条 orderId 未知的事件行。
+        assertEquals(RocketMQLocalTransactionState.ROLLBACK,
+                listener.executeLocalTransaction(broken, null));
+        verify(seckillOutboxMapper, never()).insert(any());
+    }
+
+    @Test
     void 回查_消息体不可解析_返回UNKNOWN交由broker下一轮再问() {
         Message<byte[]> broken = MessageBuilder.withPayload("not-json".getBytes()).build();
 

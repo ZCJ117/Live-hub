@@ -59,7 +59,7 @@ SPEC-15 §2.5 把「本地事件表 / 事务消息」定为二选一，并留下
 | F1 | order-service 现有的 `rocketMQTemplate` **本来就是 `TransactionMQProducer`**，无需新建 | `RocketMQAutoConfiguration.defaultMQProducer` → `RocketMQUtil.createDefaultMQProducer`，偏移 26 / 61 均为 `new TransactionMQProducer(...)`；`RocketMQTransactionConfiguration` 偏移 89 对 `getProducer()` 做 `checkcast TransactionMQProducer` | 事务监听器直接挂在默认 template 上，**不新增 bean、不新增 producer 组** |
 | F1b | 同一 JVM 内两个 producer 不能共用 producer group | `MQClientInstance.registerProducer` 用 `producerTable.putIfAbsent(group, producer)`，已存在则记 `the producer group[{}] exist already.` 并返回 `false`；`DefaultMQProducerImpl.start` 据此抛 `MQClientException("... has been created before, specify another name please.")` | **仅当一个组要挂两个 producer 时才触发**。本方案只有一个 producer，不触发；但这是一条禁令：后续不得为"隔离"再建同组 producer |
 | F2 | `executeLocalTransaction` 抛异常 → 客户端写死 `ROLLBACK_MESSAGE` | `DefaultMQProducerImpl.sendMessageInTransaction(Message, LocalTransactionExecuter, Object)` 偏移 335：`getstatic LocalTransactionState.ROLLBACK_MESSAGE; astore 6`，随后偏移 351 `endTransaction(..., ROLLBACK, localException)` | 异常**不会**被转成 UNKNOW，回查不会因此触发；入口侧把「非 COMMIT」一律按失败处理即可，无死分支 |
-| F3 | `@RocketMQTransactionListener` 默认线程池 `corePoolSize=1`、`maximumPoolSize=1`、`blockingQueueSize=2000` | 注解 `AnnotationDefault` 属性 | **本地事务含一条 INSERT，默认单线程串行**，必须显式配置（见 §2.5） |
+| F3 | `@RocketMQTransactionListener` 默认线程池 `corePoolSize=1`、`maximumPoolSize=1`、`blockingQueueSize=2000` | 注解 `AnnotationDefault` 属性；`DefaultMQProducerImpl.initTransactionEnv` 把注解线程池赋给 `checkExecutor`，该字段全文仅出现于 `checkTransactionState` | 该池**只服务回查路径**（`checkLocalTransaction`），默认单线程会串行化回查；`executeLocalTransaction` 在调用方线程内联执行，**不受该池管辖**。仍须显式配置（见 §2.5） |
 | F4 | 监听器收到的消息 payload 是**原始 `byte[]`**（`getBody()`），**不是**反序列化后的对象 | `RocketMQUtil.convertToSpringMessage(MessageExt)` 与 `convertToSpringMessage(Message)` 均为 `MessageBuilder.withPayload(msg.getBody())` | `checkLocalTransaction` 拿不到 `arg`（回查是异步的），必须自行反序列化消息体 |
 | F5 | `TransactionSendResult.getLocalTransactionState()` 把本地事务结果**同步回传给调用方线程** | 客户端在 `endTransaction` 后构造 `TransactionSendResult` 并 `setLocalTransactionState(localTransactionState)` | 入口侧可以按 `sendStatus` + `localTransactionState` 分档决策，无需轮询 |
 | F6 | `endTransaction` 失败被**静默吞掉**（只打 error 日志，不抛） | 客户端 `catch (Throwable e) { log.error("local transaction execute " + state + ", but end broker transaction failed", e); }` | 存在「本地返回 COMMIT 但 broker 未收到」的窗口，由回查兜底（§2.4 第 4 行） |
@@ -108,8 +108,11 @@ seckillVoucher
 
 ### 2.3 回查与本地事务判据
 
-**回查唯一触发条件**：broker 从未收到 `endTransaction` —— 即进程在 `executeLocalTransaction` 返回之前崩溃/hang。
+**回查触发条件**：broker 未收到 `endTransaction`，有两条来源 ——
+(a) 进程在 `executeLocalTransaction` 返回之前崩溃/hang；
+(b) `endTransaction` 的 oneway 调用静默失败（F6），本地已返回 COMMIT 但 broker 从未收到。
 （`executeLocalTransaction` 抛异常走的是 ROLLBACK 快路径，见 F2，不产生回查。）
+(b) 是回查作为**唯一**恢复路径的情形：入口侧已 `markOutboxDelivered`，行不再是 `status=0`，补投器无从捞起。
 
 ```
 broker TransactionalMessageCheckService（transactionCheckInterval 周期）
@@ -157,8 +160,9 @@ broker TransactionalMessageCheckService（transactionCheckInterval 周期）
 @RocketMQTransactionListener(corePoolSize = 20, maximumPoolSize = 20, blockingQueueSize = 2000)
 ```
 
-`maximumPoolSize` 与 Hikari `maximum-pool-size: 20` 对齐。**若不改，本地事务 INSERT 会被单线程串行，
-构成比它要解决的问题更严重的入口瓶颈。**
+`maximumPoolSize` 与 Hikari `maximum-pool-size: 20` 对齐。**该池经 `initTransactionEnv` 赋给 `checkExecutor`，
+只服务回查路径；`executeLocalTransaction` 同线程内联，不经此池。**因此显式配置的理由是**回查吞吐**：
+默认 `max=1` 会把回查串行化，当一次崩溃留下大量半消息待查时，单线程回查成为吞吐瓶颈。
 
 **`.e2e/rocketmq/broker.conf`（仅 E2E 环境）**：
 
@@ -183,7 +187,7 @@ half topic（`RMQ_SYS_TRANS_HALF_TOPIC` / `RMQ_SYS_TRANS_OP_HALF_TOPIC`）靠既
 | 原决策点 | 结论 | 依据 |
 |---|---|---|
 | 本地事务所绑形态：(A) INSERT 放进 `executeLocalTransaction` / (B) INSERT 排在发消息之前 | **选 A** | 形态 B 下 half message 与本地写入无任何原子性，是空壳实现，SPEC-13 §4.1 明令禁止 |
-| 与 outbox / 补投器的关系：叠加 / 替换 / 旁路 | **选叠加** | 回查首次发生在 `transactionTimeOut + transactionCheckInterval`（默认 6s + 60s）之后，而补投器 30s 判龄 + 3s 扫描即可捞起，快一个数量级且不依赖 broker 回查可达 |
+| 与 outbox / 补投器的关系：叠加 / 替换 / 旁路 | **选叠加** | 补投器覆盖的是行**仍为 `status=0`** 的窗口 —— 进程在 `executeLocalTransaction` 已提交 INSERT、**尚未** `markOutboxDelivered` 时崩溃。此窗口下回查首次发生在 `transactionTimeOut + transactionCheckInterval`（默认 6s + 60s）之后，而补投器 30s 判龄 + 3s 扫描即可捞起，快一个数量级且不依赖 broker 回查可达。补投器**不覆盖 F6**（行已被标记投递、只余 `status=1`），那里只能靠回查恢复 |
 
 ---
 
@@ -294,4 +298,5 @@ half topic（`RMQ_SYS_TRANS_HALF_TOPIC` / `RMQ_SYS_TRANS_OP_HALF_TOPIC`）靠既
 | 日期 | 版本 | 说明 |
 |---|---|---|
 | 2026-10-10 | v1.0 | 初版：SPEC-15 §2.5 方案 (b) 落地设计。含字节码实证前提、架构与数据流、失败分支语义、配置变更、单测 6 条 + E2E E10 |
-| 2026-10-10 | v1.1 | **修正 v1.0 的 F1 误读**：原结论「必须拆独立 producer 组 + 第二个 template」不成立。实测 `RocketMQUtil.createDefaultMQProducer` 偏移 26/61 为 `new TransactionMQProducer(...)`，现有 `rocketMQTemplate` 本就是事务生产者（F1）；组唯一性约束（改记为 F1b）只在"一组挂两个 producer"时触发。据此删除 `SeckillTransactionConfig` 与 `seckill-tx-producer-group`，风险 R4 替换为 R6（禁令），批次 T 由 6 步减为 5 步 |
+| 2026-10-10 | v1.1 | **修正 v1.0 的 F1 误读**：原结论「必须拆独立 producer 组 + 第二个 template」不成立。实测 `RocketMQUtil.createDefaultMQProducer` 偏移 26/61 为 `new TransactionMQProducer(...)`，现有 `rocketMQTemplate` 本就是事务生产者（F1）；组唯一性约束（改记为 F1b）只在“一组挂两个 producer”时触发。据此删除 `SeckillTransactionConfig` 与 `seckill-tx-producer-group`，风险 R4 替换为 R6（禁令），批次 T 由 6 步减为 5 步 |
+| 2026-10-10 | v1.2 | 修正 F3 的因果误判：注解线程池经 initTransactionEnv 赋给 checkExecutor，只服务回查路径；executeLocalTransaction 同线程内联，不受该池管辖。§2.5 的配置依据由“入口 INSERT 串行”改为“回查吞吐”。另按全分支评审收窄补投器职责（见 §3） |
