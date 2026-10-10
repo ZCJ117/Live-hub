@@ -28,6 +28,12 @@ import java.time.Duration;
  *
  * <p>泛型用 {@link MessageExt} 而非业务类型：只有它能拿到 msgId 与 {@code reconsumeTimes}。
  * 消费**不抛异常**——死信已经是最后一道网，再抛只会让它再次进入重试循环而无处可去。
+ *
+ * <p><b>语义变化（SPEC-14 §2.2 第 3 点，取代 SPEC-04 的旧路径）</b>：死信不再写入
+ * {@code seckill:order:pending}，而是回写明细 Hash {@code seckill:order:detail:{voucherId}}
+ * （field = orderId）作为一条在途记录，交 {@link com.hmdp.order.service.impl.SeckillInFlightCompensator}
+ * 接管。于是 {@code seckill:order:pending} 现在**只**由补偿器的「重投耗尽 → 安全释放」分支写入，
+ * 语义收敛为「需人工处置」，稳态长度为 0——观察 pending 长度不再是「死信即时可见」。
  */
 @Component
 @RocketMQMessageListener(
@@ -81,8 +87,7 @@ public class SeckillOrderDLQConsumer implements RocketMQListener<MessageExt> {
      * 重投计数，若每次死信都从 0 重来，则「补偿器重投 → 消费再失败 → 再入 DLQ → 又重置」
      * 构成无限循环，§2.2 的「在途超时数随补偿收敛至 0」永不可达。
      *
-     * <p>本改动改变了 SPEC-04 记录的「DLQ → seckill:order:pending」路径：
-     * 现在 pending 只由补偿器的「重投耗尽 → 安全释放」写入，语义收敛为"需人工处置"。
+     * <p>本改动的语义变化（死信改写明细而非 pending、pending 收敛为「需人工处置」）见类 Javadoc。
      */
     private void writeBackToInFlightDetail(SeckillOrderMessage order) {
         String key = RedisConstants.detailKey(order.getVoucherId());

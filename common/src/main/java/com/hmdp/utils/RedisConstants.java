@@ -36,7 +36,18 @@ public class RedisConstants {
     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
     /** 已购用户 Set —— 与 seckill.lua 的 orderKey 同拼法 */
     public static final String SECKILL_ORDER_SET_KEY = "seckill:order:";
-    /** 订单明细 Hash —— 与 seckill.lua 的 orderDetailKey 同拼法（本批冻结的契约） */
+    /**
+     * 订单明细 Hash —— 与 seckill.lua 的 orderDetailKey 同拼法（本批冻结的契约），
+     * field 为 orderId，value 为一行 JSON：
+     * {@code {"voucherId","userId","orderId","ts","retryCount"}}，其中 {@code ts} 是
+     * **epoch millis 字符串**、{@code retryCount} 是数值。
+     *
+     * <p>语义已从"在途"扩展为「在途 + 待处置」（SPEC-14 §2.2 第 3 点）：由
+     * {@code seckill.lua} 下单成功时写入（{@code retryCount} 恒为初始 0），
+     * 由 {@code SeckillInFlightCompensator} 重投时刷新、重投耗尽则移出，并由
+     * {@code SeckillOrderDLQConsumer} 把死信回写进来。{@code retryCount} 只由
+     * 补偿器与 DLQ 消费者递增。
+     */
     public static final String SECKILL_ORDER_DETAIL_KEY = "seckill:order:detail:";
     /** 扣减幂等 Set（SPEC-03 §5.4，键为 orderId） */
     public static final String SECKILL_DEDUCT_KEY = "seckill:deduct:";
