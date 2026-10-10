@@ -43,6 +43,8 @@ public class SeckillMetrics {
     private Counter compensateWrongReleaseCounter;
     private Counter compensateResendFailCounter;
     private Counter mqConsumeReleasedCounter;
+    private Counter feignCallSuccessCounter;
+    private Counter feignCallFailCounter;
 
     @PostConstruct
     public void init() {
@@ -150,6 +152,19 @@ public class SeckillMetrics {
                 .tag("type", "mq_consume_released")
                 .register(meterRegistry);
 
+        // SPEC-15 P1-4：秒杀链路对下游（voucher-service）的调用质量。
+        // 这是"依赖劣化"唯一能从监控上看见的入口——消费线程只会表现为重试变慢，
+        // 不主动计数的话，第 3 个 5s 超时和第 300 个在指标上没有任何区别。
+        feignCallSuccessCounter = Counter.builder("seckill.feign.call")
+                .description("秒杀链路 Feign 调用结果计数（SPEC-15 P1-4）")
+                .tag("result", "success")
+                .register(meterRegistry);
+
+        feignCallFailCounter = Counter.builder("seckill.feign.call")
+                .description("秒杀链路 Feign 调用结果计数（SPEC-15 P1-4）")
+                .tag("result", "fail")
+                .register(meterRegistry);
+
         // SPEC-14 P0-2 B4：待处置队列长度。它是「秒杀成功但无订单」泄漏的**唯一对外信号**
         // ——既有对账等式会被在途订单一进一出抵消，看不见这条泄漏。
         // 稳态应为 0；非 0 意味着有订单重投耗尽被安全释放，需要人工核对。
@@ -253,6 +268,16 @@ public class SeckillMetrics {
     /** 迟到消息被墓碑拦下：非 0 说明释放后确有消息复活被拦，是链路健康的信号 */
     public void incrementMqConsumeReleased() {
         mqConsumeReleasedCounter.increment();
+    }
+
+    /** Feign 调用成功一次（SPEC-15 P1-4） */
+    public void incrementFeignCallSuccess() {
+        feignCallSuccessCounter.increment();
+    }
+
+    /** Feign 调用失败一次（SPEC-15 P1-4） */
+    public void incrementFeignCallFail() {
+        feignCallFailCounter.increment();
     }
 
 }
