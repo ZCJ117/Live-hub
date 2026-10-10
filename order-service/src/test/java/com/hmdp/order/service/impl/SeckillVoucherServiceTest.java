@@ -1,7 +1,12 @@
 package com.hmdp.order.service.impl;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfo;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
+import com.hmdp.order.entity.SeckillOutbox;
+import com.hmdp.order.mapper.SeckillOutboxMapper;
 import com.hmdp.order.metrics.SeckillMetrics;
 import com.hmdp.order.mq.SeckillOrderProducer;
 import com.hmdp.utils.RedisIdWorker;
@@ -11,18 +16,22 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.mockito.Spy;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.lang.reflect.Field;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -36,6 +45,7 @@ class SeckillVoucherServiceTest {
     @Mock private RedisIdWorker redisIdWorker;
     @Mock private SeckillOrderProducer seckillOrderProducer;
     @Mock private SeckillMetrics seckillMetrics;
+    @Mock private SeckillOutboxMapper seckillOutboxMapper;
     @Mock private ValueOperations<String, String> valueOperations;
     @Mock private SetOperations<String, String> setOperations;
     @Mock private HashOperations<String, Object, Object> hashOperations;
@@ -43,11 +53,29 @@ class SeckillVoucherServiceTest {
     @InjectMocks private VoucherOrderServiceImpl service;
 
     @BeforeEach
-    void login() {
+    void login() throws Exception {
         UserDTO user = new UserDTO();
         user.setId(7L);
         UserHolder.saveUser(user);
         when(redisIdWorker.nextId("order")).thenReturn(9001L);
+        initSeckillOutboxTableInfo();
+    }
+
+    /**
+     * 纯单测没有 MyBatis-Plus 自动装配，{@code SeckillOutbox} 不会被注册 TableInfo。
+     * 而 {@code markOutboxDelivered} 用 {@code Wrappers.lambdaUpdate().eq(SeckillOutbox::getId, ...)}
+     * 在**构造 wrapper 时**就要把方法引用解析成列名，缺 TableInfo 会抛
+     * {@code MybatisPlusException: can not find lambda cache for this entity}——
+     * 该异常被生产代码自己的 catch 吞掉，于是 mock 的 {@code update(...)} 根本不会被调用。
+     * 这里补上与 Spring 启动时等价的注册，让断言能真正验证到「标记已投递」这一步。
+     */
+    private static void initSeckillOutboxTableInfo() throws Exception {
+        Field helper = TableInfoHelper.class.getDeclaredField("TABLE_INFO_CACHE");
+        helper.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Class<?>, TableInfo> cache = (Map<Class<?>, TableInfo>) helper.get(null);
+        cache.put(SeckillOutbox.class, TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SeckillOutbox.class));
     }
 
     @AfterEach
@@ -318,5 +346,73 @@ class SeckillVoucherServiceTest {
         // 允许 5 秒时钟裕度：这是"当前时刻"而不是任何硬编码值
         assertTrue(Math.abs(now - ts) < 5_000,
                 "ARGV[4] 必须是当前 epoch 毫秒（在途补偿器据此判龄），实际=" + ts + " now=" + now);
+    }
+
+    // ---------- SPEC-15 P2-1：本地事件表 ----------
+
+    @Test
+    void 成功路径先落待投递事件行再投递_且投递成功后标记已投递() {
+        scriptReturns(0L);
+        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(true);
+
+        Result r = service.seckillVoucher(1L);
+
+        assertTrue(r.getSuccess());
+
+        ArgumentCaptor<SeckillOutbox> row = ArgumentCaptor.forClass(SeckillOutbox.class);
+        verify(seckillOutboxMapper).insert(row.capture());
+        assertEquals(9001L, row.getValue().getId());
+        assertEquals(7L, row.getValue().getUserId());
+        assertEquals(1L, row.getValue().getVoucherId());
+        assertEquals(0, row.getValue().getStatus(), "落库时必须是待投递态");
+        assertEquals(0, row.getValue().getRetryCount());
+
+        // 落库必须先于投递：反过来的话"提交后崩溃"就丢了投递决策
+        InOrder order = inOrder(seckillOutboxMapper, seckillOrderProducer);
+        order.verify(seckillOutboxMapper).insert(any());
+        order.verify(seckillOrderProducer).sendSeckillOrderMessage(any());
+
+        // 生产代码按 MP 惯例传 entity=null（条件全在 wrapper 里）。
+        // 这里必须用 any() 而非 isNull()：Mockito 4 的 any() 只匹配非 null，与 null 实参不匹配。
+        verify(seckillOutboxMapper).update(any(), any());
+    }
+
+    @Test
+    void 事件行落库失败时回滚预扣且返回失败_不投递() {
+        scriptReturns(0L);
+        when(seckillOutboxMapper.insert(any())).thenThrow(new RuntimeException("DB 不可用"));
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+
+        Result r = service.seckillVoucher(1L);
+
+        assertFalse(r.getSuccess());
+        verify(valueOperations).increment("seckill:stock:1");
+        verify(setOperations).remove("seckill:order:1", "7");
+        verify(hashOperations).delete("seckill:order:detail:1", "9001");
+        verify(seckillOrderProducer, never()).sendSeckillOrderMessage(any());
+        verify(seckillMetrics, never()).incrementSeckillSuccess();
+    }
+
+    @Test
+    void 投递失败时先删事件行再回滚预扣() {
+        scriptReturns(0L);
+        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(false);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+
+        Result r = service.seckillVoucher(1L);
+
+        assertFalse(r.getSuccess());
+        assertEquals("订单提交繁忙，请稍后重试", r.getErrorMsg());
+
+        // 顺序即正确性（见本任务顶部的崩溃顺序论证）：
+        // 先删行、后回滚，崩溃时停在"行已删 + 预扣仍在"的少卖侧；
+        // 反过来会停在"预扣已释放 + 行仍待投递"，补投出去就是超卖。
+        InOrder order = inOrder(seckillOutboxMapper, valueOperations);
+        order.verify(seckillOutboxMapper).deleteById(9001L);
+        order.verify(valueOperations).increment("seckill:stock:1");
     }
 }
