@@ -2,6 +2,7 @@ package com.hmdp.order.mq;
 
 import com.hmdp.dto.SeckillOrderMessage;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.client.producer.TransactionSendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
@@ -58,6 +59,29 @@ public class SeckillOrderProducer {
             log.error("秒杀订单消息发送失败: orderId={}, error={}", message.getOrderId(), e.getMessage(), e);
             return false;
         }
+    }
+
+    /**
+     * 事务消息发送秒杀订单消息（SPEC-16）。
+     *
+     * <p><b>与 {@link #sendSeckillOrderMessage} 的区别</b>：本方法先把 half message 落到 broker，
+     * broker 回调 {@code SeckillOrderTransactionListener#executeLocalTransaction} 写本地事件行，
+     * 再按返回的 COMMIT/ROLLBACK 决定投递或丢弃。因此本地写入与"消息可投递"由 broker 绑定，
+     * 而 syncSend 的"落库后崩溃"窗口要靠补投器兜。
+     *
+     * <p><b>arg 恒为 null</b>：broker 回查时只回传消息体、不回传 arg，若把 orderId 放进 arg，
+     * 回查侧就拿不到它。两个回调统一从消息体解析（{@code convertToSpringMessage} 的 payload
+     * 是原始 byte[]），传 null 是为了让"唯一数据来源是消息体"这件事在调用点上显而易见。
+     *
+     * @return broker 返回的事务结果；调用方按 {@code sendStatus} 与 {@code localTransactionState} 分档
+     * @throws org.springframework.messaging.MessagingException half message 发送失败
+     */
+    public TransactionSendResult sendSeckillOrderMessageInTransaction(SeckillOrderMessage message) {
+        return rocketMQTemplate.sendMessageInTransaction(
+                TOPIC_SECKILL_ORDER,
+                MessageBuilder.withPayload(message).build(),
+                null
+        );
     }
 
     /**
