@@ -45,6 +45,9 @@ public class SeckillMetrics {
     private Counter mqConsumeReleasedCounter;
     private Counter feignCallSuccessCounter;
     private Counter feignCallFailCounter;
+    private Counter outboxRedeliveredCounter;
+    private Counter outboxRedeliverFailCounter;
+    private Counter outboxExhaustedCounter;
 
     @PostConstruct
     public void init() {
@@ -165,6 +168,24 @@ public class SeckillMetrics {
                 .tag("result", "fail")
                 .register(meterRegistry);
 
+        // SPEC-15 P2-1：本地事件表的补投质量。
+        // redelivered > 0 说明"落库后崩溃"确实发生过、补投机制真的在干活；
+        // exhausted > 0 说明有订单连补投都投不出去，需要人工介入。
+        outboxRedeliveredCounter = Counter.builder("seckill.outbox.redelivered")
+                .description("事件表补投成功数（SPEC-15 P2-1）")
+                .tag("type", "outbox_redelivered")
+                .register(meterRegistry);
+
+        outboxRedeliverFailCounter = Counter.builder("seckill.outbox.redeliver.fail")
+                .description("事件表补投失败数（SPEC-15 P2-1）")
+                .tag("type", "outbox_redeliver_fail")
+                .register(meterRegistry);
+
+        outboxExhaustedCounter = Counter.builder("seckill.outbox.exhausted")
+                .description("事件表补投次数耗尽数（需人工核对；稳态应为 0）")
+                .tag("type", "outbox_exhausted")
+                .register(meterRegistry);
+
         // SPEC-14 P0-2 B4：待处置队列长度。它是「秒杀成功但无订单」泄漏的**唯一对外信号**
         // ——既有对账等式会被在途订单一进一出抵消，看不见这条泄漏。
         // 稳态应为 0；非 0 意味着有订单重投耗尽被安全释放，需要人工核对。
@@ -278,6 +299,21 @@ public class SeckillMetrics {
     /** Feign 调用失败一次（SPEC-15 P1-4） */
     public void incrementFeignCallFail() {
         feignCallFailCounter.increment();
+    }
+
+    /** 事件表补投成功一次（SPEC-15 P2-1） */
+    public void incrementOutboxRedelivered() {
+        outboxRedeliveredCounter.increment();
+    }
+
+    /** 事件表补投失败一次（SPEC-15 P2-1） */
+    public void incrementOutboxRedeliverFail() {
+        outboxRedeliverFailCounter.increment();
+    }
+
+    /** 事件表补投次数耗尽（SPEC-15 P2-1）：转人工，必须告警 */
+    public void incrementOutboxExhausted() {
+        outboxExhaustedCounter.increment();
     }
 
 }

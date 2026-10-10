@@ -1,6 +1,7 @@
 package com.hmdp.order;
 
 import com.hmdp.order.service.impl.SeckillConsistencyServiceImpl;
+import com.hmdp.order.service.impl.SeckillOutboxDeliverer;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -37,5 +38,22 @@ class SeckillSchedulingContractTest {
         Scheduled scheduled = m.getAnnotation(Scheduled.class);
         assertNotNull(scheduled, "scheduledConsistencyCheck 必须标 @Scheduled");
         assertEquals(300000L, scheduled.fixedRate(), "SPEC-04 §9 A1 要求每 5 分钟执行一次");
+    }
+
+    /**
+     * SPEC-15 P2-1：补投器必须真的被注册。
+     *
+     * <p>与既有 {@code scheduledConsistencyCheck} 同一个坑——{@code @Scheduled} 写了
+     * 但启动类没有 {@code @EnableScheduling} 时，方法**从未被执行**，日志行数为 0，
+     * 而"有定时补投"看起来是成立的。这条断言把这个坑钉死。
+     */
+    @Test
+    void 事件表补投器必须是已注册的定时任务() throws Exception {
+        Method m = SeckillOutboxDeliverer.class.getMethod("deliverPending");
+
+        Scheduled scheduled = m.getAnnotation(Scheduled.class);
+        assertNotNull(scheduled, "deliverPending 必须标 @Scheduled，否则事件表永不补投");
+        assertEquals("${hmdp.seckill.outbox.deliver-interval-ms:3000}", scheduled.fixedDelayString(),
+                "补投间隔必须可配（默认 3s），且用 fixedDelay 防止两轮扫描重叠");
     }
 }
