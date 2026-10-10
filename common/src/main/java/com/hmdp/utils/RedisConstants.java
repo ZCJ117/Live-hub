@@ -15,6 +15,9 @@ public class RedisConstants {
 
     public static final String CACHE_SHOP_KEY = "cache:shop:";
 
+    /** 券元信息缓存键前缀（SPEC-15 P1-2 C2）。与 {@link #CACHE_SHOP_KEY} 同风格，纯新增 */
+    public static final String CACHE_VOUCHER_KEY = "cache:voucher:";
+
     /** 二级缓存失效广播频道（二级缓存设计文档 §4.2）：消息体为被失效的 Redis 全键 */
     public static final String CACHE_INVALIDATE_CHANNEL = "cache:invalidate";
 

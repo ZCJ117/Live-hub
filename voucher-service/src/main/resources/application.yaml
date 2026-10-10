@@ -119,6 +119,10 @@ management:
 hmdp:
   internal-token: ${INTERNAL_TOKEN:}
   admin-user-ids: ${ADMIN_USER_IDS:}
+  # 二级缓存（SPEC-15 P1-2 C2）：券元信息走 L1 Caffeine + L2 Redis + 失效广播。
+  # 默认 false，不显式打开则 MultiLevelCacheFactory 无 Bean，启动直接失败。
+  cache:
+    enabled: true
 
 # Sa-Token 配置
 sa-token:
