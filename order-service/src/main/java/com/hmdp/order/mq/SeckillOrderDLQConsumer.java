@@ -1,5 +1,6 @@
 package com.hmdp.order.mq;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hmdp.dto.SeckillOrderMessage;
 import com.hmdp.order.metrics.SeckillMetrics;
@@ -12,6 +13,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.Resource;
+
+import java.time.Duration;
 
 /**
  * 秒杀订单死信消费者（SPEC-04 §5.3 方案 A / 验收 A7）
@@ -62,18 +65,46 @@ public class SeckillOrderDLQConsumer implements RocketMQListener<MessageExt> {
                 message.getMsgId(), message.getReconsumeTimes());
 
         try {
-            String orderInfo = String.format("%d:%d:%d:%d",
-                    order.getOrderId(), order.getUserId(), order.getVoucherId(),
-                    System.currentTimeMillis());
-            stringRedisTemplate.opsForList().rightPush(RedisConstants.SECKILL_PENDING_KEY, orderInfo);
-            // 有界：待处理列表是人工处置队列，不能随故障持续无界增长（SPEC-04 §5.3 G7）
-            stringRedisTemplate.opsForList().trim(RedisConstants.SECKILL_PENDING_KEY,
-                    0, RedisConstants.SECKILL_LIST_MAX_SIZE - 1L);
-            log.info("失败订单已记录到待处理列表: orderId={}", order.getOrderId());
+            writeBackToInFlightDetail(order);
+            log.info("死信订单已回写在途明细，交补偿器接管: orderId={}", order.getOrderId());
         } catch (Exception e) {
-            log.error("记录失败订单异常: orderId={}, error={}", order.getOrderId(), e.getMessage(), e);
+            log.error("回写在途明细异常: orderId={}, error={}", order.getOrderId(), e.getMessage(), e);
         }
         seckillMetrics.incrementDlqConsumed();
+    }
+
+    /**
+     * 死信单回写明细 Hash，交 {@code SeckillInFlightCompensator} 统一重投/释放
+     * （SPEC-14 §2.2 第 3 点，D3 选 B：少一套数据结构）。
+     *
+     * <p><b>为什么 retryCount 必须继承而非重置</b>（SPEC-14 §7 M5）：明细 Hash 里已有该单的
+     * 重投计数，若每次死信都从 0 重来，则「补偿器重投 → 消费再失败 → 再入 DLQ → 又重置」
+     * 构成无限循环，§2.2 的「在途超时数随补偿收敛至 0」永不可达。
+     *
+     * <p>本改动改变了 SPEC-04 记录的「DLQ → seckill:order:pending」路径：
+     * 现在 pending 只由补偿器的「重投耗尽 → 安全释放」写入，语义收敛为"需人工处置"。
+     */
+    private void writeBackToInFlightDetail(SeckillOrderMessage order) {
+        String key = RedisConstants.detailKey(order.getVoucherId());
+        String field = order.getOrderId().toString();
+
+        int retryCount = 1;
+        Object existing = stringRedisTemplate.opsForHash().get(key, field);
+        if (existing != null) {
+            try {
+                JsonNode rc = OBJECT_MAPPER.readTree(existing.toString()).get("retryCount");
+                retryCount = (rc == null ? 0 : rc.asInt(0)) + 1;
+            } catch (Exception e) {
+                log.warn("已有在途明细解析失败，retryCount 从 1 起算: field={}", field, e);
+            }
+        }
+
+        String detail = String.format(
+                "{\"voucherId\":\"%d\",\"userId\":\"%d\",\"orderId\":\"%d\",\"ts\":\"%d\",\"retryCount\":%d}",
+                order.getVoucherId(), order.getUserId(), order.getOrderId(),
+                System.currentTimeMillis(), retryCount);
+        stringRedisTemplate.opsForHash().put(key, field, detail);
+        stringRedisTemplate.expire(key, Duration.ofSeconds(RedisConstants.SECKILL_DETAIL_TTL_SECONDS));
     }
 
     private SeckillOrderMessage deserialize(MessageExt message) {
