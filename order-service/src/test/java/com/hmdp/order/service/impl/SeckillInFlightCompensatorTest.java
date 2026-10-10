@@ -165,6 +165,8 @@ class SeckillInFlightCompensatorTest {
         verify(listOperations).rightPush(eq("seckill:order:pending"), anyString());
         verify(seckillOrderProducer, never()).sendSeckillOrderMessage(any());
         verify(seckillMetrics).incrementCompensateRelease();
+        // 释放墓碑：先立碑再回滚，迟到的 MQ 消息与死信回写无法让该单复活
+        verify(valueOperations).set(eq("seckill:released:9001"), eq("1"), any(java.time.Duration.class));
     }
 
     @Test
@@ -192,6 +194,50 @@ class SeckillInFlightCompensatorTest {
         verify(stringRedisTemplate, never()).opsForValue();
         verify(stringRedisTemplate, never()).opsForSet();
         verify(hashOperations).delete("seckill:order:detail:1", "9001");
+        verify(seckillMetrics).incrementCompensateCleanup();
+        verify(seckillMetrics, never()).incrementCompensateRelease();
+    }
+
+    @Test
+    void 已释放订单的明细重新出现_只清理不二次回滚() {
+        detailIs(STALE_TS, 2);
+        when(voucherOrderMapper.selectById(ORDER_ID)).thenReturn(null);
+        when(stringRedisTemplate.hasKey("seckill:released:9001")).thenReturn(true);
+
+        compensator.compensateInFlightOrders();
+
+        // 墓碑命中：只清理明细，**绝不再次回滚**——二次 INCR 会凭空多出库存（超卖）
+        verify(hashOperations).delete("seckill:order:detail:1", "9001");
+        verify(seckillMetrics).incrementCompensateCleanup();
+        verify(seckillMetrics, never()).incrementCompensateRelease();
+        verify(stringRedisTemplate, never()).opsForValue();
+        verify(stringRedisTemplate, never()).opsForSet();
+        verify(seckillOrderProducer, never()).sendSeckillOrderMessage(any());
+    }
+
+    @Test
+    void 重投发送失败_计入失败指标且不重复计数() {
+        detailIs(STALE_TS, 0);
+        when(voucherOrderMapper.selectById(ORDER_ID)).thenReturn(null);
+        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(false);
+
+        compensator.compensateInFlightOrders();
+
+        // 发送失败不留痕 → "用户被静默取消"完全不可观测
+        verify(seckillMetrics).incrementCompensateResendFail();
+        verify(seckillMetrics, never()).incrementCompensateResend();
+    }
+
+    @Test
+    void 已释放订单又出现在DB_计入误释放指标() {
+        detailIs(STALE_TS, 0);
+        when(voucherOrderMapper.selectById(ORDER_ID)).thenReturn(new VoucherOrder());
+        when(stringRedisTemplate.hasKey("seckill:released:9001")).thenReturn(true);
+
+        compensator.compensateInFlightOrders();
+
+        // 已释放、DB 却有单 —— 当初的释放判断有误，SPEC-14 §6 验收 5 要求该数恒为 0
+        verify(seckillMetrics).incrementCompensateWrongRelease();
         verify(seckillMetrics).incrementCompensateCleanup();
         verify(seckillMetrics, never()).incrementCompensateRelease();
     }

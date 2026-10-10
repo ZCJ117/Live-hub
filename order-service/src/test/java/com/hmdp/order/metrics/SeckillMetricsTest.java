@@ -75,4 +75,13 @@ class SeckillMetricsTest {
         assertEquals(1.0, registry.get("seckill.compensate.cleanup").counter().count(), 0.001);
         assertEquals(1.0, registry.get("seckill.compensate.release").counter().count(), 0.001);
     }
+
+    @Test
+    void 释放墓碑相关的新增指标已注册() {
+        metrics.incrementCompensateResendFail();
+        metrics.incrementMqConsumeReleased();
+
+        assertEquals(1.0, registry.get("seckill.compensate.resend.fail").counter().count(), 0.001);
+        assertEquals(1.0, registry.get("seckill.mq.consume.released").counter().count(), 0.001);
+    }
 }

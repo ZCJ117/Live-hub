@@ -39,6 +39,9 @@ import java.util.concurrent.TimeUnit;
  *
  * <p><b>误释放防护</b>：回滚预扣前必须①持有订单锁②二次查 DB 确认无该订单。
  * 释放是**不可逆**的（INCR + SREM 会让用户重获购买资格），宁可多扫几轮也不误放。
+ *
+ * <p><b>释放墓碑</b>：释放会写 {@code seckill:released:{orderId}}（TTL 24h），
+ * 使迟到的 MQ 消息与死信回写无法让该订单复活（SPEC-14 §7 M7）。
  */
 @Component
 @Slf4j
@@ -158,10 +161,26 @@ public class SeckillInFlightCompensator {
                 // 消费端正在处理该订单 —— 本轮不动它
                 return Outcome.SKIPPED;
             }
+            // 释放墓碑（SPEC-14 §7 M7）：非空说明该单已被「重投耗尽 → 安全释放」处理过
+            boolean alreadyReleased = Boolean.TRUE.equals(
+                    stringRedisTemplate.hasKey(RedisConstants.releasedKey(orderId)));
             if (voucherOrderMapper.selectById(orderId) != null) {
                 // DB 已有单：只是消费端清理明细失败留下的残渣，删掉即可（不可回滚预扣！）
+                if (alreadyReleased) {
+                    // 已释放过、DB 却有单 —— 说明当初的释放判断有误（SPEC-14 §6 验收 5，必须恒为 0）
+                    seckillMetrics.incrementCompensateWrongRelease();
+                    log.error("[误释放] 已释放订单仍出现在 DB: orderId={}, voucherId={}", orderId, voucherId);
+                }
                 stringRedisTemplate.opsForHash().delete(RedisConstants.detailKey(voucherId), orderIdField);
                 seckillMetrics.incrementCompensateCleanup();
+                return Outcome.CLEANED;
+            }
+            if (alreadyReleased) {
+                // 已释放、DB 无单：迟到消息或死信回写把明细又造了回来。
+                // 只清理明细，**绝不再次回滚**——二次 INCR 会凭空多出库存（超卖）。
+                stringRedisTemplate.opsForHash().delete(RedisConstants.detailKey(voucherId), orderIdField);
+                seckillMetrics.incrementCompensateCleanup();
+                log.warn("已释放订单的明细重新出现，仅清理不再回滚: orderId={}, voucherId={}", orderId, voucherId);
                 return Outcome.CLEANED;
             }
             if (retryCount < maxResend) {
@@ -189,8 +208,17 @@ public class SeckillInFlightCompensator {
         stringRedisTemplate.opsForHash().put(key, field, updated);
         stringRedisTemplate.expire(key, Duration.ofSeconds(RedisConstants.SECKILL_DETAIL_TTL_SECONDS));
 
-        seckillOrderProducer.sendSeckillOrderMessage(new SeckillOrderMessage(orderId, userId, voucherId));
-        seckillMetrics.incrementCompensateResend();
+        boolean sent = seckillOrderProducer.sendSeckillOrderMessage(
+                new SeckillOrderMessage(orderId, userId, voucherId));
+        if (sent) {
+            seckillMetrics.incrementCompensateResend();
+        } else {
+            // 不重试：下一轮扫描会再投（retryCount 已递增，最多再投 maxResend 轮）。
+            // 但必须留痕——投递失败会让该单在超时后走释放，用户被静默取消。
+            seckillMetrics.incrementCompensateResendFail();
+            log.error("在途订单重投发送失败: orderId={}, voucherId={}, retryCount={}",
+                    orderId, voucherId, retryCount + 1);
+        }
         log.warn("在途订单已重投: orderId={}, voucherId={}, retryCount={}→{}",
                 orderId, voucherId, retryCount, retryCount + 1);
     }
@@ -209,6 +237,11 @@ public class SeckillInFlightCompensator {
             log.info("释放前明细已消失（消费端刚处理完），跳过: orderId={}", orderId);
             return Outcome.SKIPPED;
         }
+
+        // 先立墓碑再回滚（SPEC-14 §7 M7）：若在回滚中途崩溃，残留明细的下一轮扫描会因墓碑
+        // 只做清理，不会二次 INCR；顺序反过来则可能双倍回补库存（超卖）。
+        stringRedisTemplate.opsForValue().set(RedisConstants.releasedKey(orderId), "1",
+                Duration.ofSeconds(RedisConstants.SECKILL_RELEASED_TTL_SECONDS));
 
         stringRedisTemplate.opsForValue().increment(RedisConstants.stockKey(voucherId));
         stringRedisTemplate.opsForSet().remove(RedisConstants.orderKey(voucherId), userId.toString());

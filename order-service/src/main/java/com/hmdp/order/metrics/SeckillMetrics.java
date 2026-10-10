@@ -41,6 +41,8 @@ public class SeckillMetrics {
     private Counter compensateCleanupCounter;
     private Counter compensateReleaseCounter;
     private Counter compensateWrongReleaseCounter;
+    private Counter compensateResendFailCounter;
+    private Counter mqConsumeReleasedCounter;
 
     @PostConstruct
     public void init() {
@@ -138,6 +140,16 @@ public class SeckillMetrics {
                 .tag("reason", "compensate_wrong_release")
                 .register(meterRegistry);
 
+        compensateResendFailCounter = Counter.builder("seckill.compensate.resend.fail")
+                .description("在途订单重投发送失败次数（不重试，下一轮扫描会再投；连续失败将走释放）")
+                .tag("reason", "compensate_resend_fail")
+                .register(meterRegistry);
+
+        mqConsumeReleasedCounter = Counter.builder("seckill.mq.consume.released")
+                .description("迟到消息命中释放墓碑被丢弃的次数（订单已释放，不重建）")
+                .tag("type", "mq_consume_released")
+                .register(meterRegistry);
+
         // SPEC-14 P0-2 B4：待处置队列长度。它是「秒杀成功但无订单」泄漏的**唯一对外信号**
         // ——既有对账等式会被在途订单一进一出抵消，看不见这条泄漏。
         // 稳态应为 0；非 0 意味着有订单重投耗尽被安全释放，需要人工核对。
@@ -231,6 +243,16 @@ public class SeckillMetrics {
     /** 误释放：释放决策做出后 DB 又出现该 orderId。任何一次都说明释放前置条件判断有漏洞 */
     public void incrementCompensateWrongRelease() {
         compensateWrongReleaseCounter.increment();
+    }
+
+    /** 重投发送失败：不留痕则"用户被静默取消"完全不可观测 */
+    public void incrementCompensateResendFail() {
+        compensateResendFailCounter.increment();
+    }
+
+    /** 迟到消息被墓碑拦下：非 0 说明释放后确有消息复活被拦，是链路健康的信号 */
+    public void incrementMqConsumeReleased() {
+        mqConsumeReleasedCounter.increment();
     }
 
 }

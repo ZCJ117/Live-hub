@@ -130,6 +130,17 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
                     return;
                 }
 
+                // 释放墓碑（SPEC-14 §7 M7）：该单已被补偿器安全释放（库存已回补、用户已移出
+                // seckill:order:{vid}），但消息可能仍在 broker 排队（消费端长时间宕机后恢复即是）。
+                // 照常消费会在一份已回滚的预扣上重新建单，Redis 库存凭空多出 1，
+                // 且 uk_user_voucher 拦不住（该用户此时无任何行）。直接 ACK 丢弃。
+                if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(RedisConstants.releasedKey(orderId)))) {
+                    log.warn("订单已被安全释放，丢弃迟到消息: orderId={}, userId={}, voucherId={}",
+                            orderId, userId, voucherId);
+                    seckillMetrics.incrementMqConsumeReleased();
+                    return;
+                }
+
                 Long count = voucherOrderMapper.selectCount(
                         new LambdaQueryWrapper<VoucherOrder>()
                                 .eq(VoucherOrder::getUserId, userId)

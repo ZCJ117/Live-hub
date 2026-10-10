@@ -151,6 +151,23 @@ class SeckillOrderConsumerTest {
         verify(hashOperations).delete("seckill:order:detail:1", "9001");
     }
 
+    @Test
+    void 命中释放墓碑_不扣库存不建单直接ACK() throws Exception {
+        when(redissonClient.getLock(anyString())).thenReturn(rLock);
+        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(rLock.isHeldByCurrentThread()).thenReturn(true);
+        when(voucherOrderMapper.selectById(9001L)).thenReturn(null);
+        when(stringRedisTemplate.hasKey("seckill:released:9001")).thenReturn(true);
+
+        // 不抛异常 == 已 ACK 丢弃；抛异常会被 RocketMQ 重投
+        assertDoesNotThrow(() -> consumer.handleOrder(msg, 0));
+
+        // 该单已被安全释放：照常消费会在一份已回滚的预扣上重新建单，Redis 库存凭空多 1
+        verify(voucherFeignClient, never()).deductStock(any(), any());
+        verify(voucherOrderMapper, never()).insert(any());
+        verify(seckillMetrics).incrementMqConsumeReleased();
+    }
+
     // ---------- SPEC-04 §5.4 / SPEC-08 §5.5：真实重试次数 ----------
 
     private void failingDelivery() throws Exception {

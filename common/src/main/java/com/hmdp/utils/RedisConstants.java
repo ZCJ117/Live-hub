@@ -57,6 +57,29 @@ public class RedisConstants {
      * 稳态应为 0，非 0 即代表有订单需人工核对；长度已纳入指标 {@code seckill.pending.size}。
      */
     public static final String SECKILL_PENDING_KEY = "seckill:order:pending";
+
+    /**
+     * 释放墓碑 —— 已被安全释放的 orderId 标记（SPEC-14 §7 M7）。
+     *
+     * <p>释放会 INCR 库存、把用户移出 Set，但**撤不回**已投递的 MQ 消息：
+     * 补偿器重投过的消息可能仍在 broker 排队（消费端长时间宕机后恢复即触发），
+     * 死信消费者也会把已释放的单回写进明细并重置 retryCount。
+     * 这些"迟到消息"若被正常消费，会在一份已被回滚的预扣上重新建单
+     * （Redis 库存凭空多出 1，且 {@code uk_user_voucher} 拦不住——该用户此时无任何行）。
+     *
+     * <p>故释放时写入本 key，消费端与补偿器见到即放弃该订单。
+     * 由 {@code SeckillInFlightCompensator#release} 写入，是它唯一写入方。
+     */
+    public static final String SECKILL_RELEASED_KEY = "seckill:released:";
+
+    /**
+     * 释放墓碑 TTL（秒，24 小时）。
+     *
+     * <p>必须长于"迟到消息可能的最大延迟"。释放是稳态 0 的稀有事件，墓碑开销可忽略；
+     * 而 orderId 全局唯一，墓碑过期后不可能被重新命中，故取一个足够长的值即可。
+     */
+    public static final Long SECKILL_RELEASED_TTL_SECONDS = 86400L;
+
     /** seckill.lua 的临时队列（SPEC-04 §1.6：曾无消费者且无界增长，现加 LTRIM + TTL 收敛） */
     public static final String SECKILL_ORDER_QUEUE_KEY = "seckill:order:queue";
     /** 秒杀观察类 List 的长度上限（SPEC-04 §5.3/§5.6：超限丢弃最旧项） */
@@ -105,6 +128,11 @@ public class RedisConstants {
 
     public static String windowKey(Long voucherId) {
         return SECKILL_WINDOW_KEY + voucherId;
+    }
+
+    /** 释放墓碑 key 工厂（键为 orderId，非 voucherId） */
+    public static String releasedKey(Long orderId) {
+        return SECKILL_RELEASED_KEY + orderId;
     }
     public static final String BLOG_LIKED_KEY = "blog:liked:";
     public static final String FEED_KEY = "feed:";
