@@ -212,6 +212,8 @@ public class SeckillInFlightCompensator {
                 new SeckillOrderMessage(orderId, userId, voucherId));
         if (sent) {
             seckillMetrics.incrementCompensateResend();
+            log.warn("在途订单已重投: orderId={}, voucherId={}, retryCount={}→{}",
+                    orderId, voucherId, retryCount, retryCount + 1);
         } else {
             // 不重试：下一轮扫描会再投（retryCount 已递增，最多再投 maxResend 轮）。
             // 但必须留痕——投递失败会让该单在超时后走释放，用户被静默取消。
@@ -219,8 +221,6 @@ public class SeckillInFlightCompensator {
             log.error("在途订单重投发送失败: orderId={}, voucherId={}, retryCount={}",
                     orderId, voucherId, retryCount + 1);
         }
-        log.warn("在途订单已重投: orderId={}, voucherId={}, retryCount={}→{}",
-                orderId, voucherId, retryCount, retryCount + 1);
     }
 
     /**
@@ -240,6 +240,8 @@ public class SeckillInFlightCompensator {
 
         // 先立墓碑再回滚（SPEC-14 §7 M7）：若在回滚中途崩溃，残留明细的下一轮扫描会因墓碑
         // 只做清理，不会二次 INCR；顺序反过来则可能双倍回补库存（超卖）。
+        // 取舍：恰在本行与 INCR 之间崩溃时，该单停在「墓碑在、明细在、库存未回补」，
+        // 下轮按 CLEANED 只删明细 —— 方向是**少卖**（用户仍被标记、需人工处置），不会超卖。
         stringRedisTemplate.opsForValue().set(RedisConstants.releasedKey(orderId), "1",
                 Duration.ofSeconds(RedisConstants.SECKILL_RELEASED_TTL_SECONDS));
 
