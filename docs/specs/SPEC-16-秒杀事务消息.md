@@ -89,7 +89,7 @@ seckillVoucher
  1. 时间窗校验                                   ← 不变
  2. orderId = redisIdWorker.nextId("order")      ← 不变
  3. Lua 预扣（Redis）                             ← 不变
- 4. txTemplate.sendMessageInTransaction(TOPIC, msg)
+ 4. rocketMQTemplate.sendMessageInTransaction(TOPIC, msg)
       └─ broker 写 half message（RMQ_SYS_TRANS_HALF_TOPIC，消费者不可见）
       └─ broker 回调 executeLocalTransaction(msg, arg)
              orderId = JSON.parseObject((byte[]) msg.getPayload(), SeckillOrderMessage.class)   ← F4
@@ -113,7 +113,7 @@ seckillVoucher
 
 ```
 broker TransactionalMessageCheckService（transactionCheckInterval 周期）
-  → CHECK_TRANSACTION_STATE → seckill-tx-producer-group
+  → CHECK_TRANSACTION_STATE → seckill-producer-group（F1：复用默认 template 的组）
   → SeckillOrderTransactionListener.checkLocalTransaction(msg)
        orderId = JSON.parseObject((byte[]) msg.getPayload(), SeckillOrderMessage.class).getOrderId()
        return seckillOutboxMapper.selectById(orderId) != null ? COMMIT : ROLLBACK
