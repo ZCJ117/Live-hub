@@ -37,6 +37,14 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code checkOrderConsistency} 原读 {@code seckill:order:detail:}（缺 voucherId 后缀）且用
  *       {@code entries()} 读整表，{@code orderInfo} 恒为空 Map → **永远返回「订单一致性正常」**。</li>
  * </ol>
+ *
+ * <p><b>【不得缓存】</b>本类所依赖的 {@code getSeckillStock}（内部端点
+ * {@code GET /internal/voucher/seckill/{id}/stock}）是**强一致读**：它是
+ * SPEC-04 §5.5 对账的权威基线，与 Redis 库存逐条比对。
+ * 给它加任何缓存（{@code @Cacheable}、{@code MultiLevelCache} 等）会让比对基准
+ * 变成快照，对账将**永远通过**——比没有对账更危险。
+ * 该约束由 {@code voucher-service} 的
+ * {@code SeckillStockNoCacheContractTest} 反射锁定（SPEC-15 P1-2 §2.2 第 3 点）。
  */
 @Service
 @Slf4j
