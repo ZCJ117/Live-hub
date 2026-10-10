@@ -1,126 +1,96 @@
 package com.hmdp.order.controller;
 
+import com.hmdp.config.SaTokenConfig;
 import com.hmdp.dto.Result;
-import com.hmdp.order.handler.SeckillExceptionHandler;
+import com.hmdp.order.handler.GlobalExceptionHandler;
+import com.hmdp.order.handler.SeckillValidationExceptionHandler;
 import com.hmdp.order.service.IVoucherOrderService;
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.ConstraintViolationException;
-import jakarta.validation.Validator;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.validation.ValidationAutoConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpStatus;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
-import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.web.servlet.MockMvc;
 
-import java.lang.reflect.Method;
-import java.util.Set;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 秒杀入参校验（SPEC-14 P0-4）
+ * 秒杀入参校验（SPEC-14 P0-4 / 验收 3）。
  *
- * <p>只装载 ValidationAutoConfiguration + 被测 Controller，不启 Nacos/MySQL/Redis——
- * 方法级校验由 {@code MethodValidationPostProcessor} 对 {@code @Validated} 的 bean 做代理实现，
- * 故这里注册的 Controller 会被 CGLIB 代理（该类不实现任何接口），{@code @Positive} 才真正生效。
+ * <p>本用例走**整条 MVC 链路**：request → 路径变量转换 / {@code MethodValidationInterceptor}
+ * → 异常 → advice → HTTP 状态码。异常必须由切片真的抛出来，断言里没有 mock 异常。
  *
- * <p>{@code voucherOrderService} 是 ApplicationContext 级单例 mock，跨测试方法不会自动重置；
- * 故每个用例前 clearInvocations，否则 {@code verifyNoInteractions} 会看到上一个用例遗留的调用。
+ * <p><b>必须把 {@link GlobalExceptionHandler} 一并注册</b>：该兜底 advice 声明了
+ * {@code @ExceptionHandler(Exception.class)}，同样"能处理"本链路的两类异常。
+ * Spring 跨 advice 按顺序取第一个能处理的（不比较具体性），若
+ * {@link SeckillValidationExceptionHandler} 丢了 {@code @Order}，本用例会退回
+ * 200 +「系统繁忙，请稍后重试」而变红——这正是 2026-10-10 端到端实测暴露的真实缺陷，
+ * 当时只断言"处理器声明了 400"的旧用例对它是盲的。
+ *
+ * <p>排除 {@link SaTokenConfig}：它对 {@code /**} 强制登录，否则请求会在参数校验之前
+ * 先被鉴权拦截（同 {@code ShopControllerValidationTest}）。本用例检验的是参数校验链路。
  */
-@SpringJUnitConfig(classes = {
-        ValidationAutoConfiguration.class,
+@WebMvcTest(controllers = VoucherOrderController.class,
+        excludeAutoConfiguration = SaTokenConfig.class,
+        properties = {
+                "spring.cloud.bootstrap.enabled=false",
+                "spring.cloud.nacos.config.enabled=false",
+                "spring.cloud.discovery.enabled=false"
+        })
+@ContextConfiguration(classes = {
         VoucherOrderController.class,
-        SeckillPathParamValidationTest.TestConfig.class
+        GlobalExceptionHandler.class,
+        SeckillValidationExceptionHandler.class
 })
+@Import({GlobalExceptionHandler.class, SeckillValidationExceptionHandler.class})
 class SeckillPathParamValidationTest {
 
-    @Configuration
-    static class TestConfig {
-        @Bean
-        IVoucherOrderService voucherOrderService() {
-            return mock(IVoucherOrderService.class);
-        }
-    }
-
     @Autowired
-    private VoucherOrderController controller;
+    private MockMvc mockMvc;
 
-    @Autowired
+    @MockBean
     private IVoucherOrderService voucherOrderService;
 
-    @Autowired
-    private Validator validator;
-
-    @BeforeEach
-    void resetMock() {
-        clearInvocations(voucherOrderService);
-    }
-
     @Test
-    void 负数voucherId被拒且零业务调用() {
-        assertThrows(ConstraintViolationException.class, () -> controller.seckillVoucher(-1L));
+    void 零voucherId返回400且零业务调用() throws Exception {
+        mockMvc.perform(post("/voucher-order/seckill/0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorMsg").value("券ID必须为正数"));
+
         verifyNoInteractions(voucherOrderService);
     }
 
     @Test
-    void 零voucherId被拒且零业务调用() {
-        assertThrows(ConstraintViolationException.class, () -> controller.seckillVoucher(0L));
+    void 负数voucherId返回400且零业务调用() throws Exception {
+        mockMvc.perform(post("/voucher-order/seckill/-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorMsg").value("券ID必须为正数"));
+
+        verifyNoInteractions(voucherOrderService);
+    }
+
+    /** 超大值在路径变量转换阶段就失败，进不到 {@code @Positive}，是另一条映射。 */
+    @Test
+    void 超大voucherId返回400且零业务调用() throws Exception {
+        mockMvc.perform(post("/voucher-order/seckill/99999999999999999999"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+
         verifyNoInteractions(voucherOrderService);
     }
 
     @Test
-    void 正数voucherId通过校验并进入业务() {
+    void 合法voucherId通过校验并进入业务() throws Exception {
         when(voucherOrderService.seckillVoucher(1L)).thenReturn(Result.ok(1L));
 
-        Result r = controller.seckillVoucher(1L);
-
-        assertTrue(r.getSuccess());
-        verify(voucherOrderService).seckillVoucher(1L);
-    }
-
-    /**
-     * 归档处理器的真实行为：控制器实际产生的 violation 经 {@link SeckillExceptionHandler} 映射为 {@code Result.fail("券ID必须为正数")}。
-     *
-     * <p>与用例层断言串联：非法入参确实携带「券ID必须为正数」这一条 violation message，
-     * 且该消息被归档处理器原样暴露给调用方（而非被吞成通用文案）。
-     * 注：真实 HTTP 400 需要完整 MVC 上下文，见 {@link #非法入参必须声明返回400状态} 的说明。
-     */
-    @Test
-    void 校验违规经归档处理器映射为400结果() throws NoSuchMethodException {
-        Set<ConstraintViolation<VoucherOrderController>> violations = validator.forExecutables()
-                .validateParameters(controller,
-                        VoucherOrderController.class.getMethod("seckillVoucher", Long.class),
-                        new Object[]{-1L});
-
-        Result r = new SeckillExceptionHandler()
-                .handleConstraintViolation(new ConstraintViolationException(violations));
-
-        assertEquals("券ID必须为正数", r.getErrorMsg());
-        assertFalse(r.getSuccess());
-    }
-
-    /**
-     * 契约断言：归档处理器必须声明 {@code @ResponseStatus(BAD_REQUEST)}。
-     *
-     * <p>这是本仓既有的契约测试口径（cf. {@code SeckillSchedulingContractTest} 断言 {@code @Scheduled.fixedRate()}）：
-     * 处理器**声明** 400，由 Spring 的 {@code ExceptionHandlerExceptionResolver} 在运行时兑现该状态码。
-     * 显式断言声明，可让后续重构若丢掉该注解时测试变红。
-     *
-     * <p><b>延后项：</b>真正的端到端 HTTP 状态码需要完整 MVC 上下文（MockMvc/WebMvcTest）或起服务验证；
-     * 本 plan 本轮的验收层级为单元 + 契约测试，端到端 400 验证列为延后验证项。
-     */
-    @Test
-    void 非法入参必须声明返回400状态() throws NoSuchMethodException {
-        Method handler = SeckillExceptionHandler.class.getMethod(
-                "handleConstraintViolation", ConstraintViolationException.class);
-        ResponseStatus status = handler.getAnnotation(ResponseStatus.class);
-
-        assertNotNull(status, "缺少 @ResponseStatus：非法入参会落到 500 兜底");
-        assertEquals(HttpStatus.BAD_REQUEST, status.value());
+        mockMvc.perform(post("/voucher-order/seckill/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
     }
 }

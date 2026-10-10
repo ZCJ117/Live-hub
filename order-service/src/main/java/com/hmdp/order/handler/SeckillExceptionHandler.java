@@ -2,8 +2,6 @@ package com.hmdp.order.handler;
 
 import com.hmdp.dto.Result;
 import com.hmdp.exception.SeckillException;
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.springframework.data.redis.RedisConnectionFailureException;
@@ -17,23 +15,6 @@ import java.net.ConnectException;
 @RestControllerAdvice
 @Slf4j
 public class SeckillExceptionHandler {
-
-    /**
-     * 秒杀入参校验失败 → 400（SPEC-14 P0-4 / §7 M3）
-     *
-     * <p>必须显式映射：本类与 {@code GlobalExceptionHandler} 的 {@code Exception} 兜底都返回 500，
-     * 若不写这个 handler，非法入参会以 500 呈现，与验收标准「非法 voucherId 返回 400」不符。
-     */
-    @ExceptionHandler(ConstraintViolationException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Result handleConstraintViolation(ConstraintViolationException e) {
-        String message = e.getConstraintViolations().stream()
-                .map(ConstraintViolation::getMessage)
-                .findFirst()
-                .orElse("参数不合法");
-        log.warn("秒杀入参校验失败: {}", message);
-        return Result.fail(message);
-    }
 
     @ExceptionHandler(SeckillException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
