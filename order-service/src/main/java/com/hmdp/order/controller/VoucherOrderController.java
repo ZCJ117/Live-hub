@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.hmdp.order.dto.RefundRequest;
 
 import jakarta.annotation.Resource;
+import jakarta.validation.constraints.Positive;
+import org.springframework.validation.annotation.Validated;
 
 /**
  * <p>
@@ -27,13 +29,15 @@ import jakarta.annotation.Resource;
  */
 @RestController
 @RequestMapping("/voucher-order")
+// SPEC-14 P0-4：开启方法级参数校验，非法 voucherId 在 Controller 层被拒，不产生任何 Redis 调用
+@Validated
 public class VoucherOrderController {
 
     @Resource
     private IVoucherOrderService voucherOrderService;
 
     @PostMapping("seckill/{id}")
-    public Result seckillVoucher(@PathVariable("id") Long voucherId) {
+    public Result seckillVoucher(@PathVariable("id") @Positive(message = "券ID必须为正数") Long voucherId) {
         return voucherOrderService.seckillVoucher(voucherId);
     }
 
