@@ -137,8 +137,13 @@ broker TransactionalMessageCheckService（transactionCheckInterval 周期）
 
 **删除失败时不回滚预扣**（保留），接受「用户先看到一次失败、稍后真的拿到订单」的少卖，也不接受超卖。同现有取舍。
 
-**不写 UNKNOW 档**：由 F2，框架不会替我们产生 UNKNOW（异常→ROLLBACK），我们自身也不返回它。
-按 CLAUDE.md 第 2 条不为不可能场景加分支，代码写成 `if (state != COMMIT) → 失败路径` 即可。
+**入口侧不写 UNKNOW 档**：由 F2，框架不会替我们产生 UNKNOW（异常→ROLLBACK），
+`executeLocalTransaction` 也不返回它。按 CLAUDE.md 第 2 条不为不可能场景加分支，
+代码写成 `if (state != COMMIT) → 失败路径` 即可。
+
+> 例外在**回查侧**：`checkLocalTransaction` 若连消息体都解析不出来，返回 UNKNOWN 而非 ROLLBACK——
+> 那里猜 ROLLBACK 会把一个可能已提交的本地事务永久丢弃（少卖方向），UNKNOWN 只是让 broker 下一轮再问。
+> 二者不是同一处判断，不要合并。
 
 ### 2.5 配置变更
 
@@ -228,9 +233,10 @@ half topic（`RMQ_SYS_TRANS_HALF_TOPIC` / `RMQ_SYS_TRANS_OP_HALF_TOPIC`）靠既
 > 第 6 条必须用**真字节 payload**（`JSON.toJSONBytes(msg)`）喂入，验证 F4 的反序列化链路，
 > 不得塞入 mock 对象绕过解析。
 >
-> **已知坑**：第 5 / 6 条会用 `SeckillOutbox` 的 lambda 查询，纯 Mockito 单测下会抛
-> `can not find lambda cache for this entity`。需按 `social-service/src/test/.../MybatisLambdaCache.java`
-> 的既有做法先注册 `TableInfo`。
+> 第 5 / 6 条**不需要**注册 `TableInfo`：监听器只用 `insert` / `selectById`，不经过 lambda 列名解析。
+> 会被 `can not find lambda cache for this entity` 绊住的是入口侧（`markOutboxDelivered` 用
+> `Wrappers.lambdaUpdate`），而 `SeckillVoucherServiceTest` 里本来就有 `initSeckillOutboxTableInfo()`，
+> 不需要新增。
 
 **端到端实测（必须实测，不接受仅单测通过）**
 
