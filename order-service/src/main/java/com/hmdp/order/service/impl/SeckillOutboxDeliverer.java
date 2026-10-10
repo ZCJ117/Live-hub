@@ -23,7 +23,13 @@ import java.util.List;
  *
  * <p><b>与 P0-2 在途补偿器的分工</b>：补偿器扫的是 Redis 明细 Hash，覆盖"Lua 预扣后
  * 还没落库就崩"的窗口；本类扫的是 DB 事件表，覆盖"落库后还没投递就崩"的窗口。
- * 两者窗口不重叠，都保留。
+ * 两者**大体重叠但不等价**：判龄基准不同 —— 明细以 Lua 写入时刻（{@code ts}）为基准，
+ * 事件行以 INSERT 的 {@code update_time} 为基准。若 INSERT 本身阻塞数秒，明细会先到期，
+ * 补偿器可能在订单尚未具备"可补投"状态时就判其超时并 RESENT/RELEASE。
+ *
+ * <p><b>真正的兜底不是窗口划分</b>，而是消费端的 orderId 幂等（{@code tb_voucher_order} 主键）
+ * 与释放墓碑（{@code seckill:released:{orderId}}）——重复投递不会重复建单，已释放的单也不会复活。
+ * 本类的实际收益：把"落库后崩溃"的恢复时间从补偿器的百秒级压到扫描间隔级。
  *
  * <p><b>退避</b>：只扫 {@code update_time} 早于 {@value #REDELIVER_AFTER_SECONDS} 秒的行。
  * 一是给入口侧的同步投递留出完成时间，避免每条正常订单都被重复投一次；

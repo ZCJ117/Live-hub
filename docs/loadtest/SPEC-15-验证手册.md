@@ -186,7 +186,8 @@ docker exec hmdp-redis redis-cli -a "$REDIS_PASSWORD" SADD risk:blacklist:user <
 # 3) 同一用户再发起 → 期望 403
 curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/voucher-order/seckill/$VID" -H "Authorization: $TOKEN"
 #   期望输出：403
-curl -s http://127.0.0.1:8081/actuator/prometheus | grep 'gateway_risk_blacklist_blocked'
+#   拦截证据：网关日志（网关未暴露 prometheus/metrics 端点，无法从 8081 取指标）
+#   grep '风控黑名单拦截' <网关日志>
 
 # 4) 误杀检查：另一个未在名单的用户必须仍能正常请求（200/业务错误码，但**不是** 403）
 curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/voucher-order/seckill/$VID" -H "Authorization: $OTHER_TOKEN"
@@ -198,7 +199,7 @@ docker exec hmdp-redis redis-cli -a "$REDIS_PASSWORD" SADD risk:blacklist:ip 127
 docker exec hmdp-redis redis-cli -a "$REDIS_PASSWORD" SREM risk:blacklist:user <loginId>
 docker exec hmdp-redis redis-cli -a "$REDIS_PASSWORD" SREM risk:blacklist:ip 127.0.0.1
 ```
-**期望**：黑名单用户 403 且指标 +1；未在黑名单的用户不受影响（零误杀）。
+**期望**：黑名单用户 403 且网关日志出现一次 `风控黑名单拦截`；未在黑名单的用户不受影响（零误杀）。
 **反例**：请求带 token 通过网关返回 200 而 Redis 里确实 SADD 了 → 过滤器顺序或路径前缀配错
 （`hmdp.risk.blacklist.path-prefixes` 必须覆盖 `/voucher-order/seckill/`）。
 **注意**：黑名单判定用了 loginId，需保证 Sa-Token 会话在 Redis 可用；token 失效时

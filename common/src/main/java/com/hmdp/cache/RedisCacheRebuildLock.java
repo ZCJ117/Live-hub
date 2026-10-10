@@ -17,7 +17,8 @@ import java.util.concurrent.TimeUnit;
  * 按字面做会让 shop / voucher 两个服务都被迫多装配一个 Redisson 连接池。
  * 回源互斥不需要可重入、不需要看门狗续期、不需要排队，SETNX + 比对释放已完全够用。
  *
- * <p><b>fail-open</b>：Redis 抖动时 {@link #tryLock} 返回 true，调用方退化为无锁回源
+ * <p><b>fail-open</b>：Redis 抖动时 {@link #tryLock} 返回一个令牌（fail-open），
+ * 语义是「允许回源」而非「已持有互斥」，调用方退化为无锁回源
  * （即本改动之前的行为）。缓存组件故障不该把业务回源变成失败（设计文档 §7）。
  */
 @Slf4j
