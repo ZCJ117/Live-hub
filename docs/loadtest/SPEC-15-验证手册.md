@@ -55,8 +55,9 @@ VID=<测试券 id>
 ## E6 · 停 voucher-service 后发起秒杀
 
 ```bash
-# 1) 记录基线
-curl -s http://127.0.0.1:8084/actuator/prometheus | grep '^seckill_feign_call'
+# 1) 记录基线（指标只在 order-service(8084) 采：网关 8081 / voucher 8083 都没暴露 prometheus）
+#    Micrometer 计数器 seckill.feign.call 导出到 prometheus 是 seckill_feign_call_total{result="fail"}
+curl -s http://127.0.0.1:8084/actuator/prometheus | grep -E '^seckill_feign_call'
 # 2) 停掉 voucher-service
 kill "$(jps -l | grep voucher-service | awk '{print $1}')"
 # 3) 连续发起 20 次秒杀（每次会走到消费者的 deductStock）
@@ -64,10 +65,10 @@ for i in $(seq 1 20); do
   curl -s -X POST "$BASE/voucher-order/seckill/$VID" -H "Authorization: $TOKEN" -o /dev/null
 done
 # 4) 观察
-curl -s http://127.0.0.1:8084/actuator/prometheus | grep -E '^seckill_(feign_call|mq_consume_fail)'
+curl -s http://127.0.0.1:8084/actuator/prometheus | grep -E '^seckill_'
 tail -100 <order-service 日志> | grep -E 'Feign 失败率超阈值|库存服务调用失败'
 ```
-**期望**：每次失败耗时 ≈ `readTimeout(2s)` 而不是 5s；`seckill.feign.call{result="fail"}` 增长；
+**期望**：每次失败耗时 ≈ `readTimeout(2s)` 而不是 5s；`seckill_feign_call_total{result="fail"}` 增长；
 出现「Feign 失败率超阈值」WARN（连续 ≥10 次失败且失败率 ≥50%）。
 **反例**：若日志里每次耗时仍是 ~5000ms，说明 Task 3 的 Feign 超时没生效
 （回去查 Nacos 是否覆盖了 `feign.client.config`）。
@@ -101,8 +102,8 @@ seq 1 100 | xargs -P 100 -I{} curl -s "$BASE/voucher/$VID" -H "Authorization: $T
 # 4) 看 DB 回源次数（MySQL 侧）
 docker exec hmdp-mysql mysql -uroot -p"$MYSQL_PASSWORD" \
   -e "SHOW GLOBAL STATUS LIKE 'Com_select'"
-# 5) 看 Hikari 峰值
-curl -s http://127.0.0.1:8083/actuator/prometheus | grep '^hikaricp_connections_(active|pending)'
+# 5) 看 Hikari 峰值（指标只在 order-service(8084) 采：gateway 8081 / voucher 8083 都没暴露 prometheus）
+curl -s http://127.0.0.1:8084/actuator/prometheus | grep -E '^hikaricp_connections_(active|pending)'
 ```
 **期望**：`Com_select` 增量 ≈ 1（而不是 100）；`hikaricp_connections_active` 无明显尖峰。
 **反例**：增量接近 100 → 互斥锁没生效（查 `MultiLevelCache` 的 `rebuildLock` 是否被装配）。
@@ -233,7 +234,10 @@ docker exec hmdp-redis redis-cli -a "$REDIS_PASSWORD" SREM risk:blacklist:ip 127
    注意日志里的 `dimension=user`——这正是「user 维度生效」的直接证据；
    若打成 `dimension=ip`，说明是 IP 命中而非本步的 user 命中。
 4. **指标期望**：`gateway.risk.blacklist.blocked{path="/voucher-order/seckill/",dimension="user"}`
-   计数 +1。网关**无 prometheus 端点**，只能从日志/`/actuator/metrics/gateway.risk.blacklist.blocked` 看。
+   计数 +1。网关未暴露 metrics 端点（`management.endpoints.web.exposure.include` 只有
+   `health,info,gateway`，故 `/actuator/metrics/...` 与 `/actuator/prometheus` 均 404），
+   该计数**只能从日志观察**（`RiskBlacklistFilter.reject()` 打的
+   `风控黑名单拦截: path=..., dimension=..., identity=...`，见上一步「日志期望」）。
    响应体应为 `{"success":false,"errorMsg":"当前账号或网络环境存在风险，已被限制访问","code":403}`。
 5. **零误杀**：用**另一个**登录用户（其 loginId **不在**名单）发起同一请求，
    期望**不是 403**（可能是 200 或业务错误码，如库存不足/重复下单）：
