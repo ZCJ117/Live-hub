@@ -1,6 +1,7 @@
 package com.hmdp.voucher;
 
 import com.hmdp.cache.MultiLevelCache;
+import com.hmdp.voucher.service.IVoucherService;
 import com.hmdp.voucher.service.VoucherCacheService;
 import com.hmdp.voucher.service.impl.VoucherServiceImpl;
 import org.junit.jupiter.api.Test;
@@ -37,11 +38,21 @@ class SeckillStockNoCacheContractTest {
 
     @Test
     void getSeckillStock方法上不得出现缓存类注解() throws Exception {
-        Method method = VoucherServiceImpl.class.getMethod("getSeckillStock", Long.class);
+        assertNoCacheAnnotation(VoucherServiceImpl.class);
+        // 必须**同时**查接口：Spring 解析缓存注解走 AnnotatedElementUtils 的合并查找，
+        // 写在 `IVoucherService#getSeckillStock` 上与写在实现类上同样生效；
+        // 而 VoucherServiceImpl.class.getMethod(...).getAnnotations() 只返回该实现类自己的
+        // 方法对象，看不到接口声明上的注解 —— 只查实现类会留下一个假绿缺口。
+        assertNoCacheAnnotation(IVoucherService.class);
+    }
+
+    private static void assertNoCacheAnnotation(Class<?> declaringType) throws Exception {
+        Method method = declaringType.getMethod("getSeckillStock", Long.class);
         for (Annotation annotation : method.getAnnotations()) {
             String name = annotation.annotationType().getSimpleName();
             assertFalse(name.contains("Cache"),
-                    "getSeckillStock 上出现缓存注解 " + name + "：库存读必须直查 DB");
+                    declaringType.getSimpleName() + "#getSeckillStock 上出现缓存注解 " + name
+                            + "：库存读必须直查 DB");
         }
     }
 }
