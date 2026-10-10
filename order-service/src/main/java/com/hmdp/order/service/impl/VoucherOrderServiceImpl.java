@@ -99,6 +99,15 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             }
             Long userId = user.getId();
 
+            // 活动时间窗前置判定（SPEC-14 P0-3）：放在 Lua 之前而非下沉脚本——
+            // 时间窗不存在并发正确性问题（边界上的秒级误差不影响业务），
+            // 真正的并发闸门仍是下面那次单 EVAL。下沉脚本会改动返回值契约，不值当。
+            Result windowRejection = checkSeckillWindow(voucherId);
+            if (windowRejection != null) {
+                seckillMetrics.incrementSeckillFail();
+                return windowRejection;
+            }
+
             long orderId = redisIdWorker.nextId("order");
 
             Long scriptResult = stringRedisTemplate.execute(
@@ -150,6 +159,67 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         } finally {
             seckillMetrics.recordLatency(timerSample);
         }
+    }
+
+    /**
+     * 当前时刻（毫秒）。抽成可覆写方法，是为了让时间窗边界用例可确定复现——
+     * 直接读挂钟会让 {@code =begin} / {@code =end} / {@code begin-1ms} / {@code end+1ms}
+     * 这四个 SPEC-14 §5.2 明确要求的边界用例受 JIT/GC 抖动影响（实测最坏 25ms），
+     * 从而无法稳定断言。
+     */
+    long nowMillis() {
+        return System.currentTimeMillis();
+    }
+
+    /**
+     * 活动时间窗判定（SPEC-14 P0-3 / §7 M2）。
+     *
+     * <p><b>口径与对账侧严格一致</b>：活跃 ⇔ {@code begin <= now <= end}（闭区间），
+     * 即 {@code VoucherServiceImpl.listActiveSeckillVoucherIds()} 的
+     * {@code le(beginTime)} + {@code ge(endTime)}。入口只拒绝 {@code now < begin} 与 {@code now > end}。
+     *
+     * <p><b>key 缺失/字段不可解析/Redis 异常一律放行</b>：向后兼容上线前创建的存量券，
+     * 避免它们被误拒；且时间窗只是边界校验，不应因 Redis 抖动阻断秒杀主链路。
+     *
+     * @return {@code null} 表示放行；否则为拒绝结果
+     */
+    private Result checkSeckillWindow(Long voucherId) {
+        List<Object> window;
+        try {
+            window = stringRedisTemplate.opsForHash().multiGet(
+                    RedisConstants.windowKey(voucherId),
+                    List.of(RedisConstants.SECKILL_WINDOW_FIELD_BEGIN,
+                            RedisConstants.SECKILL_WINDOW_FIELD_END));
+        } catch (Exception e) {
+            log.warn("读取秒杀活动时间窗失败，放行: voucherId={}", voucherId, e);
+            return null;
+        }
+        if (window == null || window.size() < 2 || window.get(0) == null || window.get(1) == null) {
+            return null;
+        }
+
+        long beginMs;
+        long endMs;
+        try {
+            beginMs = Long.parseLong(String.valueOf(window.get(0)));
+            endMs = Long.parseLong(String.valueOf(window.get(1)));
+        } catch (NumberFormatException e) {
+            log.warn("秒杀活动时间窗格式非法，放行: voucherId={}, raw={}", voucherId, window);
+            return null;
+        }
+
+        long now = nowMillis();
+        if (now < beginMs) {
+            seckillMetrics.incrementSeckillNotStarted();
+            log.warn("秒杀失败-活动未开始: voucherId={}, begin={}, now={}", voucherId, beginMs, now);
+            return Result.fail(SeckillFailMessages.SECKILL_NOT_STARTED);
+        }
+        if (now > endMs) {
+            seckillMetrics.incrementSeckillEnded();
+            log.warn("秒杀失败-活动已结束: voucherId={}, end={}, now={}", voucherId, endMs, now);
+            return Result.fail(SeckillFailMessages.SECKILL_ENDED);
+        }
+        return null;
     }
 
     /**

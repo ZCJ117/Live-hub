@@ -25,4 +25,10 @@ public final class SeckillFailMessages {
 
     /** MQ 发送失败且已回滚 Redis 预扣：消息中间件故障 */
     public static final String MQ_SEND_FAILED = "订单提交繁忙，请稍后重试";
+
+    /** 活动尚未开始（SPEC-14 P0-3）：与售罄、重复下单必须可区分，运维据此判断是"等"还是"查" */
+    public static final String SECKILL_NOT_STARTED = "秒杀活动尚未开始";
+
+    /** 活动已结束（SPEC-14 P0-3）：时间窗已关闭，库存可能有剩余但不再售卖 */
+    public static final String SECKILL_ENDED = "秒杀活动已结束";
 }

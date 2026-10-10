@@ -26,6 +26,8 @@ public class SeckillMetrics {
     private Counter stockInsufficientCounter;
     private Counter duplicateOrderCounter;
     private Counter redisStockMissingCounter;
+    private Counter seckillNotStartedCounter;
+    private Counter seckillEndedCounter;
     private Timer seckillLatencyTimer;
     private Counter mqSendSuccessCounter;
     private Counter mqSendFailCounter;
@@ -64,6 +66,16 @@ public class SeckillMetrics {
         redisStockMissingCounter = Counter.builder("seckill.stock.key.missing")
                 .description("Redis 库存key缺失次数（需预热，与库存不足区分）")
                 .tag("reason", "redis_stock_key_missing")
+                .register(meterRegistry);
+
+        seckillNotStartedCounter = Counter.builder("seckill.window.not.started")
+                .description("活动未开始被拒次数（SPEC-14 P0-3）")
+                .tag("reason", "window_not_started")
+                .register(meterRegistry);
+
+        seckillEndedCounter = Counter.builder("seckill.window.ended")
+                .description("活动已结束被拒次数（SPEC-14 P0-3）")
+                .tag("reason", "window_ended")
                 .register(meterRegistry);
 
         seckillLatencyTimer = Timer.builder("seckill.latency")
@@ -125,6 +137,14 @@ public class SeckillMetrics {
 
     public void incrementRedisStockMissing() {
         redisStockMissingCounter.increment();
+    }
+
+    public void incrementSeckillNotStarted() {
+        seckillNotStartedCounter.increment();
+    }
+
+    public void incrementSeckillEnded() {
+        seckillEndedCounter.increment();
     }
 
     public Timer.Sample startTimer() {
