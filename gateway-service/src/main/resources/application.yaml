@@ -99,3 +99,26 @@ management:
       show-details: always
     gateway:
       enabled: true
+
+# 网关路径级限流（SPEC-14 P0-1）：按声明顺序逐条判定，任一超限即 429
+hmdp:
+  rate-limit:
+    rules:
+      # 原 AgentRateLimitFilter 的既有行为，迁入规则表（参数与其构造期默认值一致）
+      - path-prefix: /agent/
+        dimension: loginId
+        capacity: 10
+        refill-per-sec: 10
+        message: 操作太频繁啦，请稍后再试
+      # 秒杀入口 · 用户维度：5 QPS，防单账号脚本刷
+      - path-prefix: /voucher-order/seckill/
+        dimension: loginId
+        capacity: 5
+        refill-per-sec: 1
+        message: 秒杀请求过于频繁，请稍后再试
+      # 秒杀入口 · IP 维度：20 QPS，防多账号（二层叠加）
+      - path-prefix: /voucher-order/seckill/
+        dimension: ip
+        capacity: 20
+        refill-per-sec: 5
+        message: 当前网络请求过于频繁，请稍后再试
