@@ -72,33 +72,44 @@ docker exec hmdp-redis redis-cli -a "$REDIS_PASSWORD" EXPIRE "seckill:window:$VI
 ```bash
 # 生成 N 个测试用户并登录，导出 token。
 #
-# 【必须两步，不能直接 POST /user/login】login 会校验 Redis 里的验证码：
-#   UserServiceImpl.login() 读 LOGIN_CODE_KEY+phone，取不到就返回 "验证码错误"。
-# 而 sendCode 返回的是 Result.ok()（**不含**验证码明文，刻意不落日志），
-# 所以验证码只能从 Redis 里读回来 —— 这也是本脚本唯一可靠的取值方式。
-rm -f docs/loadtest/tokens.csv   # 用 > 覆盖会更好，这里先删以保证幂等重跑
+# 【为什么不走 POST /user/code】sendCode 有 **IP 维度频控：24 小时 20 次**
+# （UserServiceImpl 的 CODE_IP_MAX_PER_DAY=20）。本机循环 1000 次全部来自同一个 IP，
+# 第 21 个号码起 sendCode 直接返回"验证码发送过于频繁"，验证码从未写入 Redis →
+# 后续登录全部失败。更阴险的是失败是**静默**的：每个号码仍会往 csv 追加一个空行，
+# 1000 个号码照样得到 1000 行，看行数以为成功了，实际只有 20 个有效 token，
+# 而"每 loginId 5 QPS"的限流会把结果染成限流假象。
+#
+# 所以直接**播种测试夹具**：自己往 Redis 写验证码，跳过 sendCode。
+# 这与本手册其它地方用 redis-cli 铺 seckill:stock / seckill:window 是同一手法。
+# 登录接口本身不校验"是否发送过"，只比对 Redis 里的值。
+FIXED_CODE=123456
+rm -f docs/loadtest/tokens.csv
 for i in $(seq 1 1000); do
   PHONE="13$(printf '%09d' $i)"
-  # 1) 播种验证码（受手机号 60s/1 次频控，故循环内每个号码只调一次）
-  curl -s -X POST "http://127.0.0.1:8081/user/code?phone=$PHONE" -o /dev/null
-  # 2) 从 Redis 取回验证码
-  CODE=$(docker exec hmdp-redis redis-cli -a "$REDIS_PASSWORD" GET "login:code:$PHONE" | tr -d '\r')
-  # 3) 登录拿 token
+  docker exec hmdp-redis redis-cli -a "$REDIS_PASSWORD" \
+    SETEX "login:code:$PHONE" 300 "$FIXED_CODE" > /dev/null
   curl -s -X POST "http://127.0.0.1:8081/user/login" \
        -H 'Content-Type: application/json' \
-       -d "{\"phone\":\"$PHONE\",\"code\":\"$CODE\"}" \
+       -d "{\"phone\":\"$PHONE\",\"code\":\"$FIXED_CODE\"}" \
     | grep -o '"data":"[^"]*"' | cut -d'"' -f4 >> docs/loadtest/tokens.csv
 done
-# 校验：行数必须 >= 并发数，否则压测样本会远小于预期
-wc -l docs/loadtest/tokens.csv
+
+# 校验：必须数**非空行**。数 `wc -l` 是错的 —— 失败时每行都是空行，行数照样是 1000，
+# 校验形同虚设（这正是上一版脚本的缺陷）。
+TOTAL=$(grep -c '[^[:space:]]' docs/loadtest/tokens.csv)
+echo "有效 token 数 = $TOTAL（必须 >= 并发数 1000/500/100）"
+[ "$TOTAL" -ge 1000 ] || echo "!! token 池不足，先排查登录失败原因再压测"
 ```
 
-> `login:code:` 的键前缀见 `RedisConstants.LOGIN_CODE_KEY`。若第 1 步因频控失败，第 2 步会读到空串、
-> 第 3 步登录失败、该行被写成空行 —— 所以末尾的 `wc -l` 必须与预期条数比对，**不要跳过**。
+> `login:code:` 的键前缀见 `RedisConstants.LOGIN_CODE_KEY`；TTL 给 300 秒足够覆盖整段建池时间。
+> 这也意味着**不要**用 `/user/code` 接口来生成令牌池 —— 它是产品功能，带频控；
+> 夹具铺设走 redis-cli 才是确定性的。
 
 ## 2. 阶梯压测
 
 ```bash
+# VID 与 tokens.csv 必须在**同一个 shell** 里有效：下面 `cd docs/loadtest` 之后
+# `-JvoucherId=$VID` 依赖它仍在环境中。若分块执行，请先 `export VID=<VID>`。
 cd docs/loadtest
 for T in 100 500 1000; do
   echo "=== 并发 $T ==="
@@ -106,10 +117,18 @@ for T in 100 500 1000; do
     -Jhost=127.0.0.1 -Jport=8081 -JvoucherId=$VID -Jthreads=$T \
     -JtokenPool=tokens.csv -JresultFile=result-$T.jtl \
     -l jmeter-$T.log
-  # 汇总：QPS / p95 / p99 / 错误率
-  awk -F, 'NR>1{t++; if($8!="true")e++; s+=$2; a[NR]=$2}
-           END{n=asort(a); q=0; printf "样本=%d 错误=%d 错误率=%.3f%% avg=%.1fms p95=%.1fms p99=%.1fms\n",
-           t,e,e*100/t,s/t,a[int(n*0.95)],a[int(n*0.99)]}' result-$T.jtl
+  # 汇总：QPS / p95 / p99 / 错误率。
+  # 刻意**不用** gawk 的 asort()（非 POSIX，mawk/busybox awk 会报 function not defined），
+  # 改成管道 + sort -n，任何 awk 都能跑。
+  awk -F, 'NR>1{t++; if($8!="true")e++; s+=$2; print $2}' result-$T.jtl \
+    | sort -n > /tmp/spec15-elapsed-$T.txt
+  N=$(wc -l < /tmp/spec15-elapsed-$T.txt)
+  P95=$(sed -n "$((N*95/100))p" /tmp/spec15-elapsed-$T.txt)
+  P99=$(sed -n "$((N*99/100))p" /tmp/spec15-elapsed-$T.txt)
+  awk -F, -v n="$N" -v p95="$P95" -v p99="$P99" \
+    'NR>1{t++; if($8!="true")e++; s+=$2}
+     END{printf "样本=%d 错误=%d 错误率=%.3f%% avg=%.1fms p95=%.1fms p99=%.1fms\n",
+     t,e,e*100/t,s/t,p95,p99}' result-$T.jtl
 done
 ```
 
@@ -131,9 +150,22 @@ curl -s http://127.0.0.1:8084/actuator/prometheus \
 ```bash
 # 触发一次对账。**必须带 admin 身份**：SeckillConsistencyController 类上是
 # @SaCheckRole("admin")，不带 Authorization 只会拿到 401/403，判定段无法执行。
-# admin 白名单来自 hmdp.admin-user-ids（本仓库 .env 里是 1）——
-# 用该 admin 账号登录后拿到的 token，赋给 ADMIN_TOKEN。
-ADMIN_TOKEN=<admin 账号登录得到的 token>
+#
+# admin 是谁由 hmdp.admin-user-ids 决定（本仓库 .env 里是 1 = loginId 1）。
+# tb_user 没有 seed 行、登录时按手机号自动建号，所以要**反查**这个 id 对应的手机号再登录：
+ADMIN_PHONE=$(docker exec hmdp-mysql mysql -N -B -uroot -p"$MYSQL_PASSWORD" \
+  -e "SELECT phone FROM hmdp.tb_user WHERE id IN (${ADMIN_USER_IDS:-1}) LIMIT 1")
+if [ -z "$ADMIN_PHONE" ]; then
+  echo "!! ids=${ADMIN_USER_IDS:-1} 在 tb_user 中不存在；先手动指定一个已存在的用户并把其 id 加入 ADMIN_USER_IDS"
+fi
+docker exec hmdp-redis redis-cli -a "$REDIS_PASSWORD" \
+  SETEX "login:code:$ADMIN_PHONE" 300 123456 > /dev/null
+ADMIN_TOKEN=$(curl -s -X POST "http://127.0.0.1:8081/user/login" \
+  -H 'Content-Type: application/json' \
+  -d "{\"phone\":\"$ADMIN_PHONE\",\"code\":\"123456\"}" \
+  | grep -o '"data":"[^"]*"' | cut -d'"' -f4)
+echo "ADMIN_TOKEN 长度 = ${#ADMIN_TOKEN}（为 0 说明没拿到 token）"
+
 curl -s -X POST "http://127.0.0.1:8081/seckill/consistency/stock/sync/$VID" \
      -H "Authorization: $ADMIN_TOKEN" | head -c 500
 ```
