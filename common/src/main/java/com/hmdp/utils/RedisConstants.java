@@ -18,6 +18,17 @@ public class RedisConstants {
     /** 券元信息缓存键前缀（SPEC-15 P1-2 C2）。与 {@link #CACHE_SHOP_KEY} 同风格，纯新增 */
     public static final String CACHE_VOUCHER_KEY = "cache:voucher:";
 
+    /**
+     * 风控黑名单 · 用户维度（Set，成员为 loginId 字符串）——SPEC-15 P2-2。
+     *
+     * <p>先由运维手工维护（{@code SADD risk:blacklist:user 123}），后续可对接风控规则。
+     * 放在 RedisConstants 而非就地硬编码：网关与运维脚本必须看到同一份键名。
+     */
+    public static final String RISK_BLACKLIST_USER_KEY = "risk:blacklist:user";
+
+    /** 风控黑名单 · IP 维度（Set，成员为点分十进制 IP）——SPEC-15 P2-2 */
+    public static final String RISK_BLACKLIST_IP_KEY = "risk:blacklist:ip";
+
     /** 二级缓存失效广播频道（二级缓存设计文档 §4.2）：消息体为被失效的 Redis 全键 */
     public static final String CACHE_INVALIDATE_CHANNEL = "cache:invalidate";
 

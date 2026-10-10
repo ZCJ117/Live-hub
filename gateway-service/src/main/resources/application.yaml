@@ -122,3 +122,12 @@ hmdp:
         capacity: 20
         refill-per-sec: 5
         message: 当前网络请求过于频繁，请稍后再试
+  # 风控黑名单（SPEC-15 P2-2）：命中即 403，判定先于限流。
+  # 黑名单数据在 Redis Set 中，运维维护：
+  #   redis-cli SADD risk:blacklist:user <loginId>
+  #   redis-cli SADD risk:blacklist:ip   <ip>
+  risk:
+    blacklist:
+      path-prefixes:
+        - /voucher-order/seckill/
+      message: 当前账号或网络环境存在风险，已被限制访问
