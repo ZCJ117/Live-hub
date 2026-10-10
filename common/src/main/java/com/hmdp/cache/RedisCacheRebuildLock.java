@@ -5,9 +5,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -53,36 +51,44 @@ public class RedisCacheRebuildLock implements CacheRebuildLock {
 
     private final StringRedisTemplate stringRedisTemplate;
 
-    /** 当前线程持有的锁令牌，键为业务 key。只有抢到锁的一方会写入与移除 */
-    private final Map<String, String> heldTokens = new ConcurrentHashMap<>();
-
     public RedisCacheRebuildLock(StringRedisTemplate stringRedisTemplate) {
         this.stringRedisTemplate = stringRedisTemplate;
     }
 
+    /**
+     * @implNote 令牌是**返回值**而不是实例字段。曾经写成
+     * {@code Map<String,String> heldTokens}（按 key 索引），在多线程下有如下时序问题：
+     * <pre>
+     * T0   A: SETNX(L,tokA)=true  heldTokens[key]=tokA，开始回源
+     * T0+  B: SETNX(L,tokB)=false → 未拿到，进入等待重读
+     * T3   L 因 TTL 过期消失（A 回源超过 3s，DB 抖动时完全现实）
+     * T3+  B: 重试 SETNX(L,tokB)=true → heldTokens[key]=tokB（覆盖 tokA）
+     * T4   A: unlock(key) 取到的是 tokB → 比对通过 → 删掉了 B 的锁
+     * </pre>
+     * 后果是紧接着的 C 能立刻抢锁并与 B 并发回源：互斥被削弱到近似无锁，
+     * 而"N 并发同 key → loader 只调用 1 次"（SPEC-15 验收 2）正是本类存在的全部意义。
+     * 把令牌交给调用方持有后，A 的 unlock 携带 tokA、比对失败返回 0，不会误删 B 的锁。
+     */
     @Override
-    public boolean tryLock(String key) {
+    public String tryLock(String key) {
         String token = UUID.randomUUID().toString();
         try {
             Boolean acquired = stringRedisTemplate.opsForValue()
                     .setIfAbsent(LOCK_KEY_PREFIX + key, token, LOCK_TTL_SECONDS, TimeUnit.SECONDS);
-            if (Boolean.TRUE.equals(acquired)) {
-                heldTokens.put(key, token);
-                return true;
-            }
-            return false;
+            return Boolean.TRUE.equals(acquired) ? token : null;
         } catch (Exception e) {
+            // Redis 抖动：无法互斥时退化为"人人可回源"（本改动之前的行为），
+            // 而不是让回源失败——缓存组件故障不该阻断业务（设计文档 §7）。
+            //
+            // 注意语义：这里返回的令牌代表「允许回源」而非「已持有互斥」，
+            // 调用方**不能**把它当成互斥保证。
             log.warn("缓存重建锁获取异常，降级为无锁回源。key={}", key, e);
-            // 降级路径也登记令牌：调用方会在 finally 里成对调用 unlock，
-            // 不登记会让 unlock 提前 return（无害），登记后走比对脚本返回 0（同样无害）。
-            heldTokens.put(key, token);
-            return true;
+            return token;
         }
     }
 
     @Override
-    public void unlock(String key) {
-        String token = heldTokens.remove(key);
+    public void unlock(String key, String token) {
         if (token == null) {
             return;
         }

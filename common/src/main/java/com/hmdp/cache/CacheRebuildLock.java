@@ -12,11 +12,19 @@ public interface CacheRebuildLock {
     /**
      * 尝试获取 {@code key} 对应的重建锁。
      *
-     * @return true = 已持有锁（调用方**必须**在 finally 中 {@link #unlock}）；
-     *         false = 他人持有，调用方应短暂等待后重读缓存
+     * @return 非 null = 已获得许可，**必须**把该令牌原样回传给 {@link #unlock(String, String)}；
+     *         null = 他人持有，调用方应短暂等待后重读缓存
      */
-    boolean tryLock(String key);
+    String tryLock(String key);
 
-    /** 释放锁；未持有时为空操作 */
-    void unlock(String key);
+    /**
+     * 释放锁。
+     *
+     * <p>令牌必须由 {@link #tryLock} 返回并由**调用方**持有，而不是由锁实例内部按 key 记账。
+     * 后者在"持锁者回源超过 TTL、锁已过期并被他人重抢"的时序下会让先前的持锁者删掉
+     * **他人的锁**，把互斥削到近似失效 —— 见实现类的 @implNote。
+     *
+     * @param token {@link #tryLock} 的返回值；为 null 时为空操作
+     */
+    void unlock(String key, String token);
 }

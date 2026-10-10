@@ -44,10 +44,13 @@ class RedisCacheRebuildLockTest {
         when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any(TimeUnit.class)))
                 .thenReturn(true);
 
-        assertTrue(lock.tryLock("cache:shop:1"));
+        assertNotNull(lock.tryLock("cache:shop:1"), "SETNX 成功必须返回令牌");
 
+        // TTL 断言写字面量 3 而不是 RedisCacheRebuildLock.LOCK_TTL_SECONDS：
+        // 引常量等于"断言常量等于自己"，把 TTL 从 3 改成 300 用例照样绿，等于不设防
+        // （同 MultiLevelCacheTest 对 1800/2100 的处理）。
         verify(valueOperations).setIfAbsent(eq("lock:cache:rebuild:cache:shop:1"),
-                anyString(), eq(RedisCacheRebuildLock.LOCK_TTL_SECONDS), eq(TimeUnit.SECONDS));
+                anyString(), eq(3L), eq(TimeUnit.SECONDS));
     }
 
     @Test
@@ -55,7 +58,7 @@ class RedisCacheRebuildLockTest {
         when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any(TimeUnit.class)))
                 .thenReturn(false);
 
-        assertFalse(lock.tryLock("cache:shop:1"));
+        assertNull(lock.tryLock("cache:shop:1"), "未抢到锁必须返回 null，调用方据此等待重读");
     }
 
     @Test
@@ -63,26 +66,27 @@ class RedisCacheRebuildLockTest {
         when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any(TimeUnit.class)))
                 .thenThrow(new RedisConnectionFailureException("redis down"));
 
-        assertTrue(lock.tryLock("cache:shop:1"),
+        assertNotNull(lock.tryLock("cache:shop:1"),
                 "Redis 抖动时必须 fail-open：退化为无锁回源（改动前的行为），而不是让回源失败");
     }
 
     @Test
-    void 释放走Lua脚本_只删自己持有的锁() {
+    void 释放走Lua比对脚本而非裸DEL_且携带自己的令牌() {
         when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any(TimeUnit.class)))
                 .thenReturn(true);
-        lock.tryLock("cache:shop:1");
+        String token = lock.tryLock("cache:shop:1");
 
-        lock.unlock("cache:shop:1");
+        lock.unlock("cache:shop:1", token);
 
-        // 必须用比对脚本而不是裸 DEL：否则会把锁 TTL 到期后他人重新抢到的锁删掉
-        verify(redisTemplate).execute(any(RedisScript.class), anyList(), anyString());
+        // 必须用比对脚本而不是裸 DEL，且必须把**本次拿到的令牌**原样传下去：
+        // 否则会把锁 TTL 到期后他人重新抢到的锁删掉（互斥被削到近似失效）。
+        verify(redisTemplate).execute(any(RedisScript.class), anyList(), eq(token));
         verify(redisTemplate, never()).delete(anyString());
     }
 
     @Test
-    void 未持锁时释放是空操作() {
-        lock.unlock("cache:shop:1");
+    void 令牌为null时释放是空操作() {
+        lock.unlock("cache:shop:1", null);
 
         verifyNoInteractions(redisTemplate);
     }
