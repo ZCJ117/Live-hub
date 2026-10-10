@@ -48,8 +48,15 @@ local orderInfo = cjson.encode({
     orderId = orderId
 })
 redis.call('HSET', orderDetailKey, orderId, orderInfo)
+-- 补 TTL：消费端清理失败（进程崩溃等）时明细 hash 也不会无界驻留（SPEC-04 §5.2 G7）
+-- 每次秒杀都会刷新，活跃券的 TTL 始终往后顺延
+redis.call('EXPIRE', orderDetailKey, 3600)
 
--- 7. 将订单ID添加到待处理队列（供消费者消费）
+-- 7. 将订单ID追加到观测队列
+-- 该队列是纯观测/排障用途（真正的投递由 Java 侧的 RocketMQ 负责），因此必须**有界**：
+-- 原实现无 LTRIM 无 TTL，每次秒杀都永久堆积一条（SPEC-04 §1.6 G7）
 redis.call('LPUSH', 'seckill:order:queue', orderId)
+redis.call('LTRIM', 'seckill:order:queue', 0, 999)
+redis.call('EXPIRE', 'seckill:order:queue', 3600)
 
 return 0

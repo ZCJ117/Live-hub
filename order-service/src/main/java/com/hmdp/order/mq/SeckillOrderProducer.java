@@ -20,15 +20,16 @@ import jakarta.annotation.Resource;
  *
  * 消息主题：
  * - seckill-order-topic: 正常秒杀订单处理
- * - seckill-order-dlq-topic: 死信队列（消费端见 SeckillOrderDLQConsumer）
+ *
+ * <p>死信不在这里发：RocketMQ 在消费重试耗尽后自动投递到 {@code %DLQ%seckill-order-consumer-group}
+ * （SPEC-04 §5.3 方案 A）。原先声明的自定义 {@code seckill-order-dlq-topic} 没有任何生产者，
+ * 而监听它的消费者永远收不到消息——是"有死信兜底"的假象，已删除。
  */
 @Component
 @Slf4j
 public class SeckillOrderProducer {
 
     public static final String TOPIC_SECKILL_ORDER = "seckill-order-topic";
-
-    public static final String TOPIC_SECKILL_ORDER_DLQ = "seckill-order-dlq-topic";
 
     @Resource
     private RocketMQTemplate rocketMQTemplate;

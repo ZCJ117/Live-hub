@@ -31,6 +31,8 @@ public class SeckillMetrics {
     private Counter mqSendFailCounter;
     private Counter mqConsumeSuccessCounter;
     private Counter mqConsumeFailCounter;
+    private Counter retryExhaustedCounter;
+    private Counter dlqConsumedCounter;
 
     @PostConstruct
     public void init() {
@@ -88,6 +90,16 @@ public class SeckillMetrics {
                 .tag("type", "mq_consume")
                 .register(meterRegistry);
 
+        retryExhaustedCounter = Counter.builder("seckill.mq.retry.exhausted")
+                .description("消费重试已达上限数（SPEC-08 §5.5：原实现用业务字段判断，恒为 0、永不触发）")
+                .tag("type", "retry_exhausted")
+                .register(meterRegistry);
+
+        dlqConsumedCounter = Counter.builder("seckill.dlq.consumed")
+                .description("死信队列消费数（SPEC-04 §5.3：原实现监听一个永远无投递的 topic）")
+                .tag("type", "dlq")
+                .register(meterRegistry);
+
         log.info("秒杀监控指标初始化完成");
     }
 
@@ -137,6 +149,14 @@ public class SeckillMetrics {
 
     public void incrementMqConsumeFail() {
         mqConsumeFailCounter.increment();
+    }
+
+    public void incrementRetryExhausted() {
+        retryExhaustedCounter.increment();
+    }
+
+    public void incrementDlqConsumed() {
+        dlqConsumedCounter.increment();
     }
 
 }

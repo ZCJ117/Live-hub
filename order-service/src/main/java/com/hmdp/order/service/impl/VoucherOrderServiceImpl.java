@@ -16,6 +16,7 @@ import com.hmdp.order.mapper.VoucherOrderMapper;
 import com.hmdp.order.metrics.SeckillMetrics;
 import com.hmdp.order.mq.SeckillOrderProducer;
 import com.hmdp.order.service.IVoucherOrderService;
+import com.hmdp.order.service.SeckillFailMessages;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
@@ -113,16 +114,18 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 if (result == 1) {
                     seckillMetrics.incrementStockInsufficient();
                     log.warn("秒杀失败-库存不足: userId={}, voucherId={}", userId, voucherId);
-                    return Result.fail("库存不足");
+                    return Result.fail(SeckillFailMessages.STOCK_INSUFFICIENT);
                 } else if (result == 2) {
                     seckillMetrics.incrementDuplicateOrder();
                     log.warn("秒杀失败-重复下单: userId={}, voucherId={}", userId, voucherId);
-                    return Result.fail("不能重复下单");
+                    return Result.fail(SeckillFailMessages.DUPLICATE_ORDER);
                 } else {
-                    // result == 3：seckill:stock:{voucherId} 不存在，需预热；与真实"库存不足"区分
+                    // result == 3：seckill:stock:{voucherId} 不存在，需预热（运维态）。
+                    // 文案必须与下文的「MQ 发送失败」区分（SPEC-03 A8）：两者都回"系统繁忙"时，
+                    // 调用方无法判断该去预热库存还是去查 broker，处置动作完全不同
                     seckillMetrics.incrementRedisStockMissing();
                     log.error("秒杀失败-Redis库存key缺失，需预热: voucherId={}", voucherId);
-                    return Result.fail("系统繁忙，请稍后重试");
+                    return Result.fail(SeckillFailMessages.STOCK_KEY_MISSING);
                 }
             }
 
@@ -136,7 +139,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 seckillMetrics.incrementSeckillFail();
                 log.error("秒杀订单消息发送失败，已回滚Redis预扣: orderId={}, userId={}, voucherId={}",
                         orderId, userId, voucherId);
-                return Result.fail("系统繁忙，请稍后重试");
+                return Result.fail(SeckillFailMessages.MQ_SEND_FAILED);
             }
 
             seckillMetrics.incrementMqSendSuccess();

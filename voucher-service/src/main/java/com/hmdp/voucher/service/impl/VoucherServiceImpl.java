@@ -1,5 +1,6 @@
 package com.hmdp.voucher.service.impl;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Voucher;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static com.hmdp.utils.RedisConstants.SECKILL_DEDUCT_KEY;
@@ -106,5 +108,42 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
             return Result.fail("库存不足");
         }
         return Result.ok();
+    }
+
+    @Override
+    public Result getSeckillStock(Long voucherId) {
+        SeckillVoucher seckillVoucher = seckillVoucherService.getById(voucherId);
+        if (seckillVoucher == null) {
+            return Result.fail("秒杀券不存在");
+        }
+        return Result.ok(seckillVoucher.getStock());
+    }
+
+    @Override
+    @Transactional
+    public Result resetSeckillStock(Long voucherId, Integer stock) {
+        if (stock == null || stock < 0) {
+            return Result.fail("库存值非法");
+        }
+        if (seckillVoucherService.getById(voucherId) == null) {
+            return Result.fail("秒杀券不存在");
+        }
+        seckillVoucherService.update(Wrappers.<SeckillVoucher>lambdaUpdate()
+                .eq(SeckillVoucher::getVoucherId, voucherId)
+                .set(SeckillVoucher::getStock, stock));
+        log.warn("秒杀券 DB 库存被对账接口绝对回写: voucherId={}, stock={}", voucherId, stock);
+        return Result.ok();
+    }
+
+    @Override
+    public Result listActiveSeckillVoucherIds() {
+        LocalDateTime now = LocalDateTime.now();
+        List<Long> ids = seckillVoucherService.list(Wrappers.<SeckillVoucher>lambdaQuery()
+                        .le(SeckillVoucher::getBeginTime, now)
+                        .ge(SeckillVoucher::getEndTime, now))
+                .stream()
+                .map(SeckillVoucher::getVoucherId)
+                .toList();
+        return Result.ok(ids);
     }
 }

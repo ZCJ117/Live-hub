@@ -131,4 +131,22 @@ class SeckillVoucherServiceTest {
         assertFalse(r.getSuccess());
         assertEquals("未登录，请先登录", r.getErrorMsg());
     }
+
+    @Test
+    void 库存key缺失与MQ发送失败必须给出可区分的文案() {
+        // SPEC-03 §9 A8：Result 没有 code 字段，错误文案就是错误码。
+        // 两类失败的处置动作完全不同（去预热库存 vs 去查 broker），不能共用「系统繁忙」。
+        scriptReturns(3L);
+        String stockKeyMissing = service.seckillVoucher(1L).getErrorMsg();
+
+        scriptReturns(0L);
+        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(false);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+        String mqSendFailed = service.seckillVoucher(1L).getErrorMsg();
+
+        assertNotEquals(stockKeyMissing, mqSendFailed,
+                "SPEC-03 A8 要求可区分的错误码：「秒杀通道未就绪」与「订单提交繁忙」不能是同一句文案");
+    }
 }

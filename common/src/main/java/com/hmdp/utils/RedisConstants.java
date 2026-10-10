@@ -40,6 +40,34 @@ public class RedisConstants {
     public static final String SECKILL_ORDER_DETAIL_KEY = "seckill:order:detail:";
     /** 扣减幂等 Set（SPEC-03 §5.4，键为 orderId） */
     public static final String SECKILL_DEDUCT_KEY = "seckill:deduct:";
+    /** 待处理订单列表（消费重试耗尽/死信落地，供人工处置；SPEC-04 §5.3） */
+    public static final String SECKILL_PENDING_KEY = "seckill:order:pending";
+    /** seckill.lua 的临时队列（SPEC-04 §1.6：曾无消费者且无界增长，现加 LTRIM + TTL 收敛） */
+    public static final String SECKILL_ORDER_QUEUE_KEY = "seckill:order:queue";
+    /** 秒杀观察类 List 的长度上限（SPEC-04 §5.3/§5.6：超限丢弃最旧项） */
+    public static final Integer SECKILL_LIST_MAX_SIZE = 1000;
+    /** 明细 hash / 临时队列的 TTL（秒，SPEC-04 §5.2：清理失败时也不无界增长） */
+    public static final Long SECKILL_DETAIL_TTL_SECONDS = 3600L;
+
+    /**
+     * 秒杀 key 工厂 —— 唯一事实源（SPEC-04 §5.2）。
+     *
+     * <p>三处拼法（写入端 {@code seckill.lua}、清理端 {@code SeckillOrderConsumer}、
+     * 读取端 {@code SeckillConsistencyServiceImpl}）历史上各写一份，导致「写的 key 和删的 key 不同」
+     * 这类契约漂移（SPEC-04 §1.5）。改动此处必须同步 {@code order-service/src/main/resources/seckill.lua}，
+     * 由 {@code SeckillKeyContractTest} 锁定。
+     */
+    public static String stockKey(Long voucherId) {
+        return SECKILL_STOCK_KEY + voucherId;
+    }
+
+    public static String orderKey(Long voucherId) {
+        return SECKILL_ORDER_SET_KEY + voucherId;
+    }
+
+    public static String detailKey(Long voucherId) {
+        return SECKILL_ORDER_DETAIL_KEY + voucherId;
+    }
     public static final String BLOG_LIKED_KEY = "blog:liked:";
     public static final String FEED_KEY = "feed:";
     /** 关注流收件箱 ZSet 的 TTL（天）。SPEC-09 §1.5：避免僵尸用户的收件箱永久驻留 */
@@ -48,5 +76,13 @@ public class RedisConstants {
     public static final String USER_SIGN_KEY = "sign:";
 
     public static final String SHOP_LIST_KEY = "shop:list:";
+
+    /**
+     * MQ 消费者前置去重 key 前缀（SPEC-08 §5.4），完整键 = 前缀 + msgId。
+     *
+     * <p>同时服务 social-service（工单通知）与 rag-service 两侧的消费者幂等，
+     * 故收口在此而非各自拼写，避免「写的键与判重的键不同」这类契约漂移。
+     */
+    public static final String MQ_DEDUP_KEY = "mq:dedup:";
 
 }

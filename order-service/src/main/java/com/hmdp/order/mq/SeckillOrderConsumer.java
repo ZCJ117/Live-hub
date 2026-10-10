@@ -1,6 +1,7 @@
 package com.hmdp.order.mq;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.SeckillOrderMessage;
 import com.hmdp.entity.VoucherOrder;
@@ -9,6 +10,7 @@ import com.hmdp.order.mapper.VoucherOrderMapper;
 import com.hmdp.order.metrics.SeckillMetrics;
 import com.hmdp.utils.RedisConstants;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.redisson.api.RLock;
@@ -31,6 +33,11 @@ import java.util.concurrent.TimeUnit;
  * 4. 记录消费指标用于监控
  * 
  * 采用分布式锁保证同一订单的串行处理，避免重复消费导致的数据不一致问题。
+ *
+ * <p><b>泛型为什么是 {@link MessageExt} 而不是业务类型</b>：只有 {@code MessageExt} 能拿到
+ * RocketMQ 的**真实重试次数** {@code getReconsumeTimes()}。原实现读的是业务字段
+ * {@code SeckillOrderMessage.retryCount}，它只在零调用的 {@code sendToDeadLetterQueue} 里自增，
+ * 恒为 0——"重试已达上限，需要人工干预"的告警**永不打印**（SPEC-04 §5.4 / SPEC-08 §1.4）。
  */
 @Component
 @RocketMQMessageListener(
@@ -39,7 +46,7 @@ import java.util.concurrent.TimeUnit;
         maxReconsumeTimes = 3
 )
 @Slf4j
-public class SeckillOrderConsumer implements RocketMQListener<SeckillOrderMessage> {
+public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
 
     @Resource
     private VoucherOrderMapper voucherOrderMapper;
@@ -58,9 +65,29 @@ public class SeckillOrderConsumer implements RocketMQListener<SeckillOrderMessag
 
     private static final int MAX_RETRY_COUNT = 3;
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * RocketMQ 投递入口：这里只做反序列化与真实重试次数的提取。
+     *
+     * <p>反序列化失败无计可施（消息体已损坏），直接抛出让 RocketMQ 重试直至进死信队列
+     * {@code %DLQ%seckill-order-consumer-group}，由 {@link SeckillOrderDLQConsumer} 兜底留痕。
+     */
+    @Override
+    public void onMessage(MessageExt messageExt) {
+        SeckillOrderMessage message;
+        try {
+            message = OBJECT_MAPPER.readValue(messageExt.getBody(), SeckillOrderMessage.class);
+        } catch (Exception e) {
+            seckillMetrics.incrementMqConsumeFail();
+            throw new RuntimeException("秒杀订单消息反序列化失败: msgId=" + messageExt.getMsgId(), e);
+        }
+        handleOrder(message, messageExt.getReconsumeTimes());
+    }
+
     /**
      * 处理秒杀订单消息
-     * 
+     *
      * 消费流程：
      * 1. 获取分布式锁，保证同一订单的串行处理
      * 2. 检查订单是否已存在（幂等性保障）
@@ -68,21 +95,21 @@ public class SeckillOrderConsumer implements RocketMQListener<SeckillOrderMessag
      * 4. 调用库存服务扣减数据库库存
      * 5. 创建订单记录到数据库
      * 6. 清理Redis中的临时订单数据
-     * 
+     *
      * 异常处理：
      * - 任何步骤失败都会回滚Redis预扣数据
-     * - 重试次数超过上限后需要人工干预
-     * 
-     * @param message 秒杀订单消息
+     * - 重试次数超过上限后告警并计入指标，随后抛出让框架投递到死信队列
+     *
+     * @param message        秒杀订单消息
+     * @param reconsumeTimes RocketMQ 的真实重试次数（首次投递为 0）
      */
-    @Override
-    public void onMessage(SeckillOrderMessage message) {
+    public void handleOrder(SeckillOrderMessage message, int reconsumeTimes) {
         Long orderId = message.getOrderId();
         Long userId = message.getUserId();
         Long voucherId = message.getVoucherId();
 
-        log.info("开始处理秒杀订单消息: orderId={}, userId={}, voucherId={}, retryCount={}",
-                orderId, userId, voucherId, message.getRetryCount());
+        log.info("开始处理秒杀订单消息: orderId={}, userId={}, voucherId={}, reconsumeTimes={}",
+                orderId, userId, voucherId, reconsumeTimes);
 
         String lockKey = "lock:order:" + orderId;
         RLock lock = redissonClient.getLock(lockKey);
@@ -172,9 +199,12 @@ public class SeckillOrderConsumer implements RocketMQListener<SeckillOrderMessag
             log.error("处理秒杀订单消息异常: orderId={}, error={}", orderId, e.getMessage(), e);
             seckillMetrics.incrementMqConsumeFail();
 
-            if (message.getRetryCount() >= MAX_RETRY_COUNT) {
-                log.error("订单处理重试次数已达上限，需要人工干预: orderId={}, retryCount={}",
-                        orderId, message.getRetryCount());
+            // 用 RocketMQ 的真实重试次数。框架在 maxReconsumeTimes 耗尽后会把消息投到
+            // %DLQ%seckill-order-consumer-group，这里先把告警与指标打出来（验收 A4）
+            if (reconsumeTimes >= MAX_RETRY_COUNT) {
+                log.error("订单处理重试次数已达上限，需要人工干预: orderId={}, reconsumeTimes={}",
+                        orderId, reconsumeTimes);
+                seckillMetrics.incrementRetryExhausted();
             }
             throw new RuntimeException("订单处理失败", e);
         }

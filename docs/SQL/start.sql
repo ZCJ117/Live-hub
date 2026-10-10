@@ -168,6 +168,21 @@ CREATE TABLE `tb_user` (
 ALTER TABLE `tb_voucher_order`
     ADD UNIQUE KEY `uk_user_voucher` (`user_id`, `voucher_id`);
 
+-- 秒杀一致性修复审计表（SPEC-04 §5.5 / §6 步骤 8）
+-- 只记"真正发生了写入"的修复动作；只读诊断不落库，避免定时对账把表刷成噪音。
+CREATE TABLE `tb_seckill_consistency_audit`
+(
+    `id`           bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `voucher_id`   bigint unsigned NOT NULL COMMENT '秒杀券ID',
+    `action`       varchar(32)     NOT NULL COMMENT '修复动作：DB_TO_REDIS/SYNC_REDIS_TO_DB/REBUILD_STOCK_KEY',
+    `before_stock` int             DEFAULT NULL COMMENT '修复前库存（key 缺失时为空）',
+    `after_stock`  int             NOT NULL COMMENT '修复后库存',
+    `detail`       varchar(255)    DEFAULT NULL COMMENT '修复口径说明',
+    `create_time`  datetime        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_voucher_time` (`voucher_id`, `create_time` DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='秒杀一致性修复审计';
+
 -- 遗留错位表处理（SPEC-02 §5.2）：旧脚本曾把 blog 评论结构建成 tb_shop_comments。
 -- 本脚本已直接创建正确的 tb_blog_comments，故此处不无条件 RENAME/drop——
 -- 无条件执行会在干净库上报 "table doesn't exist"，破坏"空库执行零错误"的验收（A9）。

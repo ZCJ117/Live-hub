@@ -26,4 +26,22 @@ public interface IVoucherService extends IService<Voucher> {
      * @return 成功；或库存不足失败
      */
     Result deductStock(Long voucherId, Long orderId);
+
+    /**
+     * 读取秒杀券 DB 库存（内部端点，SPEC-04 §5.5 对账用）
+     */
+    Result getSeckillStock(Long voucherId);
+
+    /**
+     * 绝对回写秒杀券 DB 库存（内部端点，SPEC-04 §5.5 修复用）
+     *
+     * <p>秒杀主链路只允许 {@link #deductStock} 的相对扣减；绝对回写是**运维修复**语义，
+     * 仅供 order-service 的对账/修复接口调用，故单独成方法并打 warn 日志留痕。
+     */
+    Result resetSeckillStock(Long voucherId, Integer stock);
+
+    /**
+     * 活跃秒杀券 ID 列表（begin_time &lt;= now &lt;= end_time），供定时对账扫描（SPEC-04 §5.6）
+     */
+    Result listActiveSeckillVoucherIds();
 }
