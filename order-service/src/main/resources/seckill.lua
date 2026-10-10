@@ -2,6 +2,12 @@
 -- 实现库存预检和一人一单校验的原子操作
 -- 返回值: 0-成功, 1-库存不足, 2-重复下单, 3-库存key缺失(需预热)
 --
+-- 【明细 Hash 值契约】seckill:order:detail:{voucherId} 的 field 值为 JSON：
+--   {"voucherId":"..","userId":"..","orderId":"..","ts":"<epoch millis>","retryCount":<n>}
+--   ts         —— 写入时刻，由 Java 侧以 ARGV[4] 传入（Lua 沙箱无可靠 os.time）；在途补偿器据此判龄
+--   retryCount —— 已重投次数，本脚本恒写 0；由在途补偿器与 DLQ 消费者递增
+--   消费端**不解析**该 JSON（从 MQ 消息体取字段），故新增字段为纯增量、无解析风险（SPEC-14 §7 M6）
+--
 -- 【库存 owner 约定】seckill:stock:{voucherId} 的扣减权只属于本脚本（order-service 是秒杀流量入口）。
 -- voucher-service 只扣 DB 库存，不得再操作该 key——两侧同时扣减会造成 2 倍速消耗（SPEC-03 §1.2）。
 --
@@ -12,6 +18,7 @@
 local voucherId = ARGV[1]
 local userId = ARGV[2]
 local orderId = ARGV[3]
+local ts = ARGV[4]
 
 -- Redis Key定义
 local stockKey = 'seckill:stock:' .. voucherId
@@ -45,7 +52,9 @@ redis.call('SADD', orderKey, userId)
 local orderInfo = cjson.encode({
     voucherId = voucherId,
     userId = userId,
-    orderId = orderId
+    orderId = orderId,
+    ts = ts,
+    retryCount = 0
 })
 redis.call('HSET', orderDetailKey, orderId, orderInfo)
 -- 补 TTL：消费端清理失败（进程崩溃等）时明细 hash 也不会无界驻留（SPEC-04 §5.2 G7）

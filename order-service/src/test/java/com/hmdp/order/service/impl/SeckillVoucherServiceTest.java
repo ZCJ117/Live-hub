@@ -10,6 +10,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -55,7 +56,8 @@ class SeckillVoucherServiceTest {
     }
 
     private void scriptReturns(Long value) {
-        when(stringRedisTemplate.execute(any(), anyList(), any(), any(), any())).thenReturn(value);
+        // SPEC-14 §7 M4：ARGV 从 3 个增为 4 个（新增 ts），桩必须同步，否则全部落到 null 分支
+        when(stringRedisTemplate.execute(any(), anyList(), any(), any(), any(), any())).thenReturn(value);
     }
 
     @Test
@@ -298,5 +300,23 @@ class SeckillVoucherServiceTest {
         Result r = service.seckillVoucher(1L);
 
         assertEquals("库存不足", r.getErrorMsg(), "不可解析的窗口字段应按「无窗口」放行，不得误拒");
+    }
+
+    // ---------- SPEC-14 P0-2 / B1：明细 JSON 增加 ts ----------
+
+    @Test
+    void 调用脚本时传入写入时刻作为ARGV4() {
+        scriptReturns(1L);
+
+        service.seckillVoucher(1L);
+
+        ArgumentCaptor<String> tsCaptor = ArgumentCaptor.forClass(String.class);
+        verify(stringRedisTemplate).execute(any(), anyList(), eq("1"), eq("7"), eq("9001"), tsCaptor.capture());
+
+        long ts = Long.parseLong(tsCaptor.getValue());
+        long now = System.currentTimeMillis();
+        // 允许 5 秒时钟裕度：这是"当前时刻"而不是任何硬编码值
+        assertTrue(Math.abs(now - ts) < 5_000,
+                "ARGV[4] 必须是当前 epoch 毫秒（在途补偿器据此判龄），实际=" + ts + " now=" + now);
     }
 }

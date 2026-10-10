@@ -113,7 +113,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             Long scriptResult = stringRedisTemplate.execute(
                     SECKILL_SCRIPT,
                     Collections.emptyList(),
-                    voucherId.toString(), userId.toString(), String.valueOf(orderId));
+                    voucherId.toString(), userId.toString(), String.valueOf(orderId),
+                    // ARGV[4]：写入时刻，由在途补偿器用于判定在途超时（SPEC-14 P0-2 / §7 M6）
+                    String.valueOf(nowMillis()));
 
             // 脚本返回 nil（Redis 异常）按 key 缺失处理，避免拆箱 NPE
             long result = scriptResult == null ? 3L : scriptResult;
