@@ -22,6 +22,24 @@ docker exec hmdp-redis redis-cli -a "$REDIS_PASSWORD" SMEMBERS risk:blacklist:us
 # 两者都应返回空集合；非空则先 SREM 移除压测机 IP / 测试用户
 ```
 
+**⚠️ Docker 不可用时的替代写法**：本手册的 redis/mysql 命令默认走 `docker exec hmdp-redis|hmdp-mysql`。
+若 Docker Desktop 引擎未运行（`docker ps` 报 `failed to connect to the docker API ... dockerDesktopLinuxEngine`），
+但只要 3306/6379 上有**本机原生** MySQL/Redis（同端口），把命令里的
+
+```bash
+docker exec hmdp-redis redis-cli -a "$REDIS_PASSWORD"
+docker exec hmdp-mysql mysql -uroot -p"$MYSQL_PASSWORD"
+```
+
+分别换成直连（去掉 `docker exec <容器>` 前缀即可，凭据与端口不变）：
+
+```bash
+redis-cli -a "$REDIS_PASSWORD"
+mysql -uroot -p"$MYSQL_PASSWORD"
+```
+
+其余参数、键名、SQL 一律不动。
+
 **⚠️ Nacos 覆盖检查（必做）**：`order-service/src/main/resources/bootstrap.yaml` 中有
 `spring.config.import: optional:nacos:order-service.yaml`。若 Nacos 上存在同名 data-id
 且其内容含 `datasource` / `redis` 配置，**它会覆盖本地的池化参数**，Task 1 的改动不会生效。
@@ -98,7 +116,9 @@ done
 # 校验形同虚设（这正是上一版脚本的缺陷）。
 TOTAL=$(grep -c '[^[:space:]]' docs/loadtest/tokens.csv)
 echo "有效 token 数 = $TOTAL（必须 >= 并发数 1000/500/100）"
-[ "$TOTAL" -ge 1000 ] || echo "!! token 池不足，先排查登录失败原因再压测"
+# 非零退出：token 池不足时**必须中止**。若只 echo 告警，操作者极易忽略后直接进入 §2，
+# 而"每 loginId 5 QPS"的限流会把结果染成"QPS 上不去"的假象，得出错误结论。
+[ "$TOTAL" -ge 1000 ] || { echo "!! token 池不足（$TOTAL < 1000），已中止；先排查登录失败原因再压测"; exit 1; }
 ```
 
 > `login:code:` 的键前缀见 `RedisConstants.LOGIN_CODE_KEY`；TTL 给 300 秒足够覆盖整段建池时间。
