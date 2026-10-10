@@ -272,10 +272,8 @@ class SeckillVoucherServiceTest {
     @Test
     void window字段为null时放行_键存在但值缺失() {
         // 真实 Redis 对不存在的 field 返回 null 而非缺项：multiGet 得到 [null, null]。
-        // 实测（变异验证）：删掉 checkSeckillWindow 里的 `window.get(i) == null` 守卫，本用例**仍绿**——
-        // String.valueOf(null Object) 返回字面量 "null"，Long.parseLong("null") 抛 NumberFormatException，
-        // 被下方「格式非法→放行」分支兜住，结果同为放行。即 null 守卫对本输入是冗余的第二道闸，
-        // 断言只能锁住「最终放行」这一可观测行为，锁不住具体走哪条分支。
+        // 该输入由 parseEpochMillis 的 `raw == null` 早返回直接兜住（SPEC-14 P0-3 评审后改成显式解析）：
+        // 不再依赖 String.valueOf(null) → 字面量 "null" → parseLong 抛异常这条偶然路径。
         clockIs(FIXED_NOW);
         when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
         when(hashOperations.multiGet("seckill:window:1", List.of("begin", "end")))
@@ -287,5 +285,18 @@ class SeckillVoucherServiceTest {
         assertEquals("库存不足", r.getErrorMsg(), "字段为 null 应按「无窗口」放行，不得 NPE 也不得误拒");
         verify(seckillMetrics, never()).incrementSeckillNotStarted();
         verify(seckillMetrics, never()).incrementSeckillEnded();
+    }
+
+    @Test
+    void window字段为非数字时放行() {
+        clockIs(FIXED_NOW);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(hashOperations.multiGet("seckill:window:1", List.of("begin", "end")))
+                .thenReturn(java.util.Arrays.asList("not-a-number", "123"));
+        scriptReturns(1L);
+
+        Result r = service.seckillVoucher(1L);
+
+        assertEquals("库存不足", r.getErrorMsg(), "不可解析的窗口字段应按「无窗口」放行，不得误拒");
     }
 }

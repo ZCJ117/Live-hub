@@ -194,16 +194,13 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             log.warn("读取秒杀活动时间窗失败，放行: voucherId={}", voucherId, e);
             return null;
         }
-        if (window == null || window.size() < 2 || window.get(0) == null || window.get(1) == null) {
+        if (window == null || window.size() < 2) {
             return null;
         }
 
-        long beginMs;
-        long endMs;
-        try {
-            beginMs = Long.parseLong(String.valueOf(window.get(0)));
-            endMs = Long.parseLong(String.valueOf(window.get(1)));
-        } catch (NumberFormatException e) {
+        Long beginMs = parseEpochMillis(window.get(0));
+        Long endMs = parseEpochMillis(window.get(1));
+        if (beginMs == null || endMs == null) {
             log.warn("秒杀活动时间窗格式非法，放行: voucherId={}, raw={}", voucherId, window);
             return null;
         }
@@ -220,6 +217,26 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail(SeckillFailMessages.SECKILL_ENDED);
         }
         return null;
+    }
+
+    /**
+     * 解析时间窗字段为 epoch millis。
+     *
+     * <p>null / 非数字一律返回 null，由调用方按「无窗口」放行。
+     *
+     * <p>刻意**不**先把值转成字符串再 {@code Long.parseLong}：{@code String.valueOf((Object) null)}
+     * 会得到字面量 "null"，再靠 parseLong 抛 NumberFormatException 兜底。那样写会让上层的
+     * null 判断看起来在保护什么、实则不参与判定（SPEC-14 P0-3 评审发现）。
+     */
+    private Long parseEpochMillis(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.toString().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**
