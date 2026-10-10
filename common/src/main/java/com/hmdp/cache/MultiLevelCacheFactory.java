@@ -14,6 +14,7 @@ public class MultiLevelCacheFactory {
     private final StringRedisTemplate stringRedisTemplate;
     private final CacheInvalidationPublisher publisher;
     private final LocalCacheRegistry registry;
+    private final CacheRebuildLock rebuildLock;
     private final MultiLevelCacheProperties properties;
 
     public MultiLevelCacheFactory(StringRedisTemplate stringRedisTemplate,
@@ -23,6 +24,8 @@ public class MultiLevelCacheFactory {
         this.stringRedisTemplate = stringRedisTemplate;
         this.publisher = publisher;
         this.registry = registry;
+        // 锁实例在工厂内共享：令牌表按业务 key 索引，多个缓存共用一份不会串号
+        this.rebuildLock = new RedisCacheRebuildLock(stringRedisTemplate);
         this.properties = properties;
     }
 
@@ -35,7 +38,7 @@ public class MultiLevelCacheFactory {
      */
     public <V> MultiLevelCache<V> create(String name, Type valueType) {
         MultiLevelCache<V> cache =
-                new MultiLevelCache<>(name, valueType, stringRedisTemplate, publisher, properties);
+                new MultiLevelCache<>(name, valueType, stringRedisTemplate, publisher, rebuildLock, properties);
         registry.register(cache);
         return cache;
     }

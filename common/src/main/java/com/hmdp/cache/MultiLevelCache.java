@@ -34,14 +34,23 @@ public class MultiLevelCache<V> {
     private final Type valueType;
     private final StringRedisTemplate stringRedisTemplate;
     private final CacheInvalidationPublisher publisher;
+    private final CacheRebuildLock rebuildLock;
     private final Cache<String, V> l1;
 
+    /** 抢锁失败后的重读间隔（毫秒） */
+    private static final long LOCK_WAIT_STEP_MILLIS = 50L;
+
+    /** 抢锁失败后的最长等待（毫秒）：超时即降级为无锁回源 */
+    private static final long MAX_LOCK_WAIT_MILLIS = 500L;
+
     MultiLevelCache(String name, Type valueType, StringRedisTemplate stringRedisTemplate,
-                    CacheInvalidationPublisher publisher, MultiLevelCacheProperties properties) {
+                    CacheInvalidationPublisher publisher, CacheRebuildLock rebuildLock,
+                    MultiLevelCacheProperties properties) {
         this.name = name;
         this.valueType = valueType;
         this.stringRedisTemplate = stringRedisTemplate;
         this.publisher = publisher;
+        this.rebuildLock = rebuildLock;
         this.l1 = Caffeine.newBuilder()
                 .maximumSize(properties.getL1MaxSize())
                 .expireAfterWrite(properties.getL1Ttl())
@@ -50,7 +59,15 @@ public class MultiLevelCache<V> {
     }
 
     /**
-     * 读：L1 → L2 → loader → 回填 L2 与 L1。
+     * 读：L1 → L2 → 【互斥】loader → 回填 L2 与 L1。
+     *
+     * <p><b>互斥的目的（SPEC-15 P1-2）</b>：L2 未命中时若所有线程一起回源，
+     * 一个热点 key 过期瞬间就能把 DB 连接打满（缓存击穿）。同一 key 的并发回源
+     * 收敛为 1 次。
+     *
+     * <p><b>两条降级路径</b>（都不改变"读不到就回源"的可用性）：
+     * 抢不到锁 → 短暂重读 L2；等满 {@value #MAX_LOCK_WAIT_MILLIS}ms 仍未命中 → 无锁回源。
+     * 后者覆盖"持锁者崩溃/回源极慢"的场景，宁可多打一次 DB 也不让接口失败。
      *
      * @return 值；loader 返回 null 时写空值标记并返回 null
      */
@@ -60,19 +77,61 @@ public class MultiLevelCache<V> {
             return local;
         }
 
+        L2Result<V> fromL2 = readL2(key);
+        if (fromL2.present()) {
+            return fromL2.value();
+        }
+
+        String rebuildToken = rebuildLock.tryLock(key);
+        if (rebuildToken != null) {
+            try {
+                // 双检：等锁期间可能已有其它线程/实例完成了重建（含写入空值标记）
+                L2Result<V> doubleChecked = readL2(key);
+                if (doubleChecked.present()) {
+                    return doubleChecked.value();
+                }
+                return loadFromSource(key, loader);
+            } finally {
+                // 令牌必须原样回传：锁实现靠它做"只删自己的锁"的比对
+                rebuildLock.unlock(key, rebuildToken);
+            }
+        }
+
+        for (long waited = 0; waited < MAX_LOCK_WAIT_MILLIS; waited += LOCK_WAIT_STEP_MILLIS) {
+            sleepQuietly(LOCK_WAIT_STEP_MILLIS);
+            L2Result<V> retried = readL2(key);
+            if (retried.present()) {
+                return retried.value();
+            }
+        }
+
+        log.warn("缓存重建锁等待超时，降级为无锁回源。key={}", key);
+        return loadFromSource(key, loader);
+    }
+
+    /** L2 读取结论：{@code present=true} 表示 L2 已有结论（命中空值标记时 {@code value=null}） */
+    private record L2Result<V>(boolean present, V value) {
+    }
+
+    private L2Result<V> readL2(String key) {
         String json = redisGet(key);
         if (StrUtil.isNotBlank(json)) {
             V value = decode(json, key);
             if (value != null) {
                 l1.put(key, value);
-                return value;
+                return new L2Result<>(true, value);
             }
-            // 反序列化失败按未命中处理，落到下面的回源分支
-        } else if (json != null) {
-            // 命中空值标记：DB 已确认不存在，直接返回；标记不进 L1（设计文档 §5.1）
-            return null;
+            // 反序列化失败：按未命中处理，落到回源分支
+            return new L2Result<>(false, null);
         }
+        if (json != null) {
+            // 命中空值标记：DB 已确认不存在，直接返回；标记不进 L1（设计文档 §5.1）
+            return new L2Result<>(true, null);
+        }
+        return new L2Result<>(false, null);
+    }
 
+    private V loadFromSource(String key, Supplier<V> loader) {
         V loaded = loader.get();
         if (loaded == null) {
             redisSet(key, "", CACHE_NULL_TTL);
@@ -81,6 +140,14 @@ public class MultiLevelCache<V> {
         redisSet(key, JSONUtil.toJsonStr(loaded), cacheTtlSeconds());
         l1.put(key, loaded);
         return loaded;
+    }
+
+    private void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

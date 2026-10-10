@@ -18,8 +18,16 @@ import org.springframework.data.redis.core.ValueOperations;
 
 import java.lang.reflect.Type;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.hmdp.utils.RedisConstants.*;
@@ -45,6 +53,11 @@ class MultiLevelCacheTest {
     @BeforeEach
     void setUp() {
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        // 既有用例走 factory.create(...)，内部装配的是 RedisCacheRebuildLock。
+        // 不桩 SETNX 的话它会返回 null → 判定为"没抢到锁" → 每个用例白等 500ms 超时，
+        // 且走的是降级分支而不是待测路径。桩成"总能抢到"，让既有用例维持改动前的语义。
+        when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any(TimeUnit.class)))
+                .thenReturn(true);
         registry = new LocalCacheRegistry();
         factory = new MultiLevelCacheFactory(redisTemplate, publisher, registry, defaultProperties());
     }
@@ -108,7 +121,12 @@ class MultiLevelCacheTest {
     @Test
     void loader返回null时写短TTL空值标记且不写L1() {
         String key = CACHE_SHOP_KEY + 99999L;
-        when(valueOperations.get(key)).thenReturn(null, "");
+        // P1-2 适配：抢到锁后有一次"双检 L2"，redisGet 从 2 次变 3 次。
+        // 这里按 redisGet 调用次序给出（而不是 thenReturn(null, "") 的连续值，
+        // 后者一旦被多消费一次就会静默回落到最后一个值 ""，让断言失去意义）。
+        // 断言本身不变：第 3 次 get 仍须读到空值标记，证明标记真的写进了 L2 而非 L1。
+        AtomicInteger reads = new AtomicInteger();
+        when(valueOperations.get(key)).thenAnswer(inv -> reads.getAndIncrement() == 2 ? "" : null);
         MultiLevelCache<Shop> cache = factory.create("shop", Shop.class);
 
         assertNull(cache.get(key, () -> null));
@@ -120,7 +138,9 @@ class MultiLevelCacheTest {
         assertNull(cache.get(key, () -> {
             throw new AssertionError("空值标记未生效");
         }));
-        verify(valueOperations, times(2)).get(key);
+        // P1-2 适配：抢到锁后的"双检 L2"使首次 get 的 Redis 读从 2 次变 3 次；
+        // 本条仍锁定"L2 命中空值标记 → 读 Redis 但不再回源"的语义（loader 未被调用即证）。
+        verify(valueOperations, times(3)).get(key);
     }
 
     /** U4：泛型 List 值可正确往返（hutool 的 java.lang.reflect.Type 反序列化） */
@@ -294,5 +314,95 @@ class MultiLevelCacheTest {
         Shop refreshed = cache.get(key, () -> new Shop().setId(8L).setName("新名"));
 
         assertEquals("新名", refreshed.getName(), "L1 TTL 到期后必须回源");
+    }
+
+    /**
+     * U12：N 并发同 key 回源 → loader 只调用 1 次（SPEC-15 §6 验收 2）。
+     *
+     * <p>实现方式：用真实语义的进程内 L2（ConcurrentHashMap）+ 一个原子布尔锁，
+     * 因为 Mockito 无法复现 SETNX 的原子性，而这条验收的全部意义就在"原子性收敛"。
+     */
+    @Test
+    void 并发同key回源时loader只调用一次() throws Exception {
+        Map<String, String> redisStore = new ConcurrentHashMap<>();
+        when(valueOperations.get(anyString())).thenAnswer(inv -> redisStore.get(inv.getArgument(0)));
+        doAnswer(inv -> {
+            redisStore.put(inv.getArgument(0), inv.getArgument(1));
+            return null;
+        }).when(valueOperations).set(anyString(), anyString(), anyLong(), any(TimeUnit.class));
+
+        CacheRebuildLock singleFlight = new CacheRebuildLock() {
+            private final AtomicBoolean held = new AtomicBoolean();
+
+            @Override
+            public String tryLock(String key) {
+                return held.compareAndSet(false, true) ? "test-token" : null;
+            }
+
+            @Override
+            public void unlock(String key, String token) {
+                held.set(false);
+            }
+        };
+
+        String key = CACHE_SHOP_KEY + 202L;
+        MultiLevelCache<Shop> cache = new MultiLevelCache<>(
+                "single-flight", Shop.class, redisTemplate, publisher, singleFlight, defaultProperties());
+
+        AtomicInteger loads = new AtomicInteger();
+        int concurrency = 10;
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(concurrency);
+        try {
+            List<Future<Shop>> futures = new ArrayList<>();
+            for (int i = 0; i < concurrency; i++) {
+                futures.add(pool.submit(() -> {
+                    start.await();
+                    return cache.get(key, () -> {
+                        loads.incrementAndGet();
+                        // 持锁回源耗时 100ms：等待侧会在 50ms/100ms 两次重读 L2
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        return new Shop().setId(202L).setName("并发回源");
+                    });
+                }));
+            }
+            start.countDown();
+
+            for (Future<Shop> f : futures) {
+                assertEquals("并发回源", f.get(10, TimeUnit.SECONDS).getName());
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertEquals(1, loads.get(),
+                "并发同 key 回源必须收敛为 1 次 loader 调用，实际=" + loads.get());
+    }
+
+    /** U13：抢不到锁且等待超时 → 降级为无锁回源（保可用性，不把缓存失效放大成接口失败） */
+    @Test
+    void 等待锁超时后降级为无锁回源() {
+        String key = CACHE_SHOP_KEY + 203L;
+        when(valueOperations.get(key)).thenReturn(null);
+        CacheRebuildLock neverAcquires = new CacheRebuildLock() {
+            @Override
+            public String tryLock(String k) {
+                return null;
+            }
+
+            @Override
+            public void unlock(String k, String token) {
+            }
+        };
+        MultiLevelCache<Shop> cache = new MultiLevelCache<>(
+                "degraded", Shop.class, redisTemplate, publisher, neverAcquires, defaultProperties());
+
+        Shop shop = cache.get(key, () -> new Shop().setId(203L).setName("降级回源"));
+
+        assertEquals("降级回源", shop.getName(), "持锁者异常时必须降级回源，而不是返回 null");
     }
 }
