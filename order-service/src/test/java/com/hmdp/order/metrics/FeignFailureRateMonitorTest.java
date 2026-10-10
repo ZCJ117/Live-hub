@@ -78,13 +78,18 @@ class FeignFailureRateMonitorTest {
             monitor.record(false);
         }
         assertTrue(monitor.isAlerted());
+        assertEquals(1, monitor.alertCount(), "第 10 次失败应触发且仅触发一次告警");
 
-        // 再失败 5 次：窗口仍是满的失败，但不该再次进入告警态（只是保持告警中）
+        // 再失败 5 次：窗口仍是满的失败，但不该再次触发告警（只是保持告警中）
         for (int i = 0; i < 5; i++) {
             monitor.record(false);
         }
 
-        assertFalse(monitor.isArmed(), "未出现成功前不得重新武装，否则会刷屏");
+        // 用 alertCount 而不是 isArmed 来断言“节流”：
+        // isArmed()==false 是恒真的（去掉实现的 !armed 早退后它照样是 false，因为告警分支会再置一次），
+        // 断言它等于没断言。只有累计次数能证伪“每来一次失败就刷一条 WARN”。
+        assertEquals(1, monitor.alertCount(), "同一告警态内不得重复告警，否则会刷屏");
+        assertFalse(monitor.isArmed(), "未出现成功前不得重新武装");
     }
 
     @Test

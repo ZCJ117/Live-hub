@@ -44,6 +44,15 @@ public class FeignFailureRateMonitor {
     /** 是否已进入告警态（仅用于测试断言） */
     private boolean alerted = false;
 
+    /**
+     * 累计告警次数（测试与排障用）。
+     *
+     * <p>它存在的唯一理由：让「同一窗口只告警一次」这条断言**可证伪**。
+     * 只断言 {@code isArmed()==false} 是恒真的——即使去掉实现里的 {@code !armed} 早退，
+     * 后续失败仍会重新进入告警分支把 armed 再置假，断言照样通过，节流是否真的生效无从判断。
+     */
+    private int alertCount = 0;
+
     public FeignFailureRateMonitor(SeckillMetrics seckillMetrics) {
         this.seckillMetrics = seckillMetrics;
     }
@@ -77,6 +86,7 @@ public class FeignFailureRateMonitor {
         if (rate >= FAILURE_RATE_THRESHOLD) {
             armed = false;
             alerted = true;
+            alertCount++;
             log.warn("Feign 失败率超阈值: {}/{} = {}%（阈值 {}%）——voucher-service 可能已劣化，"
                             + "消费端将快速失败而非线性堆积。明细指标见 seckill.feign.call",
                     failures, window.size(), Math.round(rate * 100),
@@ -92,5 +102,10 @@ public class FeignFailureRateMonitor {
     /** 是否仍可再次告警（测试用） */
     public synchronized boolean isArmed() {
         return armed;
+    }
+
+    /** 累计告警次数（测试用）：节流是否真的生效由它证明 */
+    public synchronized int alertCount() {
+        return alertCount;
     }
 }
