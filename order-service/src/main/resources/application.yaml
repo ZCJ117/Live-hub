@@ -2,6 +2,12 @@
 server:
   port: 8084 # 服务端口，用于接收HTTP请求
   address: 127.0.0.1 # 仅绑定回环，业务端口不发布到公网（SPEC-06 §5.2）
+  # Tomcat 线程池显式化（SPEC-15 P1-1）：默认值同为 200，显式声明是为消除
+  # 「到底是没配还是配了 200」的歧义，并给阶梯压测一个可调的旋钮
+  tomcat:
+    threads:
+      max: 200
+    accept-count: 200
 
 # Spring 配置
 spring:
@@ -16,6 +22,13 @@ spring:
     url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/hmdp?useSSL=false&serverTimezone=Asia/Shanghai # 数据库连接URL，格式：jdbc:mysql://ip:port/数据库名?参数
     username: root # 数据库用户名
     password: ${MYSQL_PASSWORD:} # 数据库密码
+    # 连接池显式化（SPEC-15 P1-1）：Hikari 默认 maximum-pool-size=10，
+    # 在秒杀入口的高并发下是首要排队点；connection-timeout 压到 3s 使
+    # 池耗尽时**快速失败**而非默认 30s 挂住 Tomcat 线程
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 10
+      connection-timeout: 3000
   # Redis 配置（统一使用 spring.redis 路径）
   data:
     redis:
@@ -26,8 +39,8 @@ spring:
     # Redis 连接池配置（使用 Lettuce 客户端）
      lettuce:
       pool:
-        max-active: 10 # 最大活跃连接数
-        max-idle: 10 # 最大空闲连接数
+        max-active: 50 # 最大活跃连接数（SPEC-15 P1-1：原 10 为压测拐点首要嫌疑）
+        max-idle: 20 # 最大空闲连接数
         min-idle: 1 # 最小空闲连接数
         time-between-eviction-runs: 10s # 连接池空闲连接检测周期
   # Jackson JSON 处理配置
