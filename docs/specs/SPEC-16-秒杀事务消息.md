@@ -56,7 +56,8 @@ SPEC-15 §2.5 把「本地事件表 / 事务消息」定为二选一，并留下
 
 | # | 事实 | 证据 | 对设计的影响 |
 |---|---|---|---|
-| F1 | 同一 JVM 内两个 producer **不能共用 producer group** | `MQClientInstance.registerProducer` 用 `producerTable.putIfAbsent(group, producer)`，已存在则记 `the producer group[{}] exist already.` 并返回 `false`；`DefaultMQProducerImpl.start` 据此抛 `MQClientException("... has been created before, specify another name please.")` | **必须**为新的事务生产者拆一个独立组与独立 `RocketMQTemplate` bean，不是可选项 |
+| F1 | order-service 现有的 `rocketMQTemplate` **本来就是 `TransactionMQProducer`**，无需新建 | `RocketMQAutoConfiguration.defaultMQProducer` → `RocketMQUtil.createDefaultMQProducer`，偏移 26 / 61 均为 `new TransactionMQProducer(...)`；`RocketMQTransactionConfiguration` 偏移 89 对 `getProducer()` 做 `checkcast TransactionMQProducer` | 事务监听器直接挂在默认 template 上，**不新增 bean、不新增 producer 组** |
+| F1b | 同一 JVM 内两个 producer 不能共用 producer group | `MQClientInstance.registerProducer` 用 `producerTable.putIfAbsent(group, producer)`，已存在则记 `the producer group[{}] exist already.` 并返回 `false`；`DefaultMQProducerImpl.start` 据此抛 `MQClientException("... has been created before, specify another name please.")` | **仅当一个组要挂两个 producer 时才触发**。本方案只有一个 producer，不触发；但这是一条禁令：后续不得为"隔离"再建同组 producer |
 | F2 | `executeLocalTransaction` 抛异常 → 客户端写死 `ROLLBACK_MESSAGE` | `DefaultMQProducerImpl.sendMessageInTransaction(Message, LocalTransactionExecuter, Object)` 偏移 335：`getstatic LocalTransactionState.ROLLBACK_MESSAGE; astore 6`，随后偏移 351 `endTransaction(..., ROLLBACK, localException)` | 异常**不会**被转成 UNKNOW，回查不会因此触发；入口侧把「非 COMMIT」一律按失败处理即可，无死分支 |
 | F3 | `@RocketMQTransactionListener` 默认线程池 `corePoolSize=1`、`maximumPoolSize=1`、`blockingQueueSize=2000` | 注解 `AnnotationDefault` 属性 | **本地事务含一条 INSERT，默认单线程串行**，必须显式配置（见 §2.5） |
 | F4 | 监听器收到的消息 payload 是**原始 `byte[]`**（`getBody()`），**不是**反序列化后的对象 | `RocketMQUtil.convertToSpringMessage(MessageExt)` 与 `convertToSpringMessage(Message)` 均为 `MessageBuilder.withPayload(msg.getBody())` | `checkLocalTransaction` 拿不到 `arg`（回查是异步的），必须自行反序列化消息体 |
@@ -69,8 +70,7 @@ SPEC-15 §2.5 把「本地事件表 / 事务消息」定为二选一，并留下
 
 | 文件 | 职责 |
 |---|---|
-| `order-service/src/main/java/com/hmdp/order/mq/SeckillTransactionConfig.java` | 定义 `seckillTxRocketMQTemplate` bean，producer group = `seckill-tx-producer-group`（F1） |
-| `order-service/src/main/java/com/hmdp/order/mq/SeckillOrderTransactionListener.java` | `@RocketMQTransactionListener(rocketMQTemplateBeanName = "seckillTxRocketMQTemplate")`，实现 `executeLocalTransaction` / `checkLocalTransaction` |
+| `order-service/src/main/java/com/hmdp/order/mq/SeckillOrderTransactionListener.java` | `@RocketMQTransactionListener`（用默认 `rocketMQTemplateBeanName`），实现 `executeLocalTransaction` / `checkLocalTransaction` |
 
 **改动文件**
 
@@ -142,16 +142,14 @@ broker TransactionalMessageCheckService（transactionCheckInterval 周期）
 
 ### 2.5 配置变更
 
-**不新增任何配置项**。组名 `seckill-tx-producer-group` 作为 `SeckillTransactionConfig` 内的常量；
-`namesrvAddr` 直接读现有 `rocketmq.name-server`。依据 SPEC-15 双轴评审确立的约束——
-「新增配置项须对应 spec 功能点」，此处没有任何需要运维调整的旋钮，做成可配只是假灵活性（CLAUDE.md 第 2 条）。
+**不新增任何配置项、不新增 bean**。由 F1，事务监听器直接挂在默认的 `rocketMQTemplate`
+（组名沿用 `seckill-producer-group`）。依据 SPEC-15 双轴评审确立的约束——「新增配置项须对应 spec 功能点」，
+此处没有需要运维调整的旋钮，做成可配只是假灵活性（CLAUDE.md 第 2 条）。
 
 **`@RocketMQTransactionListener` 必须显式配线程池**（F3：默认 `max=1`）：
 
 ```java
-@RocketMQTransactionListener(
-        rocketMQTemplateBeanName = "seckillTxRocketMQTemplate",
-        corePoolSize = 20, maximumPoolSize = 20, blockingQueueSize = 2000)
+@RocketMQTransactionListener(corePoolSize = 20, maximumPoolSize = 20, blockingQueueSize = 2000)
 ```
 
 `maximumPoolSize` 与 Hikari `maximum-pool-size: 20` 对齐。**若不改，本地事务 INSERT 会被单线程串行，
@@ -190,12 +188,11 @@ half topic（`RMQ_SYS_TRANS_HALF_TOPIC` / `RMQ_SYS_TRANS_OP_HALF_TOPIC`）靠既
 
 | 步骤 | 内容 | 验证 |
 |---|---|---|
-| T1 | 新增 `SeckillTransactionConfig`，定义独立 producer group 的 `seckillTxRocketMQTemplate` bean | 应用启动无 `has been created before` 异常（F1） |
-| T2 | `SeckillOrderProducer` 新增 `sendSeckillOrderMessageInTransaction` | — |
-| T3 | 新增 `SeckillOrderTransactionListener`（`executeLocalTransaction` / `checkLocalTransaction`），显式配线程池 | 单测 5 / 6 |
-| T4 | 改造 `VoucherOrderServiceImpl#seckillVoucher` 的投递与失败分支（§2.4） | 单测 1–4 |
-| T5 | `broker.conf` 回查参数调小（仅 E2E 环境） | 启动 + E2E |
-| T6 | 回归：`mvn -pl order-service -am test` | 全绿 |
+| T1 | `SeckillOrderProducer` 新增 `sendSeckillOrderMessageInTransaction` | 单测 |
+| T2 | 新增 `SeckillOrderTransactionListener`（`executeLocalTransaction` / `checkLocalTransaction`），显式配线程池 | 单测 5 / 6 |
+| T3 | 改造 `VoucherOrderServiceImpl#seckillVoucher` 的投递与失败分支（§2.4） | 单测 1–4 |
+| T4 | `broker.conf` 回查参数调小（仅 E2E 环境） | 启动 + E2E |
+| T5 | 回归：`mvn -pl order-service -am test` | 全绿 |
 
 ---
 
@@ -208,9 +205,9 @@ half topic（`RMQ_SYS_TRANS_HALF_TOPIC` / `RMQ_SYS_TRANS_OP_HALF_TOPIC`）靠既
 | R1 | 本地事务线程池默认 `max=1`，高并发下入口串行排队 | 🔴 高 | 未显式配置注解线程池 | §2.5 显式配置并与 Hikari 对齐 |
 | R2 | 入口多一次 broker 往返（half message 落盘）再等本地事务，**入口 p99 必然上升** | 🟠 中 | 事务消息的固有成本 | 写进 §6 指标；对外表述为「换的是不丢，不是更快」，不粉饰 |
 | R3 | `ASYNC_FLUSH` 下不覆盖 broker 掉电 | 🟠 中 | broker 掉电丢 half message | 不改，§2.5 限制条款写明，禁止过度宣称 |
-| R4 | 新增第二个 producer group，心跳与连接 +1 | 🟡 低 | 应用启动 | 由 F1 强约束背书，不可省 |
-| R5 | 现有入口单测 mock 点由 `boolean` 变为 `TransactionSendResult` | 🟡 低 | T4 改动 | §5.2 清单，逐条改造 |
-| R6 | 回查路径窗口毫秒级，无法稳定复现 | 🟡 低 | E2E 验证 | 回查的 COMMIT 分支降级为单测覆盖判定逻辑，在 §5.2 如实标注 |
+| R4 | 现有入口单测 mock 点由 `boolean` 变为 `TransactionSendResult` | 🟡 低 | T3 改动 | §5.2 清单，逐条改造 |
+| R5 | 回查路径窗口毫秒级，无法稳定复现 | 🟡 低 | E2E 验证 | 回查的 COMMIT 分支降级为单测覆盖判定逻辑，在 §5.2 如实标注 |
+| R6 | 后续有人为"隔离"给同一组再建一个 producer → 启动即抛 `has been created before` | 🟡 低 | 未来改动 | F1b 写成禁令；本方案不需要第二个 producer |
 
 ### 5.2 测试方案
 
@@ -269,7 +266,7 @@ half topic（`RMQ_SYS_TRANS_HALF_TOPIC` / `RMQ_SYS_TRANS_OP_HALF_TOPIC`）靠既
 
 | # | 验收断言 | 类型 |
 |---|---|---|
-| 1 | 应用启动无 `producer group ... has been created before` 异常 | 必须实测 |
+| 1 | 应用启动即完成事务监听器注册，无 `does not exist TransactionListener` / `already exists RocketMQLocalTransactionListener` 异常 | 必须实测 |
 | 2 | `COMMIT` 时预扣不回滚、`ROLLBACK` 时先删行后回滚（顺序断言） | 单测 |
 | 3 | `ROLLBACK` + 删除失败时不回滚预扣 | 单测 |
 | 4 | 发送失败时不调用删行（无行可删） | 单测 |
@@ -284,4 +281,5 @@ half topic（`RMQ_SYS_TRANS_HALF_TOPIC` / `RMQ_SYS_TRANS_OP_HALF_TOPIC`）靠既
 
 | 日期 | 版本 | 说明 |
 |---|---|---|
-| 2026-10-10 | v1.0 | 初版：SPEC-15 §2.5 方案 (b) 落地设计。含 6 项字节码实证前提、架构与数据流、失败分支语义、配置变更、单测 6 条 + E2E E10 |
+| 2026-10-10 | v1.0 | 初版：SPEC-15 §2.5 方案 (b) 落地设计。含字节码实证前提、架构与数据流、失败分支语义、配置变更、单测 6 条 + E2E E10 |
+| 2026-10-10 | v1.1 | **修正 v1.0 的 F1 误读**：原结论「必须拆独立 producer 组 + 第二个 template」不成立。实测 `RocketMQUtil.createDefaultMQProducer` 偏移 26/61 为 `new TransactionMQProducer(...)`，现有 `rocketMQTemplate` 本就是事务生产者（F1）；组唯一性约束（改记为 F1b）只在"一组挂两个 producer"时触发。据此删除 `SeckillTransactionConfig` 与 `seckill-tx-producer-group`，风险 R4 替换为 R6（禁令），批次 T 由 6 步减为 5 步 |
