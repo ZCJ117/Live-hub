@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "295b0749-ed9f-412e-93cd-2a92a7508ae0",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\candidate.json",
+  "output": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+  "specification": {
+    "sha256": "aacf8ee1a3d0d4c4662e9840377be740e470f1b6f7ecadb884c24b034d186f6d",
+    "bytes": 16249
+  },
+  "artifact": {
+    "sha256": "677fc05e3559ab6c0535475aeed336baf13666976fc276a32fa1df647bf8f70e",
+    "bytes": 808582
+  }
+}

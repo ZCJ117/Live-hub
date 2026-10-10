@@ -1,0 +1,3643 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-10-04T04:30:09.174Z",
+  "specification": {
+    "path": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\candidate.json",
+    "sha256": "aacf8ee1a3d0d4c4662e9840377be740e470f1b6f7ecadb884c24b034d186f6d",
+    "bytes": 16249
+  },
+  "artifact": {
+    "path": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+    "sha256": "677fc05e3559ab6c0535475aeed336baf13666976fc276a32fa1df647bf8f70e",
+    "bytes": 808582
+  },
+  "stages": {
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "D:\\Utils\\newnodejs\\node.exe",
+        "C:\\Users\\86178\\.agents\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "architecture",
+        "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\candidate.json",
+        "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "D:\\hm-dianping",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "aacf8ee1a3d0d4c4662e9840377be740e470f1b6f7ecadb884c24b034d186f6d",
+          "bytes": 16249
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 2365,
+      "command": [
+        "D:\\Utils\\newnodejs\\node.exe",
+        "C:\\Users\\86178\\.agents\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "architecture",
+        "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\candidate.json",
+        "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "D:\\hm-dianping",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "12a37117-9fab-4251-bb4e-d3dc8f983d6c",
+        "ok": true,
+        "command": "deliver",
+        "type": "architecture",
+        "input": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\candidate.json",
+        "output": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+        "specification": {
+          "sha256": "aacf8ee1a3d0d4c4662e9840377be740e470f1b6f7ecadb884c24b034d186f6d",
+          "bytes": 16249
+        },
+        "artifact": {
+          "sha256": "677fc05e3559ab6c0535475aeed336baf13666976fc276a32fa1df647bf8f70e",
+          "bytes": 808582
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "evidence": {
+          "verified": true,
+          "repository": "https://gitee.com/zuo-changjian/live-hub",
+          "revision": "814159670df53e09ae1ea4cee897120a9adc8009",
+          "references": 30
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 281,
+      "command": [
+        "D:\\Utils\\newnodejs\\node.exe",
+        "C:\\Users\\86178\\.agents\\skills\\archify\\bin\\archify.mjs",
+        "check",
+        "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+        "artifact": {
+          "sha256": "677fc05e3559ab6c0535475aeed336baf13666976fc276a32fa1df647bf8f70e",
+          "bytes": 808582
+        },
+        "checks": [
+          {
+            "name": "single_svg",
+            "ok": true,
+            "details": [
+              "found 1 <svg> block(s)"
+            ]
+          },
+          {
+            "name": "finite_svg",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "orthogonal_arrows",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "label_route_clearance",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_crossings",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_corridors",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "container_border_runs",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "route_rhythm",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "legend_clearance",
+            "ok": true,
+            "details": []
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "metrics": {
+            "properCrossings": 0,
+            "resolvedCrossovers": 113,
+            "ambiguousCorridors": 0,
+            "arrowheadCollisions": 0,
+            "containerBorderRuns": 0,
+            "labelRouteClearanceIssues": 0,
+            "labelCanvasOverflowIssues": 0,
+            "minLabelRouteClearance": 4,
+            "desktopReadabilityIssues": 0,
+            "viewportHeightIssues": 0,
+            "minProjectedNodeTextPx": 6.322959483264826,
+            "maxBends": 4,
+            "routesOverSuggestedBends": 8,
+            "maxStretch": 1.196,
+            "routesOverSuggestedStretch": 0,
+            "minSegmentPx": 18,
+            "minInteriorSegmentPx": 18,
+            "shortSegmentCount": 0,
+            "shortEndpointSegmentCount": 0,
+            "shortInteriorSegmentCount": 0,
+            "microSegmentCount": 0
+          },
+          "suggestedLimits": {
+            "bendsPerRelationship": 2,
+            "stretch": 1.35,
+            "segmentPx": 16,
+            "microSegmentPx": 8
+          },
+          "routeReview": {
+            "crossings": [
+              {
+                "left": {
+                  "id": "gw-user",
+                  "from": "gateway",
+                  "to": "user",
+                  "label": "/user/** · /auth/**",
+                  "collectionIndex": 2,
+                  "artifactIndex": 3
+                },
+                "right": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "point": [
+                  841,
+                  72
+                ],
+                "sharedNode": "user"
+              },
+              {
+                "left": {
+                  "id": "gw-shop",
+                  "from": "gateway",
+                  "to": "shop",
+                  "label": "/shop/**",
+                  "collectionIndex": 3,
+                  "artifactIndex": 4
+                },
+                "right": {
+                  "id": "gw-rag",
+                  "from": "gateway",
+                  "to": "rag",
+                  "label": "/api/rag/**",
+                  "collectionIndex": 7,
+                  "artifactIndex": 8
+                },
+                "point": [
+                  719,
+                  448
+                ],
+                "sharedNode": "gateway"
+              },
+              {
+                "left": {
+                  "id": "gw-shop",
+                  "from": "gateway",
+                  "to": "shop",
+                  "label": "/shop/**",
+                  "collectionIndex": 3,
+                  "artifactIndex": 4
+                },
+                "right": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "point": [
+                  841,
+                  162
+                ]
+              },
+              {
+                "left": {
+                  "id": "gw-voucher",
+                  "from": "gateway",
+                  "to": "voucher",
+                  "label": "/voucher/**",
+                  "collectionIndex": 4,
+                  "artifactIndex": 5
+                },
+                "right": {
+                  "id": "rag-mq",
+                  "from": "rag",
+                  "to": "rocketmq",
+                  "label": "rag-document-process",
+                  "collectionIndex": 32,
+                  "artifactIndex": 33
+                },
+                "point": [
+                  877,
+                  784
+                ]
+              },
+              {
+                "left": {
+                  "id": "gw-voucher",
+                  "from": "gateway",
+                  "to": "voucher",
+                  "label": "/voucher/**",
+                  "collectionIndex": 4,
+                  "artifactIndex": 5
+                },
+                "right": {
+                  "id": "voucher-seata",
+                  "from": "voucher",
+                  "to": "seata",
+                  "label": "",
+                  "collectionIndex": 39,
+                  "artifactIndex": 40
+                },
+                "point": [
+                  931,
+                  784
+                ],
+                "sharedNode": "voucher"
+              },
+              {
+                "left": {
+                  "id": "gw-order",
+                  "from": "gateway",
+                  "to": "order",
+                  "label": "/order/**",
+                  "collectionIndex": 5,
+                  "artifactIndex": 6
+                },
+                "right": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "point": [
+                  841,
+                  610
+                ]
+              },
+              {
+                "left": {
+                  "id": "gw-order",
+                  "from": "gateway",
+                  "to": "order",
+                  "label": "/order/**",
+                  "collectionIndex": 5,
+                  "artifactIndex": 6
+                },
+                "right": {
+                  "id": "order-redis",
+                  "from": "order",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 21,
+                  "artifactIndex": 22
+                },
+                "point": [
+                  913,
+                  610
+                ],
+                "sharedNode": "order"
+              },
+              {
+                "left": {
+                  "id": "gw-order",
+                  "from": "gateway",
+                  "to": "order",
+                  "label": "/order/**",
+                  "collectionIndex": 5,
+                  "artifactIndex": 6
+                },
+                "right": {
+                  "id": "rag-mq",
+                  "from": "rag",
+                  "to": "rocketmq",
+                  "label": "rag-document-process",
+                  "collectionIndex": 32,
+                  "artifactIndex": 33
+                },
+                "point": [
+                  877,
+                  610
+                ]
+              },
+              {
+                "left": {
+                  "id": "gw-social",
+                  "from": "gateway",
+                  "to": "social",
+                  "label": "/blog/** 等",
+                  "collectionIndex": 6,
+                  "artifactIndex": 7
+                },
+                "right": {
+                  "id": "voucher-seata",
+                  "from": "voucher",
+                  "to": "seata",
+                  "label": "",
+                  "collectionIndex": 39,
+                  "artifactIndex": 40
+                },
+                "point": [
+                  931,
+                  894
+                ]
+              },
+              {
+                "left": {
+                  "id": "gw-rag",
+                  "from": "gateway",
+                  "to": "rag",
+                  "label": "/api/rag/**",
+                  "collectionIndex": 7,
+                  "artifactIndex": 8
+                },
+                "right": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "point": [
+                  841,
+                  276
+                ]
+              },
+              {
+                "left": {
+                  "id": "gw-rag",
+                  "from": "gateway",
+                  "to": "rag",
+                  "label": "/api/rag/**",
+                  "collectionIndex": 7,
+                  "artifactIndex": 8
+                },
+                "right": {
+                  "id": "rag-mq",
+                  "from": "rag",
+                  "to": "rocketmq",
+                  "label": "rag-document-process",
+                  "collectionIndex": 32,
+                  "artifactIndex": 33
+                },
+                "point": [
+                  877,
+                  276
+                ],
+                "sharedNode": "rag"
+              },
+              {
+                "left": {
+                  "id": "gw-agent",
+                  "from": "gateway",
+                  "to": "agent",
+                  "label": "/agent/**",
+                  "collectionIndex": 8,
+                  "artifactIndex": 9
+                },
+                "right": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "point": [
+                  841,
+                  446
+                ]
+              },
+              {
+                "left": {
+                  "id": "gw-agent",
+                  "from": "gateway",
+                  "to": "agent",
+                  "label": "/agent/**",
+                  "collectionIndex": 8,
+                  "artifactIndex": 9
+                },
+                "right": {
+                  "id": "rag-mq",
+                  "from": "rag",
+                  "to": "rocketmq",
+                  "label": "rag-document-process",
+                  "collectionIndex": 32,
+                  "artifactIndex": 33
+                },
+                "point": [
+                  877,
+                  446
+                ]
+              },
+              {
+                "left": {
+                  "id": "order-voucher",
+                  "from": "order",
+                  "to": "voucher",
+                  "label": "Feign 扣减库存",
+                  "collectionIndex": 11,
+                  "artifactIndex": 12
+                },
+                "right": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "point": [
+                  1035,
+                  710
+                ]
+              },
+              {
+                "left": {
+                  "id": "order-voucher",
+                  "from": "order",
+                  "to": "voucher",
+                  "label": "Feign 扣减库存",
+                  "collectionIndex": 11,
+                  "artifactIndex": 12
+                },
+                "right": {
+                  "id": "order-redis",
+                  "from": "order",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 21,
+                  "artifactIndex": 22
+                },
+                "point": [
+                  1017,
+                  682
+                ],
+                "sharedNode": "order"
+              },
+              {
+                "left": {
+                  "id": "order-voucher",
+                  "from": "order",
+                  "to": "voucher",
+                  "label": "Feign 扣减库存",
+                  "collectionIndex": 11,
+                  "artifactIndex": 12
+                },
+                "right": {
+                  "id": "voucher-redis",
+                  "from": "voucher",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 22,
+                  "artifactIndex": 23
+                },
+                "point": [
+                  1024.4767441860465,
+                  696.9651162790698
+                ],
+                "sharedNode": "voucher"
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "point": [
+                  1235,
+                  162
+                ],
+                "sharedNode": "mysql"
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "agent-mysql",
+                  "from": "agent",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 14,
+                  "artifactIndex": 15
+                },
+                "point": [
+                  1235,
+                  446
+                ],
+                "sharedNode": "mysql"
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "point": [
+                  1234.9999999999998,
+                  378.5
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "agent-redis",
+                  "from": "agent",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 20,
+                  "artifactIndex": 21
+                },
+                "point": [
+                  1234.9999999999998,
+                  460.00000000000006
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "shop-nacos",
+                  "from": "shop",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 25,
+                  "artifactIndex": 26
+                },
+                "point": [
+                  1235,
+                  148
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "rag-nacos",
+                  "from": "rag",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "point": [
+                  1235,
+                  290
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "agent-nacos",
+                  "from": "agent",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 27,
+                  "artifactIndex": 28
+                },
+                "point": [
+                  1235,
+                  432
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "order-nacos",
+                  "from": "order",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "point": [
+                  1235,
+                  366
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  1280,
+                  481
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1235.0666666666666,
+                  474
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "rag-pgvector",
+                  "from": "rag",
+                  "to": "pgvector",
+                  "label": "向量写入 / 检索",
+                  "collectionIndex": 35,
+                  "artifactIndex": 36
+                },
+                "point": [
+                  1235,
+                  92
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "rag-glm",
+                  "from": "rag",
+                  "to": "glm",
+                  "label": "Embedding / LLM",
+                  "collectionIndex": 36,
+                  "artifactIndex": 37
+                },
+                "point": [
+                  1235,
+                  276
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-mysql",
+                  "from": "user",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 12,
+                  "artifactIndex": 13
+                },
+                "right": {
+                  "id": "agent-glm",
+                  "from": "agent",
+                  "to": "glm",
+                  "label": "LLM 生成",
+                  "collectionIndex": 37,
+                  "artifactIndex": 38
+                },
+                "point": [
+                  1235,
+                  418
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "agent-mysql",
+                  "from": "agent",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 14,
+                  "artifactIndex": 15
+                },
+                "point": [
+                  1244,
+                  446
+                ],
+                "sharedNode": "mysql"
+              },
+              {
+                "left": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "point": [
+                  1243.9999999999998,
+                  378.5
+                ],
+                "sharedNode": "shop"
+              },
+              {
+                "left": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "agent-redis",
+                  "from": "agent",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 20,
+                  "artifactIndex": 21
+                },
+                "point": [
+                  1243.9999999999998,
+                  460.00000000000006
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "rag-nacos",
+                  "from": "rag",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "point": [
+                  1244,
+                  290
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "agent-nacos",
+                  "from": "agent",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 27,
+                  "artifactIndex": 28
+                },
+                "point": [
+                  1244,
+                  432
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "order-nacos",
+                  "from": "order",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "point": [
+                  1244,
+                  366
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  1280,
+                  495
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1244,
+                  474
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "rag-pgvector",
+                  "from": "rag",
+                  "to": "pgvector",
+                  "label": "向量写入 / 检索",
+                  "collectionIndex": 35,
+                  "artifactIndex": 36
+                },
+                "point": [
+                  1085,
+                  162
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "rag-glm",
+                  "from": "rag",
+                  "to": "glm",
+                  "label": "Embedding / LLM",
+                  "collectionIndex": 36,
+                  "artifactIndex": 37
+                },
+                "point": [
+                  1244,
+                  276
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-mysql",
+                  "from": "shop",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 13,
+                  "artifactIndex": 14
+                },
+                "right": {
+                  "id": "agent-glm",
+                  "from": "agent",
+                  "to": "glm",
+                  "label": "LLM 生成",
+                  "collectionIndex": 37,
+                  "artifactIndex": 38
+                },
+                "point": [
+                  1244,
+                  418
+                ]
+              },
+              {
+                "left": {
+                  "id": "agent-mysql",
+                  "from": "agent",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 14,
+                  "artifactIndex": 15
+                },
+                "right": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "point": [
+                  1389.8,
+                  446
+                ]
+              },
+              {
+                "left": {
+                  "id": "agent-mysql",
+                  "from": "agent",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 14,
+                  "artifactIndex": 15
+                },
+                "right": {
+                  "id": "order-nacos",
+                  "from": "order",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "point": [
+                  1121,
+                  446
+                ]
+              },
+              {
+                "left": {
+                  "id": "agent-mysql",
+                  "from": "agent",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 14,
+                  "artifactIndex": 15
+                },
+                "right": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  1280,
+                  446
+                ]
+              },
+              {
+                "left": {
+                  "id": "order-mysql",
+                  "from": "order",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 15,
+                  "artifactIndex": 16
+                },
+                "right": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "point": [
+                  1389.8,
+                  523
+                ]
+              },
+              {
+                "left": {
+                  "id": "order-mysql",
+                  "from": "order",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 15,
+                  "artifactIndex": 16
+                },
+                "right": {
+                  "id": "agent-redis",
+                  "from": "agent",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 20,
+                  "artifactIndex": 21
+                },
+                "point": [
+                  1397.8,
+                  523
+                ]
+              },
+              {
+                "left": {
+                  "id": "order-mysql",
+                  "from": "order",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 15,
+                  "artifactIndex": 16
+                },
+                "right": {
+                  "id": "order-nacos",
+                  "from": "order",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "point": [
+                  1121,
+                  523
+                ],
+                "sharedNode": "order"
+              },
+              {
+                "left": {
+                  "id": "order-mysql",
+                  "from": "order",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 15,
+                  "artifactIndex": 16
+                },
+                "right": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  1280,
+                  523
+                ]
+              },
+              {
+                "left": {
+                  "id": "order-mysql",
+                  "from": "order",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 15,
+                  "artifactIndex": 16
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1434,
+                  523
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-mysql",
+                  "from": "voucher",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 16,
+                  "artifactIndex": 17
+                },
+                "right": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "point": [
+                  1421,
+                  710
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-mysql",
+                  "from": "voucher",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 16,
+                  "artifactIndex": 17
+                },
+                "right": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "point": [
+                  1421,
+                  654.0000000000005
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-mysql",
+                  "from": "voucher",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 16,
+                  "artifactIndex": 17
+                },
+                "right": {
+                  "id": "agent-redis",
+                  "from": "agent",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 20,
+                  "artifactIndex": 21
+                },
+                "point": [
+                  1421,
+                  667.9999999999986
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-mysql",
+                  "from": "voucher",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 16,
+                  "artifactIndex": 17
+                },
+                "right": {
+                  "id": "order-redis",
+                  "from": "order",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 21,
+                  "artifactIndex": 22
+                },
+                "point": [
+                  1421,
+                  682
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-mysql",
+                  "from": "voucher",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 16,
+                  "artifactIndex": 17
+                },
+                "right": {
+                  "id": "voucher-redis",
+                  "from": "voucher",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 22,
+                  "artifactIndex": 23
+                },
+                "point": [
+                  1421,
+                  696
+                ],
+                "sharedNode": "voucher"
+              },
+              {
+                "left": {
+                  "id": "voucher-mysql",
+                  "from": "voucher",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 16,
+                  "artifactIndex": 17
+                },
+                "right": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  1280,
+                  728
+                ],
+                "sharedNode": "voucher"
+              },
+              {
+                "left": {
+                  "id": "voucher-mysql",
+                  "from": "voucher",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 16,
+                  "artifactIndex": 17
+                },
+                "right": {
+                  "id": "order-mq",
+                  "from": "order",
+                  "to": "rocketmq",
+                  "label": "seckill-order-topic",
+                  "collectionIndex": 31,
+                  "artifactIndex": 32
+                },
+                "point": [
+                  1405.8000000000002,
+                  728
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-mysql",
+                  "from": "voucher",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 16,
+                  "artifactIndex": 17
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1434,
+                  537
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-mysql",
+                  "from": "voucher",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 16,
+                  "artifactIndex": 17
+                },
+                "right": {
+                  "id": "order-seata",
+                  "from": "order",
+                  "to": "seata",
+                  "label": "全局事务",
+                  "collectionIndex": 38,
+                  "artifactIndex": 39
+                },
+                "point": [
+                  1271,
+                  728
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-mysql",
+                  "from": "social",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 17,
+                  "artifactIndex": 18
+                },
+                "right": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "point": [
+                  1442,
+                  710
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-mysql",
+                  "from": "social",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 17,
+                  "artifactIndex": 18
+                },
+                "right": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "point": [
+                  1442,
+                  654.0000000000003
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-mysql",
+                  "from": "social",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 17,
+                  "artifactIndex": 18
+                },
+                "right": {
+                  "id": "agent-redis",
+                  "from": "agent",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 20,
+                  "artifactIndex": 21
+                },
+                "point": [
+                  1442,
+                  667.9999999999986
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-mysql",
+                  "from": "social",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 17,
+                  "artifactIndex": 18
+                },
+                "right": {
+                  "id": "order-redis",
+                  "from": "order",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 21,
+                  "artifactIndex": 22
+                },
+                "point": [
+                  1442,
+                  682
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-mysql",
+                  "from": "social",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 17,
+                  "artifactIndex": 18
+                },
+                "right": {
+                  "id": "voucher-redis",
+                  "from": "voucher",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 22,
+                  "artifactIndex": 23
+                },
+                "point": [
+                  1442,
+                  696
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-mysql",
+                  "from": "social",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 17,
+                  "artifactIndex": 18
+                },
+                "right": {
+                  "id": "social-redis",
+                  "from": "social",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "point": [
+                  1405.8000000000009,
+                  880
+                ],
+                "sharedNode": "social"
+              },
+              {
+                "left": {
+                  "id": "social-mysql",
+                  "from": "social",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 17,
+                  "artifactIndex": 18
+                },
+                "right": {
+                  "id": "order-mq",
+                  "from": "order",
+                  "to": "rocketmq",
+                  "label": "seckill-order-topic",
+                  "collectionIndex": 31,
+                  "artifactIndex": 32
+                },
+                "point": [
+                  1442,
+                  764.0000000000001
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-mysql",
+                  "from": "social",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 17,
+                  "artifactIndex": 18
+                },
+                "right": {
+                  "id": "rag-mq",
+                  "from": "rag",
+                  "to": "rocketmq",
+                  "label": "rag-document-process",
+                  "collectionIndex": 32,
+                  "artifactIndex": 33
+                },
+                "point": [
+                  1442,
+                  828
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-mysql",
+                  "from": "social",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 17,
+                  "artifactIndex": 18
+                },
+                "right": {
+                  "id": "order-seata",
+                  "from": "order",
+                  "to": "seata",
+                  "label": "全局事务",
+                  "collectionIndex": 38,
+                  "artifactIndex": 39
+                },
+                "point": [
+                  1271,
+                  880
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "right": {
+                  "id": "voucher-redis",
+                  "from": "voucher",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 22,
+                  "artifactIndex": 23
+                },
+                "point": [
+                  1021,
+                  710
+                ],
+                "sharedNode": "redis"
+              },
+              {
+                "left": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "right": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  1280,
+                  710
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "right": {
+                  "id": "order-mq",
+                  "from": "order",
+                  "to": "rocketmq",
+                  "label": "seckill-order-topic",
+                  "collectionIndex": 31,
+                  "artifactIndex": 32
+                },
+                "point": [
+                  1405.8000000000004,
+                  710
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "right": {
+                  "id": "rag-mq",
+                  "from": "rag",
+                  "to": "rocketmq",
+                  "label": "rag-document-process",
+                  "collectionIndex": 32,
+                  "artifactIndex": 33
+                },
+                "point": [
+                  877,
+                  710
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1434,
+                  710
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-redis",
+                  "from": "user",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 18,
+                  "artifactIndex": 19
+                },
+                "right": {
+                  "id": "order-seata",
+                  "from": "order",
+                  "to": "seata",
+                  "label": "全局事务",
+                  "collectionIndex": 38,
+                  "artifactIndex": 39
+                },
+                "point": [
+                  1271,
+                  710
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "right": {
+                  "id": "rag-nacos",
+                  "from": "rag",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "point": [
+                  1067,
+                  290
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "right": {
+                  "id": "agent-nacos",
+                  "from": "agent",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 27,
+                  "artifactIndex": 28
+                },
+                "point": [
+                  1262,
+                  378.5
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "right": {
+                  "id": "order-nacos",
+                  "from": "order",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "point": [
+                  1121,
+                  378.5
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "right": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  1387.1571428572227,
+                  380
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "right": {
+                  "id": "order-mq",
+                  "from": "order",
+                  "to": "rocketmq",
+                  "label": "seckill-order-topic",
+                  "collectionIndex": 31,
+                  "artifactIndex": 32
+                },
+                "point": [
+                  1389.7999999999997,
+                  612
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1389.8,
+                  474
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "right": {
+                  "id": "rag-pgvector",
+                  "from": "rag",
+                  "to": "pgvector",
+                  "label": "向量写入 / 检索",
+                  "collectionIndex": 35,
+                  "artifactIndex": 36
+                },
+                "point": [
+                  1067,
+                  262
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "right": {
+                  "id": "rag-glm",
+                  "from": "rag",
+                  "to": "glm",
+                  "label": "Embedding / LLM",
+                  "collectionIndex": 36,
+                  "artifactIndex": 37
+                },
+                "point": [
+                  1067,
+                  276
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "right": {
+                  "id": "agent-glm",
+                  "from": "agent",
+                  "to": "glm",
+                  "label": "LLM 生成",
+                  "collectionIndex": 37,
+                  "artifactIndex": 38
+                },
+                "point": [
+                  1389.7999999999997,
+                  418
+                ]
+              },
+              {
+                "left": {
+                  "id": "agent-redis",
+                  "from": "agent",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 20,
+                  "artifactIndex": 21
+                },
+                "right": {
+                  "id": "order-nacos",
+                  "from": "order",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "point": [
+                  1121,
+                  460.00000000000006
+                ]
+              },
+              {
+                "left": {
+                  "id": "agent-redis",
+                  "from": "agent",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 20,
+                  "artifactIndex": 21
+                },
+                "right": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  1280,
+                  460.0000000000001
+                ]
+              },
+              {
+                "left": {
+                  "id": "agent-redis",
+                  "from": "agent",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 20,
+                  "artifactIndex": 21
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1397.7999999999997,
+                  474
+                ],
+                "sharedNode": "agent"
+              },
+              {
+                "left": {
+                  "id": "order-redis",
+                  "from": "order",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 21,
+                  "artifactIndex": 22
+                },
+                "right": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  1280,
+                  682
+                ]
+              },
+              {
+                "left": {
+                  "id": "order-redis",
+                  "from": "order",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 21,
+                  "artifactIndex": 22
+                },
+                "right": {
+                  "id": "order-mq",
+                  "from": "order",
+                  "to": "rocketmq",
+                  "label": "seckill-order-topic",
+                  "collectionIndex": 31,
+                  "artifactIndex": 32
+                },
+                "point": [
+                  1405.8000000000002,
+                  682
+                ],
+                "sharedNode": "order"
+              },
+              {
+                "left": {
+                  "id": "order-redis",
+                  "from": "order",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 21,
+                  "artifactIndex": 22
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1434,
+                  682
+                ]
+              },
+              {
+                "left": {
+                  "id": "order-redis",
+                  "from": "order",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 21,
+                  "artifactIndex": 22
+                },
+                "right": {
+                  "id": "order-seata",
+                  "from": "order",
+                  "to": "seata",
+                  "label": "全局事务",
+                  "collectionIndex": 38,
+                  "artifactIndex": 39
+                },
+                "point": [
+                  1271,
+                  682
+                ],
+                "sharedNode": "order"
+              },
+              {
+                "left": {
+                  "id": "voucher-redis",
+                  "from": "voucher",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 22,
+                  "artifactIndex": 23
+                },
+                "right": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "point": [
+                  1280,
+                  696
+                ],
+                "sharedNode": "voucher"
+              },
+              {
+                "left": {
+                  "id": "voucher-redis",
+                  "from": "voucher",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 22,
+                  "artifactIndex": 23
+                },
+                "right": {
+                  "id": "order-mq",
+                  "from": "order",
+                  "to": "rocketmq",
+                  "label": "seckill-order-topic",
+                  "collectionIndex": 31,
+                  "artifactIndex": 32
+                },
+                "point": [
+                  1405.8000000000002,
+                  696
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-redis",
+                  "from": "voucher",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 22,
+                  "artifactIndex": 23
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1434,
+                  696
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-redis",
+                  "from": "voucher",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 22,
+                  "artifactIndex": 23
+                },
+                "right": {
+                  "id": "order-seata",
+                  "from": "order",
+                  "to": "seata",
+                  "label": "全局事务",
+                  "collectionIndex": 38,
+                  "artifactIndex": 39
+                },
+                "point": [
+                  1271,
+                  696
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-redis",
+                  "from": "social",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "right": {
+                  "id": "rag-mq",
+                  "from": "rag",
+                  "to": "rocketmq",
+                  "label": "rag-document-process",
+                  "collectionIndex": 32,
+                  "artifactIndex": 33
+                },
+                "point": [
+                  1405.8000000000009,
+                  828
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-redis",
+                  "from": "social",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1525,
+                  745
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-redis",
+                  "from": "social",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "right": {
+                  "id": "order-seata",
+                  "from": "order",
+                  "to": "seata",
+                  "label": "全局事务",
+                  "collectionIndex": 38,
+                  "artifactIndex": 39
+                },
+                "point": [
+                  1270.9999999999998,
+                  894
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-nacos",
+                  "from": "user",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 24,
+                  "artifactIndex": 25
+                },
+                "right": {
+                  "id": "shop-nacos",
+                  "from": "shop",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 25,
+                  "artifactIndex": 26
+                },
+                "point": [
+                  1405.7999999999997,
+                  148
+                ],
+                "sharedNode": "nacos"
+              },
+              {
+                "left": {
+                  "id": "user-nacos",
+                  "from": "user",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 24,
+                  "artifactIndex": 25
+                },
+                "right": {
+                  "id": "rag-pgvector",
+                  "from": "rag",
+                  "to": "pgvector",
+                  "label": "向量写入 / 检索",
+                  "collectionIndex": 35,
+                  "artifactIndex": 36
+                },
+                "point": [
+                  1405.7999999999997,
+                  92
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-nacos",
+                  "from": "user",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 24,
+                  "artifactIndex": 25
+                },
+                "right": {
+                  "id": "rag-glm",
+                  "from": "rag",
+                  "to": "glm",
+                  "label": "Embedding / LLM",
+                  "collectionIndex": 36,
+                  "artifactIndex": 37
+                },
+                "point": [
+                  1405.7999999999997,
+                  195
+                ]
+              },
+              {
+                "left": {
+                  "id": "user-nacos",
+                  "from": "user",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 24,
+                  "artifactIndex": 25
+                },
+                "right": {
+                  "id": "agent-glm",
+                  "from": "agent",
+                  "to": "glm",
+                  "label": "LLM 生成",
+                  "collectionIndex": 37,
+                  "artifactIndex": 38
+                },
+                "point": [
+                  1442,
+                  309.99999999999955
+                ]
+              },
+              {
+                "left": {
+                  "id": "shop-nacos",
+                  "from": "shop",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 25,
+                  "artifactIndex": 26
+                },
+                "right": {
+                  "id": "rag-pgvector",
+                  "from": "rag",
+                  "to": "pgvector",
+                  "label": "向量写入 / 检索",
+                  "collectionIndex": 35,
+                  "artifactIndex": 36
+                },
+                "point": [
+                  1085,
+                  148
+                ]
+              },
+              {
+                "left": {
+                  "id": "rag-nacos",
+                  "from": "rag",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 26,
+                  "artifactIndex": 27
+                },
+                "right": {
+                  "id": "agent-glm",
+                  "from": "agent",
+                  "to": "glm",
+                  "label": "LLM 生成",
+                  "collectionIndex": 37,
+                  "artifactIndex": 38
+                },
+                "point": [
+                  1442,
+                  338
+                ]
+              },
+              {
+                "left": {
+                  "id": "agent-nacos",
+                  "from": "agent",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 27,
+                  "artifactIndex": 28
+                },
+                "right": {
+                  "id": "order-nacos",
+                  "from": "order",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "point": [
+                  1121,
+                  432
+                ],
+                "sharedNode": "nacos"
+              },
+              {
+                "left": {
+                  "id": "agent-nacos",
+                  "from": "agent",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 27,
+                  "artifactIndex": 28
+                },
+                "right": {
+                  "id": "agent-glm",
+                  "from": "agent",
+                  "to": "glm",
+                  "label": "LLM 生成",
+                  "collectionIndex": 37,
+                  "artifactIndex": 38
+                },
+                "point": [
+                  1262,
+                  418
+                ],
+                "sharedNode": "agent"
+              },
+              {
+                "left": {
+                  "id": "order-nacos",
+                  "from": "order",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1121,
+                  474
+                ]
+              },
+              {
+                "left": {
+                  "id": "order-nacos",
+                  "from": "order",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 28,
+                  "artifactIndex": 29
+                },
+                "right": {
+                  "id": "agent-glm",
+                  "from": "agent",
+                  "to": "glm",
+                  "label": "LLM 生成",
+                  "collectionIndex": 37,
+                  "artifactIndex": 38
+                },
+                "point": [
+                  1121,
+                  418
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "right": {
+                  "id": "order-mq",
+                  "from": "order",
+                  "to": "rocketmq",
+                  "label": "seckill-order-topic",
+                  "collectionIndex": 31,
+                  "artifactIndex": 32
+                },
+                "point": [
+                  1280,
+                  612
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "right": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "point": [
+                  1280,
+                  474
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "right": {
+                  "id": "agent-glm",
+                  "from": "agent",
+                  "to": "glm",
+                  "label": "LLM 生成",
+                  "collectionIndex": 37,
+                  "artifactIndex": 38
+                },
+                "point": [
+                  1280,
+                  418
+                ]
+              },
+              {
+                "left": {
+                  "id": "voucher-nacos",
+                  "from": "voucher",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 29,
+                  "artifactIndex": 30
+                },
+                "right": {
+                  "id": "order-seata",
+                  "from": "order",
+                  "to": "seata",
+                  "label": "全局事务",
+                  "collectionIndex": 38,
+                  "artifactIndex": 39
+                },
+                "point": [
+                  1271,
+                  768
+                ]
+              },
+              {
+                "left": {
+                  "id": "social-nacos",
+                  "from": "social",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 30,
+                  "artifactIndex": 31
+                },
+                "right": {
+                  "id": "voucher-seata",
+                  "from": "voucher",
+                  "to": "seata",
+                  "label": "",
+                  "collectionIndex": 39,
+                  "artifactIndex": 40
+                },
+                "point": [
+                  1053,
+                  953
+                ]
+              },
+              {
+                "left": {
+                  "id": "rag-mq",
+                  "from": "rag",
+                  "to": "rocketmq",
+                  "label": "rag-document-process",
+                  "collectionIndex": 32,
+                  "artifactIndex": 33
+                },
+                "right": {
+                  "id": "order-seata",
+                  "from": "order",
+                  "to": "seata",
+                  "label": "全局事务",
+                  "collectionIndex": 38,
+                  "artifactIndex": 39
+                },
+                "point": [
+                  1271,
+                  828
+                ]
+              },
+              {
+                "left": {
+                  "id": "rag-mq",
+                  "from": "rag",
+                  "to": "rocketmq",
+                  "label": "rag-document-process",
+                  "collectionIndex": 32,
+                  "artifactIndex": 33
+                },
+                "right": {
+                  "id": "voucher-seata",
+                  "from": "voucher",
+                  "to": "seata",
+                  "label": "",
+                  "collectionIndex": 39,
+                  "artifactIndex": 40
+                },
+                "point": [
+                  931,
+                  828
+                ]
+              },
+              {
+                "left": {
+                  "id": "mq-social",
+                  "from": "rocketmq",
+                  "to": "social",
+                  "label": "工单落站内信",
+                  "collectionIndex": 34,
+                  "artifactIndex": 35
+                },
+                "right": {
+                  "id": "order-seata",
+                  "from": "order",
+                  "to": "seata",
+                  "label": "全局事务",
+                  "collectionIndex": 38,
+                  "artifactIndex": 39
+                },
+                "point": [
+                  1271,
+                  908
+                ]
+              }
+            ],
+            "crowdedSides": [
+              {
+                "node": "order",
+                "label": "订单服务",
+                "side": "right",
+                "relationships": 5,
+                "sidePx": 64,
+                "neededPx": 88
+              },
+              {
+                "node": "voucher",
+                "label": "优惠券服务",
+                "side": "right",
+                "relationships": 4,
+                "sidePx": 64,
+                "neededPx": 74
+              }
+            ],
+            "detours": [
+              {
+                "relationship": {
+                  "id": "voucher-mysql",
+                  "from": "voucher",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 16,
+                  "artifactIndex": 17
+                },
+                "bends": 3,
+                "stretch": 1
+              },
+              {
+                "relationship": {
+                  "id": "social-mysql",
+                  "from": "social",
+                  "to": "mysql",
+                  "label": "",
+                  "collectionIndex": 17,
+                  "artifactIndex": 18
+                },
+                "bends": 3,
+                "stretch": 1
+              },
+              {
+                "relationship": {
+                  "id": "shop-redis",
+                  "from": "shop",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 19,
+                  "artifactIndex": 20
+                },
+                "bends": 4,
+                "stretch": 1
+              },
+              {
+                "relationship": {
+                  "id": "social-redis",
+                  "from": "social",
+                  "to": "redis",
+                  "label": "",
+                  "collectionIndex": 23,
+                  "artifactIndex": 24
+                },
+                "bends": 3,
+                "stretch": 1
+              },
+              {
+                "relationship": {
+                  "id": "social-nacos",
+                  "from": "social",
+                  "to": "nacos",
+                  "label": "",
+                  "collectionIndex": 30,
+                  "artifactIndex": 31
+                },
+                "bends": 3,
+                "stretch": 1.196
+              },
+              {
+                "relationship": {
+                  "id": "order-mq",
+                  "from": "order",
+                  "to": "rocketmq",
+                  "label": "seckill-order-topic",
+                  "collectionIndex": 31,
+                  "artifactIndex": 32
+                },
+                "bends": 3,
+                "stretch": 1
+              },
+              {
+                "relationship": {
+                  "id": "agent-mq",
+                  "from": "agent",
+                  "to": "rocketmq",
+                  "label": "agent-m5-ticket-route",
+                  "collectionIndex": 33,
+                  "artifactIndex": 34
+                },
+                "bends": 3,
+                "stretch": 1
+              },
+              {
+                "relationship": {
+                  "id": "agent-glm",
+                  "from": "agent",
+                  "to": "glm",
+                  "label": "LLM 生成",
+                  "collectionIndex": 37,
+                  "artifactIndex": 38
+                },
+                "bends": 3,
+                "stretch": 1
+              }
+            ]
+          },
+          "leadingSpace": {
+            "measured": true,
+            "emptyTopPx": 40,
+            "emptyTopRatio": 0.038,
+            "occupiedTop": 40,
+            "viewBoxTop": 0,
+            "canvasHeight": 1049,
+            "typicalNodeHeight": 64,
+            "reviewSuggested": false
+          },
+          "desktopReadability": {
+            "budgetBasis": "recognized-declared-wide",
+            "readerContract": "declared-wide-v1",
+            "availableDiagramWidth": 1346,
+            "actualBudgetPx": 1346,
+            "actualReaderWidth": 1376,
+            "desiredReaderWidth": 1626.5625,
+            "viewportCap": 1376,
+            "limit": "viewport-cap",
+            "requestedTargetPx": 7.5,
+            "requestedTargetMet": false,
+            "hardFloorPx": 6,
+            "hardFloorMet": true,
+            "minimumOwner": {
+              "kind": "edge",
+              "id": "client-web",
+              "from": "client",
+              "to": "web"
+            },
+            "minimumSourceTextPx": 8,
+            "minimumProjectedTextPx": 6.322959483264826,
+            "semanticTextCount": 54
+          },
+          "issues": []
+        },
+        "provenance": "current",
+        "deliveryReceiptId": "12a37117-9fab-4251-bb4e-d3dc8f983d6c"
+      }
+    },
+    "browser-check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 2101,
+      "command": [
+        "D:\\Utils\\newnodejs\\node.exe",
+        "C:\\Users\\86178\\.agents\\skills\\archify\\bin\\archify.mjs",
+        "browser-check",
+        "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+        "--json",
+        "--require-provenance"
+      ],
+      "execution": "in-process",
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "browser-check",
+        "evidenceKind": "automated-browser",
+        "status": "pass",
+        "visualReview": "not-requested",
+        "provenance": "current",
+        "deliveryReceiptId": "12a37117-9fab-4251-bb4e-d3dc8f983d6c",
+        "artifact": {
+          "path": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+          "sha256": "677fc05e3559ab6c0535475aeed336baf13666976fc276a32fa1df647bf8f70e",
+          "bytes": 808582
+        },
+        "state": {
+          "detail": "read",
+          "motion": "still"
+        },
+        "chrome": {
+          "status": "available",
+          "executable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+        },
+        "diagnostics": [],
+        "containment": {
+          "status": "pass",
+          "policy": "fit-or-reader-declared-readable-vertical-scroll",
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "theme": "light",
+              "innerWidth": 1440,
+              "innerHeight": 900,
+              "scrollWidth": 1440,
+              "scrollHeight": 972,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1376,
+              "diagramWidth": 1346,
+              "pageComposition": {
+                "bodyPaddingPx": 12,
+                "headerPx": 52,
+                "diagramChromePx": 78,
+                "svgPx": 829,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 6.322959483264826,
+              "minimumProjectedNonEdgeTextPx": 7.1133294186729294,
+              "minimumProjectedEdgeTextPx": 6.322959483264826,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "theme": "light",
+              "innerWidth": 1600,
+              "innerHeight": 1000,
+              "scrollWidth": 1600,
+              "scrollHeight": 1137,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1536,
+              "diagramWidth": 1506,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 928,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 7.074574280681151,
+              "minimumProjectedNonEdgeTextPx": 7.958896065766295,
+              "minimumProjectedEdgeTextPx": 7.074574280681151,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "theme": "light",
+              "innerWidth": 1920,
+              "innerHeight": 1080,
+              "scrollWidth": 1920,
+              "scrollHeight": 1192,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1627,
+              "diagramWidth": 1597,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 984,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 7.5020551967116855,
+              "minimumProjectedNonEdgeTextPx": 8.439812096300646,
+              "minimumProjectedEdgeTextPx": 7.5020551967116855,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "theme": "light",
+              "innerWidth": 2048,
+              "innerHeight": 1320,
+              "scrollWidth": 2048,
+              "scrollHeight": 1320,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1807,
+              "diagramWidth": 1757,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 68,
+                "diagramChromePx": 94,
+                "svgPx": 1082,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 9,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 44,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            }
+          ]
+        },
+        "themeStates": {
+          "status": "pass",
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "requestedTheme": "light",
+              "resolvedTheme": "light",
+              "ok": true
+            },
+            {
+              "width": 1440,
+              "height": 900,
+              "requestedTheme": "dark",
+              "resolvedTheme": "dark",
+              "ok": true
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "requestedTheme": "dark",
+              "resolvedTheme": "dark",
+              "ok": true
+            }
+          ]
+        },
+        "readability": {
+          "status": "pass",
+          "minimumProjectedNodeTextPx": 6,
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "theme": "light",
+              "innerWidth": 1440,
+              "innerHeight": 900,
+              "scrollWidth": 1440,
+              "scrollHeight": 972,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1376,
+              "diagramWidth": 1346,
+              "pageComposition": {
+                "bodyPaddingPx": 12,
+                "headerPx": 52,
+                "diagramChromePx": 78,
+                "svgPx": 829,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 6.322959483264826,
+              "minimumProjectedNonEdgeTextPx": 7.1133294186729294,
+              "minimumProjectedEdgeTextPx": 6.322959483264826,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "theme": "light",
+              "innerWidth": 1600,
+              "innerHeight": 1000,
+              "scrollWidth": 1600,
+              "scrollHeight": 1137,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1536,
+              "diagramWidth": 1506,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 928,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 7.074574280681151,
+              "minimumProjectedNonEdgeTextPx": 7.958896065766295,
+              "minimumProjectedEdgeTextPx": 7.074574280681151,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "theme": "light",
+              "innerWidth": 1920,
+              "innerHeight": 1080,
+              "scrollWidth": 1920,
+              "scrollHeight": 1192,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1627,
+              "diagramWidth": 1597,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 984,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 7.5020551967116855,
+              "minimumProjectedNonEdgeTextPx": 8.439812096300646,
+              "minimumProjectedEdgeTextPx": 7.5020551967116855,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "theme": "light",
+              "innerWidth": 2048,
+              "innerHeight": 1320,
+              "scrollWidth": 2048,
+              "scrollHeight": 1320,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1807,
+              "diagramWidth": 1757,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 68,
+                "diagramChromePx": 94,
+                "svgPx": 1082,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 9,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 44,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            }
+          ]
+        },
+        "viewerChrome": {
+          "status": "pass",
+          "viewports": [
+            {
+              "width": 1440,
+              "height": 900,
+              "theme": "light",
+              "innerWidth": 1440,
+              "innerHeight": 900,
+              "scrollWidth": 1440,
+              "scrollHeight": 972,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1376,
+              "diagramWidth": 1346,
+              "pageComposition": {
+                "bodyPaddingPx": 12,
+                "headerPx": 52,
+                "diagramChromePx": 78,
+                "svgPx": 829,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 6.322959483264826,
+              "minimumProjectedNonEdgeTextPx": 7.1133294186729294,
+              "minimumProjectedEdgeTextPx": 6.322959483264826,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1600,
+              "height": 1000,
+              "theme": "light",
+              "innerWidth": 1600,
+              "innerHeight": 1000,
+              "scrollWidth": 1600,
+              "scrollHeight": 1137,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1536,
+              "diagramWidth": 1506,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 928,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 7.074574280681151,
+              "minimumProjectedNonEdgeTextPx": 7.958896065766295,
+              "minimumProjectedEdgeTextPx": 7.074574280681151,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 1920,
+              "height": 1080,
+              "theme": "light",
+              "innerWidth": 1920,
+              "innerHeight": 1080,
+              "scrollWidth": 1920,
+              "scrollHeight": 1192,
+              "overflowX": false,
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
+              "readerLayout": "adaptive",
+              "readerOverflow": "authored",
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1627,
+              "diagramWidth": 1597,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 60,
+                "diagramChromePx": 84,
+                "svgPx": 984,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 7.5020551967116855,
+              "minimumProjectedNonEdgeTextPx": 8.439812096300646,
+              "minimumProjectedEdgeTextPx": 7.5020551967116855,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 54,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            },
+            {
+              "width": 2048,
+              "height": 1320,
+              "theme": "light",
+              "innerWidth": 2048,
+              "innerHeight": 1320,
+              "scrollWidth": 2048,
+              "scrollHeight": 1320,
+              "overflowX": false,
+              "overflowY": false,
+              "verticalScrollAccepted": false,
+              "overflowDisposition": "contained",
+              "readerLayout": "adaptive",
+              "readerOverflow": null,
+              "readerFit": "intrinsic-height",
+              "ok": true,
+              "readerWidth": 1807,
+              "diagramWidth": 1757,
+              "pageComposition": {
+                "bodyPaddingPx": 64,
+                "headerPx": 68,
+                "diagramChromePx": 94,
+                "svgPx": 1082,
+                "cardsPx": 0,
+                "viewBoxHeight": 1049
+              },
+              "viewBoxWidth": 1703,
+              "minimumProjectedNodeTextPx": 8,
+              "minimumProjectedNonEdgeTextPx": 9,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "HTTP :8080",
+              "minimumProjectedNodeTextDetail": "edge",
+              "minimumProjectedNodeTextOwner": {
+                "kind": "edge",
+                "id": "client-web",
+                "from": "client",
+                "to": "web"
+              },
+              "minimumRequiredNodeTextPx": 6,
+              "readabilityOk": true,
+              "hasLegend": true,
+              "hasNavigationDock": true,
+              "legendDockIntersectionArea": 0,
+              "dockStageIntersectionArea": 0,
+              "dockStageGap": 10,
+              "requiredDockStageGap": 10,
+              "viewerChromeStageOk": true,
+              "viewerChromeReserve": 44,
+              "viewerChromeActive": true,
+              "viewerChromeOk": true,
+              "resolvedTheme": "light"
+            }
+          ]
+        },
+        "captures": {
+          "status": "not-requested",
+          "screenshots": [],
+          "contactSheet": null
+        },
+        "sidecars": {
+          "receipt": "hmdp-architecture.browser-check.json",
+          "files": []
+        }
+      }
+    }
+  },
+  "diagnostics": [],
+  "evidence": {
+    "receipt": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.finalize.json",
+    "summaryReceipt": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.finalize-summary.json",
+    "browserCheckReceipt": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "finishedAt": "2026-10-04T04:30:15.394Z",
+  "durationMs": 6219,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-04T04:04:30.115Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}

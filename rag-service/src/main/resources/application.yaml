@@ -49,11 +49,9 @@ rag:
     dir: ${RAG_UPLOAD_DIR:./data/rag-uploads}
     max-size: 20MB
 
+# 消费组/topic 由 @RocketMQMessageListener 注解声明，此处刻意不写死配置，避免两份取值不一致
 rocketmq:
   name-server: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
-  consumer:
-    group: rag-doc-process-group
-    topic: rag-document-process
 
 logging:
   level:

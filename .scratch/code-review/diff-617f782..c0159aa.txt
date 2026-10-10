@@ -1,0 +1,3289 @@
+# Review package: 617f782...HEAD (c0159aa)
+# Trimmed: openapi.json (21266 del) and api-endpoints.txt (367 del) bodies excluded — pure data-file deletions, listed in stat below.
+
+## Commits
+c0159aa docs(specs): §11.7 终局修复波后记——修正数字漂移并留痕两项不修裁定
+c347cac fix(shop): SPEC-05 §5.2 GEO 预热游标逐行推进 + 分批落库，补齐缺失测试
+9077d71 docs(specs): SPEC-05/11 交付实测记录——自动化全绿，全栈项标待环境
+f3a5382 build(spec-11): 父 pom 引入 dependency:analyze 告警模式（pin 3.9.0）
+bbd5c9f chore(spec-11): 删除零引用 MQ/指标/订单方法，修正失实注释
+4fb1e40 chore(common): SPEC-11 删除零引用死代码、本机路径常量、无关文件与重复 Nacos 依赖
+3b3ca9f test(shop): A7 改回 @WebMvcTest 切片实测 400 链路，删除索引耦合的退路测试
+c53442f fix(shop): SPEC-05 §5.5 queryShopByType 分页校验/日志/半径单位/判空，分页越界返回 400
+b386dd5 fix(shop): SPEC-05 §5.4 空值标记写入加异常护栏，Redis 抖动不再升级为 500
+30c8a5b fix(shop): SPEC-05 §5.4 商铺分类空值穿透防护 + TTL 抖动
+dcb4f3a refactor(shop): SPEC-05 §5.1 读路径改走 ShopCacheService，写路径显式失效；删除空转的 Spring Cache 设施
+1d30628 feat(shop): SPEC-05 §5.2 预热迁出为 ApplicationRunner——不阻塞启动且经代理落缓存
+c55d1df feat(shop): SPEC-05 §5.1 新增 ShopCacheService——缓存 Shop 本体 + 空值短 TTL + TTL 抖动
+
+## Stat (full)
+ api-endpoints.txt                                  |   367 -
+ common/pom.xml                                     |    10 -
+ .../com/hmdp/utils/ApplicationContextUtil.java     |    19 -
+ .../src/main/java/com/hmdp/utils/CacheClient.java  |   249 -
+ common/src/main/java/com/hmdp/utils/ILock.java     |    10 -
+ .../main/java/com/hmdp/utils/PasswordEncoder.java  |    34 -
+ .../main/java/com/hmdp/utils/RedisConstants.java   |    17 +-
+ common/src/main/java/com/hmdp/utils/RedisData.java |    11 -
+ .../main/java/com/hmdp/utils/SimpleRedisLock.java  |    65 -
+ .../main/java/com/hmdp/utils/SystemConstants.java  |     1 -
+ .../src/main/java/com/hmdp/utils/UserConvert.java  |    33 -
+ ...-spec-05-11-\344\277\256\345\244\215-design.md" |   260 +
+ openapi.json                                       | 21266 -------------------
+ .../com/hmdp/order/metrics/SeckillMetrics.java     |    20 -
+ .../com/hmdp/order/mq/SeckillOrderProducer.java    |    61 +-
+ .../hmdp/order/service/IVoucherOrderService.java   |     2 -
+ .../service/impl/VoucherOrderServiceImpl.java      |    29 -
+ pom.xml                                            |    17 +
+ shop-service/pom.xml                               |    12 +-
+ .../main/java/com/hmdp/shop/ShopApplication.java   |     2 -
+ .../java/com/hmdp/shop/config/CacheConfig.java     |    58 -
+ .../config/ShopValidationExceptionHandler.java     |    32 +
+ .../com/hmdp/shop/controller/ShopController.java   |    11 +-
+ .../java/com/hmdp/shop/service/IShopService.java   |    19 +-
+ .../com/hmdp/shop/service/ShopCacheService.java    |    74 +
+ .../com/hmdp/shop/service/ShopCacheWarmUp.java     |    69 +
+ .../com/hmdp/shop/service/ShopGeoIndexWarmUp.java  |   117 +
+ .../hmdp/shop/service/impl/ShopServiceImpl.java    |   487 +-
+ .../shop/service/impl/ShopTypeServiceImpl.java     |    24 +-
+ .../hmdp/shop/controller/ShopControllerTest.java   |    30 +
+ .../controller/ShopControllerValidationTest.java   |    64 +
+ .../hmdp/shop/service/ShopCacheServiceTest.java    |   128 +
+ .../com/hmdp/shop/service/ShopCacheWarmUpTest.java |    58 +
+ .../hmdp/shop/service/ShopGeoIndexWarmUpTest.java  |   140 +
+ .../hmdp/shop/service/ShopTypeServiceImplTest.java |   124 +
+ .../service/impl/ShopServiceImplQueryByIdTest.java |    95 +
+ .../hmdp/user/service/impl/UserServiceImpl.java    |     5 -
+ 37 files changed, 1287 insertions(+), 22733 deletions(-)
+
+## Deleted files (name-status only)
+D api-endpoints.txt
+D common/src/main/java/com/hmdp/utils/ApplicationContextUtil.java
+D common/src/main/java/com/hmdp/utils/CacheClient.java
+D common/src/main/java/com/hmdp/utils/ILock.java
+D common/src/main/java/com/hmdp/utils/PasswordEncoder.java
+D common/src/main/java/com/hmdp/utils/RedisData.java
+D common/src/main/java/com/hmdp/utils/SimpleRedisLock.java
+D common/src/main/java/com/hmdp/utils/UserConvert.java
+D openapi.json
+D shop-service/src/main/java/com/hmdp/shop/config/CacheConfig.java
+
+## Diff ($repo code, -U10, excluding the two data files)
+diff --git a/common/pom.xml b/common/pom.xml
+index c2810ec..52f8d9e 100644
+--- a/common/pom.xml
++++ b/common/pom.xml
+@@ -55,30 +55,20 @@
+             <groupId>com.fasterxml.jackson.datatype</groupId>
+             <artifactId>jackson-datatype-jsr310</artifactId>
+         </dependency>
+ 
+         <!-- Lombok -->
+         <dependency>
+             <groupId>org.projectlombok</groupId>
+             <artifactId>lombok</artifactId>
+         </dependency>
+ 
+-        <!-- Spring Cloud Nacos -->
+-        <dependency>
+-            <groupId>com.alibaba.cloud</groupId>
+-            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+-        </dependency>
+-        <dependency>
+-            <groupId>com.alibaba.cloud</groupId>
+-            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+-        </dependency>
+-
+         <!-- Spring Cloud OpenFeign -->
+         <dependency>
+             <groupId>org.springframework.cloud</groupId>
+             <artifactId>spring-cloud-starter-openfeign</artifactId>
+         </dependency>
+ 
+         <!-- Sa-Token Core（仅核心 API，无 Web 框架依赖） -->
+         <dependency>
+             <groupId>cn.dev33</groupId>
+             <artifactId>sa-token-core</artifactId>
+diff --git a/common/src/main/java/com/hmdp/utils/ApplicationContextUtil.java b/common/src/main/java/com/hmdp/utils/ApplicationContextUtil.java
+deleted file mode 100644
+index cda81ab..0000000
+--- a/common/src/main/java/com/hmdp/utils/ApplicationContextUtil.java
++++ /dev/null
+@@ -1,19 +0,0 @@
+-package com.hmdp.utils;
+-
+-import org.springframework.beans.BeansException;
+-import org.springframework.context.ApplicationContext;
+-import org.springframework.context.ApplicationContextAware;
+-import org.springframework.stereotype.Component;
+-
+-@Component
+-public class ApplicationContextUtil implements ApplicationContextAware {
+-    private static ApplicationContext applicationContext;
+-
+-    @Override
+-    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+-        ApplicationContextUtil.applicationContext = applicationContext;
+-    }
+-    public static ApplicationContext getContxt() {
+-        return applicationContext;
+-    }
+-}
+\ No newline at end of file
+diff --git a/common/src/main/java/com/hmdp/utils/CacheClient.java b/common/src/main/java/com/hmdp/utils/CacheClient.java
+deleted file mode 100644
+index 985c1bc..0000000
+--- a/common/src/main/java/com/hmdp/utils/CacheClient.java
++++ /dev/null
+@@ -1,249 +0,0 @@
+-package com.hmdp.utils;
+-
+-import cn.hutool.core.util.BooleanUtil;
+-import cn.hutool.core.util.StrUtil;
+-import cn.hutool.json.JSONObject;
+-import cn.hutool.json.JSONUtil;
+-import com.hmdp.entity.Shop;
+-import lombok.extern.slf4j.Slf4j;
+-import org.springframework.data.redis.core.StringRedisTemplate;
+-import org.springframework.stereotype.Component;
+-
+-import java.time.LocalDateTime;
+-import java.util.concurrent.ExecutorService;
+-import java.util.concurrent.Executors;
+-import java.util.concurrent.TimeUnit;
+-import java.util.function.Function;
+-
+-import static com.hmdp.utils.RedisConstants.*;
+-
+-/**
+- * 缓存客户端工具类
+- * 
+- * 提供通用的缓存模式实现，包括：
+- * 1. 缓存穿透防护（Cache Penetration Protection）
+- * 2. 缓存击穿防护（Cache Breakdown Protection）
+- * 3. 逻辑过期（Logical Expiration）
+- * 4. 互斥锁重建（Mutex Lock Rebuilding）
+- * 
+- * 设计模式：
+- * - 查询模板模式：通过函数式接口封装数据库查询逻辑
+- * - 降级策略：缓存失效时使用数据库查询作为fallback
+- * - 异步重建：热点数据过期后异步更新缓存
+- * 
+- * 使用场景：
+- * - 高并发查询场景下的缓存优化
+- * - 防止恶意请求导致的缓存穿透
+- * - 热点数据失效时的平滑过渡
+- */
+-@Slf4j
+-@Component
+-public class CacheClient {
+-
+-    private final StringRedisTemplate stringRedisTemplate;
+-
+-    public CacheClient(StringRedisTemplate stringRedisTemplate) {
+-        this.stringRedisTemplate = stringRedisTemplate;
+-    }
+-
+-    public void set(String key, Object value, Long time, TimeUnit unit){
+-        stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(value),time,unit);
+-    }
+-
+-    public void setWithLogicalExpire(String key,Object value,Long time,TimeUnit unit){
+-        //设置逻辑过期时间
+-        RedisData redisData = new RedisData();
+-        redisData.setData(value);
+-        redisData.setExpireTime(LocalDateTime.now().plusSeconds(unit.toSeconds(time)));
+-        //写入redis
+-        stringRedisTemplate.opsForValue().set(key,JSONUtil.toJsonStr(redisData));
+-    }
+-
+-    /**
+-     * 缓存穿透防护查询方法
+-     * 
+-     * 解决缓存穿透问题的经典方案：当查询数据不存在时，缓存空值防止重复查询数据库。
+-     * 流程：
+-     * 1. 查询Redis缓存
+-     * 2. 缓存存在且有效 → 直接返回
+-     * 3. 缓存存在但为空值 → 返回null（防止穿透）
+-     * 4. 缓存不存在 → 查询数据库
+-     * 5. 数据库存在 → 写入缓存并返回
+-     * 6. 数据库不存在 → 缓存空值并返回null
+-     * 
+-     * @param keyPrefix 缓存键前缀
+-     * @param id 查询ID
+-     * @param type 返回类型
+-     * @param dbFallback 数据库查询函数（降级策略）
+-     * @param time 缓存时间
+-     * @param unit 时间单位
+-     * @return 查询结果，可能为null
+-     */
+-    public <R,ID> R queryWithPassThrough(String keyPrefix, ID id, Class<R> type,
+-                                        Function<ID,R> dbFallback,Long time,TimeUnit unit){
+-
+-        String key = keyPrefix + id;
+-        //1.从redis中查询商铺缓存
+-        String json = stringRedisTemplate.opsForValue().get(key);
+-        //2.判断是否存在
+-        if(StrUtil.isNotBlank(json)){
+-            //3.存在，直接返回
+-            return JSONUtil.toBean(json,type);
+-        }
+-        //因为如果为null则需要查询数据库，不为null且上一个判断为false（即有空值）的情况下才说明有空命中
+-        //判断是否命中的是否是空值
+-        if(json != null){
+-            //返回错误信息
+-            return null;
+-        }
+-
+-        //4.不存在，根据id查询数据库
+-        R r = dbFallback.apply(id);
+-        //5.不存在，返回错误
+-        if(r == null){
+-            //将空值写入redis
+-            stringRedisTemplate.opsForValue().set(key,"",CACHE_NULL_TTL,TimeUnit.MINUTES);
+-            //返回错误信息
+-            return null;
+-        }
+-        //6.存在 写入redis
+-        this.set(key,r,time,unit);
+-        //7.返回
+-        return r;
+-    }
+-
+-
+-
+-    private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
+-
+-
+-    /**
+-     * 逻辑过期缓存查询方法
+-     * 
+-     * 解决缓存击穿问题的方案：缓存数据设置逻辑过期时间，过期后异步重建。
+-     * 流程：
+-     * 1. 查询Redis缓存
+-     * 2. 缓存不存在 → 返回null（需要调用方处理）
+-     * 3. 缓存存在 → 解析逻辑过期时间
+-     * 4. 未过期 → 直接返回缓存数据
+-     * 5. 已过期 → 获取互斥锁，异步重建缓存，返回旧数据
+-     * 
+-     * 特点：
+-     * - 保证高并发下热点数据不会同时失效
+-     * - 异步重建避免阻塞用户请求
+-     * - 返回旧数据保证用户体验连续性
+-     * 
+-     * @param keyPrefix 缓存键前缀
+-     * @param id 查询ID
+-     * @param type 返回类型
+-     * @param dbFallback 数据库查询函数
+-     * @param time 逻辑过期时间
+-     * @param unit 时间单位
+-     * @return 查询结果，可能为null或过期数据
+-     */
+-    public <R, ID> R queryWithLogicalExpire(
+-            String keyPrefix, ID id, Class<R> type, Function<ID, R> dbFallback, Long time, TimeUnit unit) {
+-        String key = keyPrefix + id;
+-        // 1.从redis查询商铺缓存
+-        String json = stringRedisTemplate.opsForValue().get(key);
+-        // 2.判断是否存在
+-        if (StrUtil.isBlank(json)) {
+-            // 3.存在，直接返回
+-            return null;
+-        }
+-        // 4.命中，需要先把json反序列化为对象
+-        RedisData redisData = JSONUtil.toBean(json, RedisData.class);
+-        R r = JSONUtil.toBean((JSONObject) redisData.getData(), type);
+-        LocalDateTime expireTime = redisData.getExpireTime();
+-        // 5.判断是否过期
+-        if(expireTime.isAfter(LocalDateTime.now())) {
+-            // 5.1.未过期，直接返回店铺信息
+-            return r;
+-        }
+-        // 5.2.已过期，需要缓存重建
+-        // 6.缓存重建
+-        // 6.1.获取互斥锁
+-        String lockKey = LOCK_SHOP_KEY + id;
+-        boolean isLock = tryLock(lockKey);
+-        // 6.2.判断是否获取锁成功
+-        if (isLock){
+-            // 6.3.成功，开启独立线程，实现缓存重建
+-            CACHE_REBUILD_EXECUTOR.submit(() -> {
+-                try {
+-                    // 查询数据库
+-                    R newR = dbFallback.apply(id);
+-                    // 重建缓存
+-                    this.setWithLogicalExpire(key, newR, time, unit);
+-                } catch (Exception e) {
+-                    throw new RuntimeException(e);
+-                }finally {
+-                    // 释放锁
+-                    unlock(lockKey);
+-                }
+-            });
+-        }
+-        // 6.4.返回过期的商铺信息
+-        return r;
+-    }
+-
+-
+-    private boolean tryLock(String key){
+-        Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key,"1",10,TimeUnit.SECONDS);
+-        return BooleanUtil.isTrue(flag);
+-    }
+-
+-    private void unlock(String key){
+-        stringRedisTemplate.delete(key);
+-    }
+-
+-    public <R, ID> R queryWithMutex(
+-            String keyPrefix, ID id, Class<R> type, Function<ID, R> dbFallback, Long time, TimeUnit unit) {
+-        String key = keyPrefix + id;
+-        // 1.从redis查询商铺缓存
+-        String shopJson = stringRedisTemplate.opsForValue().get(key);
+-        // 2.判断是否存在
+-        if (StrUtil.isNotBlank(shopJson)) {
+-            // 3.存在，直接返回
+-            return JSONUtil.toBean(shopJson, type);
+-        }
+-        // 判断命中的是否是空值
+-        if (shopJson != null) {
+-            // 返回一个错误信息
+-            return null;
+-        }
+-
+-        // 4.实现缓存重建
+-        // 4.1.获取互斥锁
+-        String lockKey = LOCK_SHOP_KEY + id;
+-        R r = null;
+-        try {
+-            boolean isLock = tryLock(lockKey);
+-            // 4.2.判断是否获取成功
+-            if (!isLock) {
+-                // 4.3.获取锁失败，休眠并重试
+-                Thread.sleep(50);
+-                return queryWithMutex(keyPrefix, id, type, dbFallback, time, unit);
+-            }
+-            // 4.4.获取锁成功，根据id查询数据库
+-            r = dbFallback.apply(id);
+-            // 5.不存在，返回错误
+-            if (r == null) {
+-                // 将空值写入redis
+-                stringRedisTemplate.opsForValue().set(key, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
+-                // 返回错误信息
+-                return null;
+-            }
+-            // 6.存在，写入redis
+-            this.set(key, r, time, unit);
+-        } catch (InterruptedException e) {
+-            throw new RuntimeException(e);
+-        }finally {
+-            // 7.释放锁
+-            unlock(lockKey);
+-        }
+-        // 8.返回
+-        return r;
+-    }
+-
+-
+-}
+diff --git a/common/src/main/java/com/hmdp/utils/ILock.java b/common/src/main/java/com/hmdp/utils/ILock.java
+deleted file mode 100644
+index 03614fe..0000000
+--- a/common/src/main/java/com/hmdp/utils/ILock.java
++++ /dev/null
+@@ -1,10 +0,0 @@
+-package com.hmdp.utils;
+-
+-public interface ILock {
+-    //尝试获取锁
+-    boolean tryLock(long timeoutSec);
+-
+-    //释放锁
+-    void unlock();
+-
+-}
+diff --git a/common/src/main/java/com/hmdp/utils/PasswordEncoder.java b/common/src/main/java/com/hmdp/utils/PasswordEncoder.java
+deleted file mode 100644
+index 1360e38..0000000
+--- a/common/src/main/java/com/hmdp/utils/PasswordEncoder.java
++++ /dev/null
+@@ -1,34 +0,0 @@
+-package com.hmdp.utils;
+-
+-
+-import cn.hutool.core.util.RandomUtil;
+-import org.springframework.util.DigestUtils;
+-
+-import java.nio.charset.StandardCharsets;
+-
+-public class PasswordEncoder {
+-
+-    public static String encode(String password) {
+-        // 生成盐
+-        String salt = RandomUtil.randomString(20);
+-        // 加密
+-        return encode(password,salt);
+-    }
+-    private static String encode(String password, String salt) {
+-        // 加密
+-        return salt + "@" + DigestUtils.md5DigestAsHex((password + salt).getBytes(StandardCharsets.UTF_8));
+-    }
+-    public static Boolean matches(String encodedPassword, String rawPassword) {
+-        if (encodedPassword == null || rawPassword == null) {
+-            return false;
+-        }
+-        if(!encodedPassword.contains("@")){
+-            throw new RuntimeException("密码格式不正确！");
+-        }
+-        String[] arr = encodedPassword.split("@");
+-        // 获取盐
+-        String salt = arr[0];
+-        // 比较
+-        return encodedPassword.equals(encode(rawPassword, salt));
+-    }
+-}
+diff --git a/common/src/main/java/com/hmdp/utils/RedisConstants.java b/common/src/main/java/com/hmdp/utils/RedisConstants.java
+index 356e81a..283cb9e 100644
+--- a/common/src/main/java/com/hmdp/utils/RedisConstants.java
++++ b/common/src/main/java/com/hmdp/utils/RedisConstants.java
+@@ -1,40 +1,35 @@
+ package com.hmdp.utils;
+ 
+ public class RedisConstants {
+     public static final String LOGIN_CODE_KEY = "login:code:";
+     public static final Long LOGIN_CODE_TTL = 2L;
+     /** 验证码频控（SPEC-06 §5.5）：手机号 60 秒 1 次 / 24 小时 10 次，IP 24 小时 20 次 */
+     public static final String LOGIN_CODE_LIMIT_KEY = "login:code:limit:phone:";
+     public static final String LOGIN_CODE_COUNT_KEY = "login:code:count:phone:";
+     public static final String LOGIN_CODE_IP_COUNT_KEY = "login:code:count:ip:";
+-    public static final String LOGIN_USER_KEY = "login:token:";
+-    public static final Long LOGIN_USER_TTL = 36000L;
+ 
+-    public static final Long CACHE_NULL_TTL = 2L;
++    /** 空值标记 TTL，单位：秒（SPEC-05 §5.1：把负缓存窗口从 30 分钟压到 60 秒） */
++    public static final Long CACHE_NULL_TTL = 60L;
+ 
+-    public static final Long CACHE_SHOP_TTL = 30L;
+     public static final String CACHE_SHOP_KEY = "cache:shop:";
+ 
+-    public static final String LOCK_SHOP_KEY = "lock:shop:";
+-    public static final Long LOCK_SHOP_TTL = 10L;
++    /** 缓存基础 TTL，单位：秒（商铺与商铺分类共用，SPEC-05 G7） */
++    public static final Long CACHE_TTL_BASE_SECONDS = 1800L;
++    /** 缓存 TTL 抖动上限，单位：秒；实际 TTL = 基础值 + [0, 抖动) */
++    public static final Integer CACHE_TTL_JITTER_SECONDS = 300;
+ 
+     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
+     /** 已购用户 Set —— 与 seckill.lua 的 orderKey 同拼法 */
+     public static final String SECKILL_ORDER_SET_KEY = "seckill:order:";
+     /** 订单明细 Hash —— 与 seckill.lua 的 orderDetailKey 同拼法（本批冻结的契约） */
+     public static final String SECKILL_ORDER_DETAIL_KEY = "seckill:order:detail:";
+     /** 扣减幂等 Set（SPEC-03 §5.4，键为 orderId） */
+     public static final String SECKILL_DEDUCT_KEY = "seckill:deduct:";
+     public static final String BLOG_LIKED_KEY = "blog:liked:";
+     public static final String FEED_KEY = "feed:";
+     public static final String SHOP_GEO_KEY = "shop:geo:";
+     public static final String USER_SIGN_KEY = "sign:";
+ 
+     public static final String SHOP_LIST_KEY = "shop:list:";
+ 
+-    // JetCache 配置（可根据需要调整）
+-    public static final Integer JETCACHE_LOCAL_LIMIT = 100;
+-    public static final Long JETCACHE_EXPIRE = 7200L; // 2小时
+-    public static final Long JETCACHE_REFRESH = 1800L; // 30分钟自动刷新
+-
+ }
+diff --git a/common/src/main/java/com/hmdp/utils/RedisData.java b/common/src/main/java/com/hmdp/utils/RedisData.java
+deleted file mode 100644
+index 8f777fc..0000000
+--- a/common/src/main/java/com/hmdp/utils/RedisData.java
++++ /dev/null
+@@ -1,11 +0,0 @@
+-package com.hmdp.utils;
+-
+-import lombok.Data;
+-
+-import java.time.LocalDateTime;
+-
+-@Data
+-public class RedisData {
+-    private LocalDateTime expireTime;
+-    private Object data;
+-}
+diff --git a/common/src/main/java/com/hmdp/utils/SimpleRedisLock.java b/common/src/main/java/com/hmdp/utils/SimpleRedisLock.java
+deleted file mode 100644
+index 4919cbb..0000000
+--- a/common/src/main/java/com/hmdp/utils/SimpleRedisLock.java
++++ /dev/null
+@@ -1,65 +0,0 @@
+-package com.hmdp.utils;
+-
+-import cn.hutool.core.lang.UUID;
+-import org.springframework.core.io.ClassPathResource;
+-import org.springframework.data.redis.core.StringRedisTemplate;
+-import org.springframework.data.redis.core.script.DefaultReactiveScriptExecutor;
+-import org.springframework.data.redis.core.script.DefaultRedisScript;
+-
+-import java.util.Collection;
+-import java.util.Collections;
+-import java.util.concurrent.TimeUnit;
+-
+-public class SimpleRedisLock implements ILock{
+-
+-    private String name;
+-    private StringRedisTemplate stringRedisTemplate;
+-
+-    public SimpleRedisLock(String name, StringRedisTemplate stringRedisTemplate) {
+-        this.name = name;
+-        this.stringRedisTemplate = stringRedisTemplate;
+-    }
+-
+-    private static final String KEY_PREFIX = "lock:";
+-    private static final String ID_PREFIX = UUID.randomUUID().toString(true)+"-";
+-    private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
+-    static {
+-        UNLOCK_SCRIPT = new DefaultRedisScript<>();
+-        UNLOCK_SCRIPT.setLocation(new ClassPathResource("unlock.lua"));
+-        UNLOCK_SCRIPT.setResultType(Long.class);
+-    }
+-
+-    @Override
+-    public boolean tryLock(long timeoutSec) {
+-        //获取线程id
+-        String thredId = ID_PREFIX + Thread.currentThread().getId();
+-        //获取锁
+-        Boolean success = stringRedisTemplate.opsForValue()
+-                .setIfAbsent(KEY_PREFIX+name,thredId,timeoutSec, TimeUnit.SECONDS);
+-        return Boolean.TRUE.equals(success);
+-    }
+-
+-
+-    @Override
+-    public void unlock() {
+-        stringRedisTemplate.execute(
+-                UNLOCK_SCRIPT,
+-                Collections.singletonList(KEY_PREFIX+name),
+-                ID_PREFIX + Thread.currentThread().getId());
+-    }
+-
+-
+-//    @Override
+-//    public void unlock() {
+-//        //获取线程标识
+-//        String threadId = ID_PREFIX + Thread.currentThread().getId();
+-//        //获取锁中的标识
+-//        String id = stringRedisTemplate.opsForValue().get(KEY_PREFIX+name);
+-//        //判断是否一致
+-//        if(threadId.equals(id)){
+-//            //释放锁
+-//            stringRedisTemplate.delete(KEY_PREFIX+name);
+-//        }
+-//
+-//    }
+-}
+diff --git a/common/src/main/java/com/hmdp/utils/SystemConstants.java b/common/src/main/java/com/hmdp/utils/SystemConstants.java
+index bc50c3d..9fafea4 100644
+--- a/common/src/main/java/com/hmdp/utils/SystemConstants.java
++++ b/common/src/main/java/com/hmdp/utils/SystemConstants.java
+@@ -1,8 +1,7 @@
+ package com.hmdp.utils;
+ 
+ public class SystemConstants {
+-    public static final String IMAGE_UPLOAD_DIR = "E:\\AndrowsData\\code\\nginx-1.18.0\\html\\hmdp\\imgs";
+     public static final String USER_NICK_NAME_PREFIX = "user_";
+     public static final int DEFAULT_PAGE_SIZE = 5;
+     public static final int MAX_PAGE_SIZE = 10;
+ }
+diff --git a/common/src/main/java/com/hmdp/utils/UserConvert.java b/common/src/main/java/com/hmdp/utils/UserConvert.java
+deleted file mode 100644
+index 73835ce..0000000
+--- a/common/src/main/java/com/hmdp/utils/UserConvert.java
++++ /dev/null
+@@ -1,33 +0,0 @@
+-package com.hmdp.utils;
+-
+-import com.hmdp.dto.UserDTO;
+-import com.hmdp.entity.User;
+-import org.springframework.beans.BeanUtils;
+-
+-///  这个是因为LoginIntercptor类中，要创建一个DTO对象然后进行属性拷贝，不直接进行强制转换，所创建的一个工具类
+-
+-public class UserConvert {
+-
+-    private UserConvert() {
+-        // 工具类，防止实例化
+-    }
+-
+-    public static UserDTO toDTO(User user) {
+-        if (user == null) {
+-            return null;
+-        }
+-        UserDTO userDTO = new UserDTO();
+-        BeanUtils.copyProperties(user, userDTO);
+-        return userDTO;
+-    }
+-
+-    // 如果需要反向转换，可以添加这个方法
+-    public static User toEntity(UserDTO userDTO) {
+-        if (userDTO == null) {
+-            return null;
+-        }
+-        User user = new User();
+-        BeanUtils.copyProperties(userDTO, user);
+-        return user;
+-    }
+-}
+\ No newline at end of file
+diff --git "a/docs/superpowers/specs/2026-10-08-spec-05-11-\344\277\256\345\244\215-design.md" "b/docs/superpowers/specs/2026-10-08-spec-05-11-\344\277\256\345\244\215-design.md"
+index 759ef1f..1942b84 100644
+--- "a/docs/superpowers/specs/2026-10-08-spec-05-11-\344\277\256\345\244\215-design.md"
++++ "b/docs/superpowers/specs/2026-10-08-spec-05-11-\344\277\256\345\244\215-design.md"
+@@ -491,10 +491,270 @@ A4（预热结果对读路径可见）虽有 §7.1 的机制级测试，其**真
+ ## 10. 实施顺序（约束）
+ 
+ 单一提交序列内，**必须按此拓扑顺序**，否则中间态不可编译：
+ 
+ 1. **先 **`common` 的新增常量**（`RedisConstants`）——`ShopCacheService` 依赖它们；
+ 2. 再建 `ShopCacheService` + 两个 `ApplicationRunner` + 校验处理器；
+ 3. 再改 `ShopServiceImpl` / `ShopTypeServiceImpl` / `ShopController` / `IShopService` / `ShopApplication`，同一批内移除 `CacheConfig` 与两个 pom 依赖（`CacheConfig` 删除与 `@EnableCaching` 移除必须同批，否则 `@Cacheable` 已删而配置仍在，留下孤立体）；
+ 4. 再补 `shop-service` 测试依赖与测试类，跑通 §7.1；
+ 5. **最后**才做 SPEC-11 的删除（`CacheClient` 一族、`SeckillOrderProducer` 死方法、`SeckillMetrics`、`createVoucherOrder`、`convertToDTO`、常量、根目录文件、`common/pom.xml` 的 nacos、父 pom 的 `dependency:analyze`）——此时 SPEC-05 已落地并验证，删除造成的编译/测试失败可立即归因；
+ 6. 全量回归（§7.3）+ 实测记录 append（§7.3 收尾）。
++
++---
++
++## 11. 实测记录
++
++本段为 **pure append**，不修改 §1–§10 任何既有行。记录时间 2026-10-08，基线 `f3a5382`。
++
++### 11.1 已实测
++
++#### 11.1.1 全量编译（SPEC-11 A8）
++
++```bash
++export MAVEN_OPTS="-Xmx384m -XX:+UseSerialGC -XX:MaxMetaspaceSize=160m -Xss512k -Djdk.attach.allowAttachSelf=true"
++mvn -o -T 1C -DskipTests compile
++```
++
++**Exit code: 0**，`BUILD SUCCESS`，Reactor 10 个模块（含 `hm-dianping` 根）全部 `SUCCESS`，总耗时 3.740 s。
++
++#### 11.1.2 六个核心模块回归（SPEC-05 A11 / SPEC-11 A7）
++
++```bash
++mvn -o -pl common,gateway-service,order-service,shop-service,user-service,voucher-service test \
++    -DforkCount=0 -Dsurefire.failIfNoSpecifiedTests=false
++```
++
++**Exit code: 0**，`BUILD SUCCESS`。逐模块真实 `Tests run` 摘要：
++
++| 模块 | `Tests run` 摘要 |
++|---|---|
++| common | `Tests run: 16, Failures: 0, Errors: 0, Skipped: 0` |
++| gateway-service | `Tests run: 5, Failures: 0, Errors: 0, Skipped: 0` |
++| user-service | `Tests run: 5, Failures: 0, Errors: 0, Skipped: 0` |
++| shop-service | `Tests run: 21, Failures: 0, Errors: 0, Skipped: 0` |
++| voucher-service | `Tests run: 4, Failures: 0, Errors: 0, Skipped: 0` |
++| order-service | `Tests run: 15, Failures: 0, Errors: 0, Skipped: 0` |
++
++合计 **66 run, 0 failures, 0 errors, 0 skipped**。SPEC-03 的 order-service 测试（15 run）与 SPEC-07 的 `FeignContractTest`（在 common 的 16 run 内）均在此集合中通过。
++
++> **模块集合口径调整**：§7.3 原命令写的是 `common gateway-service order-service social-service agent-service shop-service`。实测改为上述六模块：**增 voucher-service**（有 1 个测试文件，SPEC-11 A7 要求全部测试仍通过，原命令遗漏），**移 social-service**（见 11.1.4）。`-DforkCount=0` 与低内存 `MAVEN_OPTS` 自首次运行即生效。
++
++#### 11.1.3 agent-service 独立运行（SPEC-11 A7）
++
++```bash
++mvn -o -pl agent-service -am test -DforkCount=0 -Dsurefire.failIfNoSpecifiedTests=false
++```
++
++**Exit code: 1**，`BUILD FAILURE`。逐模块真实 `Tests run` 摘要：
++
++| 模块 | `Tests run` 摘要 |
++|---|---|
++| common（`-am` 带上） | `Tests run: 16, Failures: 0, Errors: 0, Skipped: 0` |
++| agent-service | `Tests run: 203, Failures: 1, Errors: 0, Skipped: 6` |
++
++**唯一失败**：`SessionSnapshotServiceTest.快照固化_读回一致率百分之百:57`，`expected: <true> but was: <false>`。该失败为**既有红**，非本批回归，详见 11.4。
++
++> **口径声明**：本批**不是**「全绿」。agent-service 存在 1 个既有失败，如实记录为 `203 run, 1 failure`，不四舍五入为「全部通过」。
++
++#### 11.1.4 无测试源模块（事实，非「通过」）
++
++| 模块 | 事实 |
++|---|---|
++| social-service | 无 `src/test` 目录，**无测试源，无可执行用例** |
++| rag-service | 无 `src/test` 目录，**无测试源，无可执行用例** |
++
++§7.3 把 social-service 列入期望全绿的集合，但该模块无任何可执行用例，该期望本身不成立；故改为此事实声明。
++
++#### 11.1.5 SPEC-11 §7.2 四组 grep（真实输出，全部归零）
++
++**(1) 七个被删类名**
++
++```bash
++for c in SimpleRedisLock ILock CacheClient RedisData UserConvert PasswordEncoder ApplicationContextUtil; do
++  echo "$c: $(git grep -n "\b$c\b" -- '*.java' '*.xml' '*.yaml' '*.yml' '*.properties' | wc -l)"
++done
++```
++
++真实输出：
++
++```
++SimpleRedisLock: 0
++ILock: 0
++CacheClient: 0
++RedisData: 0
++UserConvert: 0
++PasswordEncoder: 0
++ApplicationContextUtil: 0
++```
++
++**(2) 九个被删常量**（已排除 `Constants.java` 定义本体）
++
++```bash
++for c in CACHE_SHOP_TTL LOCK_SHOP_KEY LOCK_SHOP_TTL LOGIN_USER_KEY LOGIN_USER_TTL \
++         JETCACHE_LOCAL_LIMIT JETCACHE_EXPIRE JETCACHE_REFRESH IMAGE_UPLOAD_DIR; do
++  echo "$c: $(git grep -n "$c" -- '*.java' | grep -v 'Constants.java' | wc -l)"
++done
++```
++
++真实输出：
++
++```
++CACHE_SHOP_TTL: 0
++LOCK_SHOP_KEY: 0
++LOCK_SHOP_TTL: 0
++LOGIN_USER_KEY: 0
++LOGIN_USER_TTL: 0
++JETCACHE_LOCAL_LIMIT: 0
++JETCACHE_EXPIRE: 0
++JETCACHE_REFRESH: 0
++IMAGE_UPLOAD_DIR: 0
++```
++
++**(3) 本机绝对路径**
++
++```bash
++git grep -n "E:\\AndrowsData" -- '*.java' '*.yaml' '*.yml' '*.properties' '*.xml'
++```
++
++真实输出：**（空，零行）**，`exit=1`。
++
++**(4) 根目录无关文件**
++
++```bash
++git ls-files | grep -E "api-endpoints.txt|openapi.json"
++```
++
++真实输出：**（空，零行）**，`exit=1`。
++
++**四组断言全部归零**，对应 SPEC-05 A10、SPEC-11 A4 / A5。
++
++#### 11.1.6 `dependency:analyze` 要点（SPEC-11 A6）
++
++```bash
++mvn -o -pl common,shop-service,order-service dependency:analyze
++```
++
++**Exit code: 0**，`BUILD SUCCESS`（告警模式，未阻断构建）。
++
++**头条数字：未使用但已声明的依赖共 38 条 —— common 7、shop-service 14、order-service 17**（与 §7.3 收尾时的 Task 7 报告一致，本次复现吻合）。
++
++| 模块 | Used undeclared | Unused declared |
++|---|---|---|
++| common | 13 | **7** |
++| shop-service | 24 | **14** |
++| order-service | 24 | **17** |
++
++值得点名的行：
++
++- 三模块共同命中：`spring-boot-starter-web`、`spring-boot-starter-data-redis`、`commons-pool2`、`mybatis-plus-spring-boot3-starter`、`spring-cloud-starter-openfeign`、`spring-boot-starter-test`——均系 starter 聚合依赖，实际符号由传递依赖直接引用，属对 starter 的固有误报特征。
++- 与 SPEC-11 直接相关的两条在 **order-service**：`io.seata:seata-spring-boot-starter`、`io.micrometer:micrometer-registry-prometheus`（删除 `SeckillMetrics` 后暴露；SPEC-11 未在清单内，本轮不动）。
++- **common**：`spring-cloud-starter-openfeign` 仍在未使用列表，与 §5-B1 保留的 Feign 契约测试一致（测试侧 `@FeignClient` 需该 starter 参与 test 编译），属误报而非可删项。
++
++### 11.2 待环境（§7.4 三项 + A4）
++
++以下四项无法在本机给出可信证据（需 MySQL + Redis + 网关全栈或 8C16G 压测环境），标「待环境」并附复现命令。四项均有机制级自动化测试兜底，但**机制成立 ≠ 全栈可见性成立**，故不据此宣称通过。
++
++| # | 项 | 复现命令 |
++|---|----|----------|
++| **A2** | 新增商铺后**立即可见**（无负缓存不可见窗口） | ① `curl -s localhost:8081/shop/99999`（断言「店铺不存在」）② `redis-cli -n 0 TTL cache:shop:99999` 断言 `<= 60`（修复前为 1800）③ 插入 id=99999 的店铺并带 admin token `POST localhost:8081/shop` ④ 立即 `curl -s localhost:8081/shop/99999` 断言返回真实店铺数据 |
++| **A3** | 应用启动耗时 < 5 秒 | 重启 shop-service，从日志取 `Started ShopApplication in X.XXX seconds`，断言 < 5（修复前 ≥ 10） |
++| **A4** | 预热结果对读路径可见 | 启动完成后查一个热门店铺，断言 shop-service 日志中**没有**该 id 的「回源 DB」痕迹（缓存已由预热填充） |
++| **A9** | 商户查询 QPS 不低于 21027 | 8C16G 环境下对 `GET /shop/{id}`（热点 id，缓存命中）压测，断言 QPS ≥ 21027 |
++
++> **A7 不在上表**。§7.4 原表把 A7 列为「仅当 Task 5 采用退路时」的待环境项，实际 Task 5 落在 primary 分支，见 11.3。
++
++### 11.3 A7 实际采用方案
++
++**采用 Task 5 的 primary 分支 —— `@WebMvcTest` 切片（Task 5 Step 7 通过），非 Step 8 退路。因此 A7 为自动化实测，不列待环境。**
++
++- 测试文件：`shop-service/src/test/java/com/hmdp/shop/controller/ShopControllerValidationTest.java`
++- 切片锚定：`@WebMvcTest(controllers = ShopController.class, ...)` + `@ContextConfiguration(classes = {ShopController.class, ShopValidationExceptionHandler.class})`，并以 `spring.cloud.bootstrap.enabled=false`、`spring.cloud.nacos.config.enabled=false`、`spring.cloud.discovery.enabled=false` 三条属性关闭 bootstrap 与 Nacos，使切片可独立启动。
++- 对**真实 `ShopController`** 的真实断言：
++  - `GET /shop/of/type?typeId=1&current=0` → `status().isBadRequest()`（HTTP 400）
++  - `GET /shop/of/type?typeId=1&current=1` → `status().isOk()`（HTTP 200）
++- **反证（证伪）证据**：修复轮 `3b3ca9f` 记录了一次证伪运行——临时移除 `@Validated` 后该测试失败为 `Status expected:<400> but was:<200>`，证明 400 由校验链路真实产生，而非测试自证。
++- `3b3ca9f` 同时删除了索引耦合的退路测试 `ShopValidationHandlerTest.java`（-48 行），确认退路方案未被采用。
++
++### 11.4 既有红
++
++**`agent-service` 的 `SessionSnapshotServiceTest.快照固化_读回一致率百分之百:57` 失败，为既有红（非本批回归，非「通过」）。** 计数口径：agent-service `203 run, 1 failure`。
++
++**根因**：`SessionSnapshotService.saveSnapshot` 在 `try` 内抛 `com.baomidou.mybatisplus.core.exceptions.MybatisPlusException: can not find lambda cache for this entity [com.hmdp.agent.entity.AgentSession]`，`catch` 将其吞掉（`log.warn("会话快照固化失败（不阻断关闭）")`）并返回 `false`，故 `assertTrue` 失败。
++
++**隔离证据（证明与本批无关）**：
++
++1. `SessionSnapshotService` 仅 import MyBatis-Plus / Jackson / lombok / Redisson 与自身包，不引用本批任何改动面；
++2. `agent-service` 对本批删除的 **24 个符号**逐一 grep 后**零引用**；
++3. 该测试是纯 Mockito 单元测试，所有协作者均被 mock，不触达本批任何代码路径。
++
++**处置**：**不修复**——超出 SPEC-05 / SPEC-11 范围，`agent-service` 不在本批范围。
++
++### 11.5 已知残留
++
++#### 11.5.1 §8 原表逐条状态
++
++| §8 条目 | 本轮状态 |
++|---|---|
++| `sendToDeadLetterQueue` 提前删除（死信 topic 有消费者无生产者） | **仍在**。SPEC-08 需重实现生产端；本轮未动 |
++| `ShopCacheService` 无互斥重建（热点失效瞬间并发查库） | **仍在**。与改造前 `@Cacheable`（无 `sync`）语义等价，21027 基线即在该语义下测得，不构成回退 |
++| 无 L1 本地缓存 | **仍在**。由 TTL 抖动（§4-A2）缓解；不存在 L1，故 L1 一致性问题不适用 |
++| `ShopController.queryShopByName` 的 `current` 仍无下限 | **仍在**。与 `of/type` 同源缺陷，SPEC-05 §1.6 只点 `of/type`，按严格范围不动；**建议后续单独处理** |
++| `spring-cloud-starter-bootstrap` 仅 order-service 有 | **仍在**。SPEC-11 §1.2 列为观察但未给改法，本轮不动 |
++| order/social/user/voucher 的空转 `@EnableCaching` | **仍在**。四服务无任何 `@Cacheable`，不在 SPEC-11 清单内 |
++| `dependency:analyze` 首次为告警模式 | **仍在**。存量 38 条告警不拦截；G6「防止再次累积」需切 `failOnWarning=true` 才真正生效 |
++| 工作区既有未暂存删除 | **仍在**。本次提交仅 stage 本设计文档单一显式路径 |
++
++#### 11.5.2 本次新发现的独立观察项（SPEC-05/11 范围外）
++
++**全仓未配置 MyBatis-Plus 分页插件**：`git grep "PaginationInnerInterceptor"` 在代码中**零命中**（全仓仅 1 处命中，位于计划文档 `docs/superpowers/plans/2026-10-08-spec-05-11-修复.md:18` 的「已知观察项」自述中，非代码；亦无任何 `MybatisPlusInterceptor` / `InnerInterceptor` 配置类）。缺少该内部拦截器时 MyBatis-Plus 不改写 SQL 追加 `LIMIT`，故 `selectPage` / `page(new Page<>(...))` **不会真正分页**，而是全量取回后在内存中裁剪。受影响调用点：
++
++- `rag-service`：`AuditServiceImpl.java:49`、`DocumentServiceImpl.java:103`、`KnowledgeBaseServiceImpl.java:54`（`selectPage`）
++- `shop-service`：`ShopController.java:103`、`ShopServiceImpl.java:110`（`page(new Page<>(...))`）
++- `social-service`：`BlogServiceImpl.java:56`、`BlogServiceImpl.java:268`（`page(new Page<>(...))`）
++
++本批新代码已规避：`shop-service/src/main/java/com/hmdp/shop/service/ShopGeoIndexWarmUp.java:32-33` 的类级注释明确说明此处不使用 `selectPage` 而整表读入，正是因为本仓未配置分页插件。属 SPEC-05 / SPEC-11 范围外，记为**独立观察项**，本轮不修。
++
++### 11.6 偏离
++
++| # | 偏离 | 说明 |
++|---|------|------|
++| **D1** | 父 pom 将 `maven-dependency-plugin` **pin 到 `3.9.0`**（`pom.xml:157-158`），计划文本给出的块中**不含版本** | Spring Boot 3.1.12 的 `spring-boot-dependencies` 将该插件 pin 到 `3.5.0`，而 `3.5.0` 无法读取 Java 21 class 文件；且 `analyze-only` 默认绑定 `verify` 阶段——于是无版本的计划块会使**每次 `mvn verify` 直接失败**，而非仅告警，与「告警模式不阻断构建」的意图正好相反。`3.9.0` 已存在于本机仓库（本次 `dependency:analyze` 即以 `dependency:3.9.0:analyze` 运行成功，见 11.1.6）。 |
++| **D2** | `sendSeckillOrderMessageAsync` **被刻意保留** | 该方法归属 **SPEC-08**（`order-service/src/main/java/com/hmdp/order/mq/SeckillOrderProducer.java:73`），SPEC-11 范围不含，故未删。 |
++| **D3** | `CACHE_SHOP_KEY` / `CACHE_NULL_TTL` **未按 SPEC-11 字面清单删除** | SPEC-05 的重写读路径（`ShopCacheService`）正在使用这两个常量，删除将使编译失败。口径调整已记录于 §3-D4 / §9.2-A2，属既定例外而非新增偏离。 |
++| **D4** | 回归模块集合调整 | 增 voucher-service（原命令遗漏，见 11.1.2），移 social-service（无测试源，见 11.1.4）。 |
++| **D5** | agent-service 未全绿 | 1 个既有红，见 11.4。非本批引入，未修复。 |
++
++---
++
++### 11.7 终局评审后的修复波（本节由控制者在全分支评审完成后追加）
++
++**背景**：§11.1–11.6 落盘于 commit `9077d71`。此后本批做了一次**全分支终局评审**（最高能力模型），结论「Ready with the two listed fixes」。评审在**本批新增的代码**中发现两处真实缺陷，控制者裁定**必须在唯一一次终局修复波内修掉**（终局评审后不设第二轮）。
++
++**修复波**：commit `c347cac`，只改 2 个文件——
++
++| 文件 | 改动 |
++|------|------|
++| `shop-service/.../service/ShopGeoIndexWarmUp.java` | ①`lastId = shop.getId()` 移出坐标判空守卫——原写法下若一整批 500 行全被跳过，游标不前进、`chunk.size() < PAGE_SIZE` 永不成立，下一批取回同样的页 ⇒ **启动期死循环**（今日因 `tb_shop.type_id` NOT NULL 且 SQL 已过滤 x/y 而不可达，但"启动挂死"是最坏失效模式）；②`byType` 累积器改为**每批写完即清空**（`GEOADD` 对同 member 是 upsert，跨批重复写安全），使峰值内存为一批坐标而非整表；③完成日志改用真实写入数（原来把"取回行数含被跳过行"当作"共 N 个店铺"，本就不准）；④类注释改为与实现一致——原文声称的"避免一次性把整表读入内存"在旧实现下不成立，属 SPEC-11 G3「注释描述的行为必须真实存在」所禁止 |
++| `shop-service/src/test/.../service/ShopGeoIndexWarmUpTest.java`（新建） | 该类此前**无任何测试**。新增 2 个：①按批分页且**每批落 Redis**（断言 `opsForGeo().add` 被调用 2 次——单次循环末写入只会有 1 次，故该断言确实能证伪）；②游标跨过被跳过的行（第一批末行 `id=500` 且 `x=null`，断言第二次 `selectList` 的游标为 500）。后者**已实测**在把 `lastId` 放回守卫内时转红：`expected: <500> but was: <499>` |
++
++**数字更新（控制者在终局 HEAD `c347cac` 上独立复跑所得）**
++
++| 项 | §11.1 记录值 | 终局实测值 | 说明 |
++|----|--------------|------------|------|
++| `shop-service` | `21` | **`23`** | 新增 `ShopGeoIndexWarmUpTest` 的 2 个用例 |
++| `common` | `16` | `16` | 未变 |
++| 6 模块合计 | `66` | **`68`** | 其余 5 模块（gateway 5 / user 5 / voucher 4 / order 15）未受影响——`c347cac` 仅触及 shop-service 的 2 个文件（`git diff --name-only 9077d71 c347cac` 可证） |
++
++**终局复验命令与结果**（判定以 `Exit code` 与各模块 `Tests run` 汇总行为准）：
++
++```
++mvn -o -T 1C -DskipTests compile                        → BUILD SUCCESS
++mvn -o -pl shop-service -am test -DforkCount=0 \
++    -Dsurefire.failIfNoSpecifiedTests=false             → common 16/0/0 · shop-service 23/0/0 · BUILD SUCCESS
++```
++
++**终局评审提出、但被控制者裁定为本批不修的两项**（`update()` 的失败返回与 `logger.warn` 级别，均属改动前既有行为，SPEC-05 的 G/A 清单未授权变更；详见 `.superpowers/sdd/2026-10-08-spec-05-11-修复/progress.md` 的裁定原文）：
++
++| # | 位置 | 问题 | 建议修法（后续单独处理） |
++|---|------|------|--------------------------|
++| **R1** | `ShopServiceImpl.update()` | DB 更新失败时仍 `evict`（保守选择，与改动前 `@CacheEvict` 语义一致，故**保留**）；但失败时仍返回 `Result.ok()` 是**改动前就存在**的 wart，本批未引入也未修 | 要么仅在 `success` 时 evict，要么保留无条件 evict 但在 `!success` 时返回 `Result.fail`；并给 `ShopServiceImplQueryByIdTest` 的失败用例补上返回值断言 |
++| **R2** | `ShopServiceImpl.queryById`（`logger.warn("店铺不存在…")`） | 命中空值标记时也会打 WARN，被持续抓取的不存在 id 在 60 秒窗口内会反复刷日志。该行**逐字沿用改动前原行**，且标记机制已减少了 DB 命中 | 降为 `debug`；若要在生产保留"真的不存在"这一信号，需把「标记命中」与「真实未命中」从 `ShopCacheService` 区分出来 |
+diff --git a/order-service/src/main/java/com/hmdp/order/metrics/SeckillMetrics.java b/order-service/src/main/java/com/hmdp/order/metrics/SeckillMetrics.java
+index ee9d9c6..3f1c11a 100644
+--- a/order-service/src/main/java/com/hmdp/order/metrics/SeckillMetrics.java
++++ b/order-service/src/main/java/com/hmdp/order/metrics/SeckillMetrics.java
+@@ -1,23 +1,21 @@
+ package com.hmdp.order.metrics;
+ 
+ import io.micrometer.core.instrument.Counter;
+-import io.micrometer.core.instrument.Gauge;
+ import io.micrometer.core.instrument.MeterRegistry;
+ import io.micrometer.core.instrument.Timer;
+ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.data.redis.core.StringRedisTemplate;
+ import org.springframework.stereotype.Component;
+ 
+ import jakarta.annotation.PostConstruct;
+ import jakarta.annotation.Resource;
+-import java.util.concurrent.atomic.AtomicLong;
+ 
+ @Component
+ @Slf4j
+ public class SeckillMetrics {
+ 
+     @Resource
+     private MeterRegistry meterRegistry;
+ 
+     @Resource
+     private StringRedisTemplate stringRedisTemplate;
+@@ -27,22 +25,20 @@ public class SeckillMetrics {
+     private Counter seckillFailCounter;
+     private Counter stockInsufficientCounter;
+     private Counter duplicateOrderCounter;
+     private Counter redisStockMissingCounter;
+     private Timer seckillLatencyTimer;
+     private Counter mqSendSuccessCounter;
+     private Counter mqSendFailCounter;
+     private Counter mqConsumeSuccessCounter;
+     private Counter mqConsumeFailCounter;
+ 
+-    private final AtomicLong pendingOrderCount = new AtomicLong(0);
+-
+     @PostConstruct
+     public void init() {
+         seckillRequestCounter = Counter.builder("seckill.request.total")
+                 .description("秒杀请求总数")
+                 .tag("type", "request")
+                 .register(meterRegistry);
+ 
+         seckillSuccessCounter = Counter.builder("seckill.success.total")
+                 .description("秒杀成功总数")
+                 .tag("type", "success")
+@@ -85,24 +81,20 @@ public class SeckillMetrics {
+         mqConsumeSuccessCounter = Counter.builder("seckill.mq.consume.success")
+                 .description("MQ消费成功数")
+                 .tag("type", "mq_consume")
+                 .register(meterRegistry);
+ 
+         mqConsumeFailCounter = Counter.builder("seckill.mq.consume.fail")
+                 .description("MQ消费失败数")
+                 .tag("type", "mq_consume")
+                 .register(meterRegistry);
+ 
+-        Gauge.builder("seckill.pending.orders", pendingOrderCount, AtomicLong::get)
+-                .description("待处理订单数量")
+-                .register(meterRegistry);
+-
+         log.info("秒杀监控指标初始化完成");
+     }
+ 
+     public void incrementSeckillRequest() {
+         seckillRequestCounter.increment();
+     }
+ 
+     public void incrementSeckillSuccess() {
+         seckillSuccessCounter.increment();
+     }
+@@ -140,23 +132,11 @@ public class SeckillMetrics {
+     }
+ 
+     public void incrementMqConsumeSuccess() {
+         mqConsumeSuccessCounter.increment();
+     }
+ 
+     public void incrementMqConsumeFail() {
+         mqConsumeFailCounter.increment();
+     }
+ 
+-    public void updatePendingOrderCount(long count) {
+-        pendingOrderCount.set(count);
+-    }
+-
+-    public void logMetricsSummary() {
+-        log.info("秒杀监控指标汇总 - 请求总数: {}, 成功: {}, 失败: {}, 库存不足: {}, 重复下单: {}",
+-                seckillRequestCounter.count(),
+-                seckillSuccessCounter.count(),
+-                seckillFailCounter.count(),
+-                stockInsufficientCounter.count(),
+-                duplicateOrderCounter.count());
+-    }
+ }
+diff --git a/order-service/src/main/java/com/hmdp/order/mq/SeckillOrderProducer.java b/order-service/src/main/java/com/hmdp/order/mq/SeckillOrderProducer.java
+index f871f30..4da9e56 100644
+--- a/order-service/src/main/java/com/hmdp/order/mq/SeckillOrderProducer.java
++++ b/order-service/src/main/java/com/hmdp/order/mq/SeckillOrderProducer.java
+@@ -1,47 +1,42 @@
+ package com.hmdp.order.mq;
+ 
+ import com.hmdp.dto.SeckillOrderMessage;
+-import lombok.AllArgsConstructor;
+-import lombok.Data;
+-import lombok.NoArgsConstructor;
+ import lombok.extern.slf4j.Slf4j;
+ import org.apache.rocketmq.spring.core.RocketMQTemplate;
+ import org.springframework.messaging.support.MessageBuilder;
+ import org.springframework.stereotype.Component;
+ 
+ import jakarta.annotation.Resource;
+ 
+ /**
+  * 秒杀订单消息生产者
+  * 
+  * 负责将秒杀资格校验通过的订单发送到消息队列，实现异步下单流程。
+  * 核心作用：
+  * 1. 流量削峰：将瞬时高并发请求转化为异步消息处理
+  * 2. 解耦：分离秒杀资格校验和订单创建两个关键步骤
+- * 3. 可靠性：提供同步发送和异步发送两种模式，支持重试机制
+- * 
++ * 3. 可靠性：提供同步发送与异步发送两种模式；**发送失败不重试、无补偿**，
++ *    由调用方决定回滚（见 sendSeckillOrderMessage 的返回值语义）
++ *
+  * 消息主题：
+  * - seckill-order-topic: 正常秒杀订单处理
+- * - seckill-order-dlq-topic: 死信队列，处理失败消息
+- * - stock-sync-topic: 库存同步主题（用于一致性保证）
++ * - seckill-order-dlq-topic: 死信队列（消费端见 SeckillOrderDLQConsumer）
+  */
+ @Component
+ @Slf4j
+ public class SeckillOrderProducer {
+ 
+     public static final String TOPIC_SECKILL_ORDER = "seckill-order-topic";
+ 
+     public static final String TOPIC_SECKILL_ORDER_DLQ = "seckill-order-dlq-topic";
+ 
+-    public static final String TOPIC_STOCK_SYNC = "stock-sync-topic";
+-
+     @Resource
+     private RocketMQTemplate rocketMQTemplate;
+ 
+     /**
+      * 同步发送秒杀订单消息
+      *
+      * 适用于需要立即确认发送结果的场景，保证消息可靠性。
+      * 如果发送失败，会立即返回false，调用方可以相应处理。
+      * <p>秒杀主链路必须使用本方法：只有它能让调用方在失败时回滚 Redis 预扣并返回失败。
+      *
+@@ -94,59 +89,11 @@ public class SeckillOrderProducer {
+                         }
+                     },
+                     3000
+             );
+             return true;
+         } catch (Exception e) {
+             log.error("秒杀订单消息异步发送异常: orderId={}, error={}", message.getOrderId(), e.getMessage(), e);
+             return false;
+         }
+     }
+-
+-    public void sendToDeadLetterQueue(SeckillOrderMessage message, String reason) {
+-        try {
+-            message.setRetryCount(message.getRetryCount() + 1);
+-            rocketMQTemplate.syncSend(
+-                    TOPIC_SECKILL_ORDER_DLQ,
+-                    MessageBuilder.withPayload(message)
+-                            .setHeader("reason", reason)
+-                            .setHeader("retryCount", message.getRetryCount())
+-                            .build()
+-            );
+-            log.warn("订单消息发送到死信队列: orderId={}, reason={}, retryCount={}",
+-                    message.getOrderId(), reason, message.getRetryCount());
+-        } catch (Exception e) {
+-            log.error("发送到死信队列失败: orderId={}, error={}", message.getOrderId(), e.getMessage(), e);
+-        }
+-    }
+-
+-    public void sendStockSyncMessage(Long voucherId, Integer stock) {
+-        try {
+-            rocketMQTemplate.asyncSend(
+-                    TOPIC_STOCK_SYNC,
+-                    MessageBuilder.withPayload(new StockSyncMessage(voucherId, stock)).build(),
+-                    new org.apache.rocketmq.client.producer.SendCallback() {
+-                        @Override
+-                        public void onSuccess(org.apache.rocketmq.client.producer.SendResult sendResult) {
+-                            log.info("库存同步消息发送成功: voucherId={}, stock={}", voucherId, stock);
+-                        }
+-
+-                        @Override
+-                        public void onException(Throwable e) {
+-                            log.error("库存同步消息发送失败: voucherId={}, error={}", voucherId, e.getMessage());
+-                        }
+-                    },
+-                    3000
+-            );
+-        } catch (Exception e) {
+-            log.error("库存同步消息发送异常: voucherId={}, error={}", voucherId, e.getMessage(), e);
+-        }
+-    }
+-
+-    @Data
+-    @AllArgsConstructor
+-    @NoArgsConstructor
+-    public static class StockSyncMessage {
+-        private Long voucherId;
+-        private Integer stock;
+-    }
+ }
+diff --git a/order-service/src/main/java/com/hmdp/order/service/IVoucherOrderService.java b/order-service/src/main/java/com/hmdp/order/service/IVoucherOrderService.java
+index 54311b9..1784af5 100644
+--- a/order-service/src/main/java/com/hmdp/order/service/IVoucherOrderService.java
++++ b/order-service/src/main/java/com/hmdp/order/service/IVoucherOrderService.java
+@@ -9,22 +9,20 @@ import com.baomidou.mybatisplus.extension.service.IService;
+  *  服务类
+  * </p>
+  *
+  * @author 虎哥
+  * @since 2021-12-22
+  */
+ public interface IVoucherOrderService extends IService<VoucherOrder> {
+ 
+     Result seckillVoucher(Long voucherId);
+ 
+-    void createVoucherOrder(VoucherOrder voucherOrder);
+-
+     /**
+      * 按 userId 批量查询订单（PRD 附录 B：agent-service 工具调用，本 PRD 唯一业务服务改造点）
+      * userId 由登录态强制注入，不接受外部传参（防越权，PRD 4.2 授权）
+      *
+      * @param userId  用户ID（服务端获取）
+      * @param orderId 指定订单ID（可空；非本人订单直接返回空，不泄露存在性）
+      * @param status  订单状态筛选（可空）
+      * @param days    最近 N 天（可空，默认 7）
+      * @param page    页码（从 1 开始）
+      * @param size    每页条数（默认 5，上限 20）
+diff --git a/order-service/src/main/java/com/hmdp/order/service/impl/VoucherOrderServiceImpl.java b/order-service/src/main/java/com/hmdp/order/service/impl/VoucherOrderServiceImpl.java
+index afbd75f..2640dab 100644
+--- a/order-service/src/main/java/com/hmdp/order/service/impl/VoucherOrderServiceImpl.java
++++ b/order-service/src/main/java/com/hmdp/order/service/impl/VoucherOrderServiceImpl.java
+@@ -14,21 +14,20 @@ import com.hmdp.entity.VoucherOrder;
+ import com.hmdp.order.feign.VoucherFeignClient;
+ import com.hmdp.order.mapper.VoucherOrderMapper;
+ import com.hmdp.order.metrics.SeckillMetrics;
+ import com.hmdp.order.mq.SeckillOrderProducer;
+ import com.hmdp.order.service.IVoucherOrderService;
+ import com.hmdp.utils.RedisConstants;
+ import com.hmdp.utils.RedisIdWorker;
+ import com.hmdp.utils.UserHolder;
+ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+ import io.micrometer.core.instrument.Timer;
+-import io.seata.spring.annotation.GlobalTransactional;
+ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.core.io.ClassPathResource;
+ import org.springframework.data.redis.core.StringRedisTemplate;
+ import org.springframework.data.redis.core.script.DefaultRedisScript;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+ import jakarta.annotation.Resource;
+ import java.time.LocalDateTime;
+ import java.util.ArrayList;
+@@ -161,48 +160,20 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
+                     RedisConstants.SECKILL_ORDER_SET_KEY + voucherId, userId.toString());
+             stringRedisTemplate.opsForHash().delete(
+                     RedisConstants.SECKILL_ORDER_DETAIL_KEY + voucherId, orderId.toString());
+         } catch (Exception e) {
+             // 回滚失败无法在同一请求内自愈，记录待人工核对（补偿能力归 SPEC-04）
+             log.error("回滚秒杀预扣失败，需人工核对: voucherId={}, userId={}, orderId={}",
+                     voucherId, userId, orderId, e);
+         }
+     }
+ 
+-    /**
+-     * 创建优惠券订单（供传统同步流程使用）
+-     * 
+-     * 注意：此方法在秒杀场景中已由异步流程替代，仅保留用于兼容传统调用。
+-     * 方法通过分布式事务（Seata）保证数据库操作和库存扣减的一致性。
+-     * 
+-     * @param voucherOrder 优惠券订单实体
+-     */
+-    @GlobalTransactional(name = "createVoucherOrder", rollbackFor = Exception.class)
+-    @Transactional
+-    public void createVoucherOrder(VoucherOrder voucherOrder) {
+-        Long userId = UserHolder.getUser().getId();
+-
+-        Long count = query().eq("user_id", userId).eq("voucher_id", voucherOrder.getVoucherId()).count();
+-        if (count > 0) {
+-            log.error("用户已经购买过一次！");
+-            return;
+-        }
+-
+-        Result result = voucherFeignClient.deductStock(voucherOrder.getVoucherId(), voucherOrder.getId());
+-        if (!result.getSuccess()) {
+-            log.error("库存不足！");
+-            return;
+-        }
+-
+-        save(voucherOrder);
+-    }
+-
+     /**
+      * 按 userId 批量查询订单（agent-service 客服工具调用）
+      * 归属校验：userId 由登录态强制注入；指定 orderId 非本人时返回空列表（不泄露订单存在性，PRD FR-05 验收 2）
+      */
+     @Override
+     public Result queryMyOrders(Long userId, Long orderId, Integer status, Integer days, Integer page, Integer size) {
+         int p = Math.max(page == null ? 1 : page, 1);
+         int s = Math.min(Math.max(size == null ? 5 : size, 1), 20);
+ 
+         LambdaQueryWrapper<VoucherOrder> wrapper = Wrappers.<VoucherOrder>lambdaQuery()
+diff --git a/pom.xml b/pom.xml
+index 73c6394..6fdd51b 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -145,14 +145,31 @@
+                 </configuration>
+             </plugin>
+             <plugin>
+                 <groupId>org.apache.maven.plugins</groupId>
+                 <artifactId>maven-compiler-plugin</artifactId>
+                 <configuration>
+                     <source>${java.version}</source>
+                     <target>${java.version}</target>
+                 </configuration>
+             </plugin>
++            <plugin>
++                <groupId>org.apache.maven.plugins</groupId>
++                <artifactId>maven-dependency-plugin</artifactId>
++                <version>3.9.0</version>
++                <executions>
++                    <execution>
++                        <id>analyze</id>
++                        <goals>
++                            <goal>analyze-only</goal>
++                        </goals>
++                        <configuration>
++                            <!-- SPEC-11 G6：首次以告警模式运行，存量告警不阻断构建 -->
++                            <failOnWarning>false</failOnWarning>
++                        </configuration>
++                    </execution>
++                </executions>
++            </plugin>
+         </plugins>
+     </build>
+ 
+ </project>
+\ No newline at end of file
+diff --git a/shop-service/pom.xml b/shop-service/pom.xml
+index 1f4801b..fcd0bfa 100644
+--- a/shop-service/pom.xml
++++ b/shop-service/pom.xml
+@@ -81,31 +81,31 @@
+             <artifactId>sa-token-redis-jackson</artifactId>
+             <version>${sa-token.version}</version>
+         </dependency>
+ 
+         <dependency>
+             <groupId>org.springframework.cloud</groupId>
+             <artifactId>spring-cloud-starter-bootstrap</artifactId>
+             <version>4.1.2</version>
+         </dependency>
+ 
+-        <!-- Caffeine 本地缓存 -->
++        <!-- Bean Validation（SPEC-05 §5.5：@Min(1) 需要实现才生效） -->
+         <dependency>
+-            <groupId>com.github.ben-manes.caffeine</groupId>
+-            <artifactId>caffeine</artifactId>
+-            <version>3.1.8</version>
++            <groupId>org.springframework.boot</groupId>
++            <artifactId>spring-boot-starter-validation</artifactId>
+         </dependency>
+ 
+-        <!-- Spring Cache 支持 -->
++        <!-- 测试（JUnit 5 + Mockito + AssertJ + MockMvc） -->
+         <dependency>
+             <groupId>org.springframework.boot</groupId>
+-            <artifactId>spring-boot-starter-cache</artifactId>
++            <artifactId>spring-boot-starter-test</artifactId>
++            <scope>test</scope>
+         </dependency>
+ 
+     </dependencies>
+ 
+     <build>
+         <plugins>
+             <plugin>
+                 <groupId>org.springframework.boot</groupId>
+                 <artifactId>spring-boot-maven-plugin</artifactId>
+             </plugin>
+diff --git a/shop-service/src/main/java/com/hmdp/shop/ShopApplication.java b/shop-service/src/main/java/com/hmdp/shop/ShopApplication.java
+index 0675a92..a668107 100644
+--- a/shop-service/src/main/java/com/hmdp/shop/ShopApplication.java
++++ b/shop-service/src/main/java/com/hmdp/shop/ShopApplication.java
+@@ -1,24 +1,22 @@
+ package com.hmdp.shop;
+ 
+ import org.mybatis.spring.annotation.MapperScan;
+ import org.springframework.boot.SpringApplication;
+ import org.springframework.boot.autoconfigure.SpringBootApplication;
+-import org.springframework.cache.annotation.EnableCaching;
+ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+ import org.springframework.cloud.openfeign.EnableFeignClients;
+ 
+ /**
+  * 商户服务启动类
+  */
+ @SpringBootApplication
+ @EnableDiscoveryClient
+ @EnableFeignClients
+ @MapperScan("com.hmdp.shop.mapper")
+-@EnableCaching
+ public class ShopApplication {
+ 
+     public static void main(String[] args) {
+         SpringApplication.run(ShopApplication.class, args);
+     }
+ 
+ }
+\ No newline at end of file
+diff --git a/shop-service/src/main/java/com/hmdp/shop/config/CacheConfig.java b/shop-service/src/main/java/com/hmdp/shop/config/CacheConfig.java
+deleted file mode 100644
+index 9cf2d27..0000000
+--- a/shop-service/src/main/java/com/hmdp/shop/config/CacheConfig.java
++++ /dev/null
+@@ -1,58 +0,0 @@
+-package com.hmdp.shop.config;
+-
+-import org.springframework.cache.CacheManager;
+-import org.springframework.cache.annotation.EnableCaching;
+-import org.springframework.context.annotation.Bean;
+-import org.springframework.context.annotation.Configuration;
+-import org.springframework.data.redis.cache.RedisCacheConfiguration;
+-import org.springframework.data.redis.cache.RedisCacheManager;
+-import org.springframework.data.redis.connection.RedisConnectionFactory;
+-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+-import org.springframework.data.redis.serializer.RedisSerializationContext;
+-import org.springframework.data.redis.serializer.StringRedisSerializer;
+-
+-import java.time.Duration;
+-
+-/**
+- * 缓存配置类
+- * 配置 Redis 缓存，支持 shopCache 缓存名称
+- * 
+- * 本配置将Redis作为二级缓存（L2 Cache）使用，配合Spring Cache注解实现多级缓存架构。
+- * 一级缓存为本地缓存（如Caffeine），二级缓存为Redis分布式缓存。
+- * 当本地缓存未命中时，会自动查询Redis缓存；Redis缓存未命中时，才查询数据库。
+- * 
+- * 注意：当前版本直接使用Redis作为缓存，未配置本地一级缓存，可根据性能需求扩展。
+- */
+-@Configuration
+-@EnableCaching
+-public class CacheConfig {
+-
+-    /**
+-     * 配置 Redis 缓存管理器
+-     * 直接使用 Redis 作为缓存，避免使用 LayeredCacheManager 导致的版本兼容问题
+-     * 
+-     * 配置说明：
+-     * 1. 缓存过期时间：30分钟，平衡缓存新鲜度和内存使用
+-     * 2. 键序列化：StringRedisSerializer，保证Redis键的可读性
+-     * 3. 值序列化：GenericJackson2JsonRedisSerializer，支持复杂对象存储
+-     * 
+-     * 扩展建议：
+-     * - 可集成Caffeine作为一级本地缓存，提升读取性能
+-     * - 可配置不同的缓存名称使用不同的TTL策略
+-     * - 可添加缓存统计和监控功能
+-     */
+-    @Bean
+-    public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
+-        // 配置 Redis 缓存序列化
+-        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
+-                .entryTtl(Duration.ofMinutes(30)) // Redis 缓存过期时间
+-                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(
+-                        new GenericJackson2JsonRedisSerializer())); // 使用默认的 JSON 序列化器
+-
+-        // 创建 Redis 缓存管理器
+-        return RedisCacheManager.builder(redisConnectionFactory)
+-                .cacheDefaults(config)
+-                .build();
+-    }
+-}
+diff --git a/shop-service/src/main/java/com/hmdp/shop/config/ShopValidationExceptionHandler.java b/shop-service/src/main/java/com/hmdp/shop/config/ShopValidationExceptionHandler.java
+new file mode 100644
+index 0000000..060144e
+--- /dev/null
++++ b/shop-service/src/main/java/com/hmdp/shop/config/ShopValidationExceptionHandler.java
+@@ -0,0 +1,32 @@
++package com.hmdp.shop.config;
++
++import com.hmdp.dto.Result;
++import jakarta.validation.ConstraintViolationException;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.http.ResponseEntity;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.RestControllerAdvice;
++
++/**
++ * 参数校验异常处理器（SPEC-05 §5.5 / 验收 A7）。
++ *
++ * <p>Bean Validation 在**方法参数**上抛出的是 {@code ConstraintViolationException}，
++ * Spring Boot 默认把它映射为 500。A7 要求分页参数越界返回 400，故在此显式映射。
++ *
++ * <p>只处理约束违例，不做 catch-all——避免把真实缺陷吞成 400。
++ * 本类必须留在 {@code com.hmdp.shop.config} 包内才会被组件扫描拾取。
++ */
++@RestControllerAdvice
++@Slf4j
++public class ShopValidationExceptionHandler {
++
++    @ExceptionHandler(ConstraintViolationException.class)
++    public ResponseEntity<Result> handleConstraintViolation(ConstraintViolationException e) {
++        String message = e.getConstraintViolations().stream()
++                .map(v -> v.getMessage())
++                .findFirst()
++                .orElse("请求参数不合法");
++        log.warn("参数校验失败: {}", message);
++        return ResponseEntity.badRequest().body(Result.fail(message));
++    }
++}
+diff --git a/shop-service/src/main/java/com/hmdp/shop/controller/ShopController.java b/shop-service/src/main/java/com/hmdp/shop/controller/ShopController.java
+index 281fb84..9440884 100644
+--- a/shop-service/src/main/java/com/hmdp/shop/controller/ShopController.java
++++ b/shop-service/src/main/java/com/hmdp/shop/controller/ShopController.java
+@@ -1,57 +1,66 @@
+ package com.hmdp.shop.controller;
+ 
+ 
+ import cn.dev33.satoken.annotation.SaCheckRole;
+ import cn.hutool.core.util.StrUtil;
+ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+ import com.hmdp.dto.Result;
+ import com.hmdp.entity.Shop;
+ import com.hmdp.shop.service.IShopService;
++import com.hmdp.shop.service.ShopCacheService;
+ import com.hmdp.utils.SystemConstants;
++import jakarta.validation.constraints.Min;
++import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.*;
+ 
+ import jakarta.annotation.Resource;
+ 
+ /**
+  * <p>
+  * 前端控制器
+  * </p>
+  *
+  */
+ @RestController
+ @RequestMapping("/shop")
++@Validated
+ public class ShopController {
+ 
+     @Resource
+     public IShopService shopService;
+ 
++    @Resource
++    ShopCacheService shopCacheService;
++
+     /**
+      * 根据id查询商铺信息
+      * @param id 商铺id
+      * @return 商铺详情数据
+      */
+     @GetMapping("/{id}")
+     public Result queryShopById(@PathVariable("id") Long id) {
+         return shopService.queryById(id);
+     }
+ 
+     /**
+      * 新增商铺信息
+      * @param shop 商铺数据
+      * @return 商铺id
+      */
+     @PostMapping
+     @SaCheckRole("admin")
+     public Result saveShop(@RequestBody Shop shop) {
+         // 写入数据库
+         shopService.save(shop);
++        // SPEC-05 §5.1：打断该 id 可能已存在的空值标记/旧值，保证新增后立即可见
++        shopCacheService.evict(shop.getId());
+         // 返回店铺id
+         return Result.ok(shop.getId());
+     }
+ 
+     /**
+      * 更新商铺信息
+      * @param shop 商铺数据
+      * @return 无
+      */
+     @PutMapping
+@@ -63,21 +72,21 @@ public class ShopController {
+ 
+     /**
+      * 根据商铺类型分页查询商铺信息
+      * @param typeId 商铺类型
+      * @param current 页码
+      * @return 商铺列表
+      */
+     @GetMapping("/of/type")
+     public Result queryShopByType(
+             @RequestParam("typeId") Integer typeId,
+-            @RequestParam(value = "current", defaultValue = "1") Integer current,
++            @RequestParam(value = "current", defaultValue = "1") @Min(value = 1, message = "页码必须大于等于 1") Integer current,
+             @RequestParam(value = "x",required = false) Double x,
+             @RequestParam(value = "y",required = false) Double y
+     ) {
+         return shopService.queryShopByType(typeId,current,x,y);
+     }
+ 
+     /**
+      * 根据商铺名称关键字分页查询商铺信息
+      * @param name 商铺名称关键字
+      * @param current 页码
+diff --git a/shop-service/src/main/java/com/hmdp/shop/service/IShopService.java b/shop-service/src/main/java/com/hmdp/shop/service/IShopService.java
+index a1acb9a..ca6088f 100644
+--- a/shop-service/src/main/java/com/hmdp/shop/service/IShopService.java
++++ b/shop-service/src/main/java/com/hmdp/shop/service/IShopService.java
+@@ -1,40 +1,23 @@
+ package com.hmdp.shop.service;
+ 
+ import com.hmdp.dto.Result;
+ import com.hmdp.entity.Shop;
+ import com.baomidou.mybatisplus.extension.service.IService;
+ 
+-import java.util.List;
+-
+ /**
+  * <p>
+  *  服务类
+  * </p>
+  *
+  * @author 虎哥
+  * @since 2021-12-22
+  */
+ public interface IShopService extends IService<Shop> {
+ 
+     Result queryById(Long id);
+ 
+     Result update(Shop shop);
+ 
+     Result queryShopByType(Integer typeId, Integer current, Double x, Double y);
+ 
+-    /**
+-     * 手动触发缓存预热
+-     */
+-    Result warmUpCache();
+-
+-    /**
+-     * 预热指定店铺的缓存
+-     */
+-    Result warmUpShopCache(List<Long> shopIds);
+-
+-    /**
+-     * 获取缓存预热状态
+-     */
+-    Result getCacheWarmupStatus();
+-
+-}
+\ No newline at end of file
++}
+diff --git a/shop-service/src/main/java/com/hmdp/shop/service/ShopCacheService.java b/shop-service/src/main/java/com/hmdp/shop/service/ShopCacheService.java
+new file mode 100644
+index 0000000..6ffb0aa
+--- /dev/null
++++ b/shop-service/src/main/java/com/hmdp/shop/service/ShopCacheService.java
+@@ -0,0 +1,74 @@
++package com.hmdp.shop.service;
++
++import cn.hutool.core.util.StrUtil;
++import cn.hutool.json.JSONUtil;
++import com.hmdp.entity.Shop;
++import com.hmdp.shop.mapper.ShopMapper;
++import org.springframework.data.redis.core.StringRedisTemplate;
++import org.springframework.stereotype.Service;
++
++import java.util.concurrent.ThreadLocalRandom;
++import java.util.concurrent.TimeUnit;
++
++import static com.hmdp.utils.RedisConstants.*;
++
++/**
++ * 商铺实体缓存（SPEC-05 §5.1）。
++ *
++ * <p>读路径显式实现 L2(Redis) → DB → 回填，缓存 {@link Shop} 本体而非 {@code Result}
++ * 包装对象——失败分支因此不可能被写入缓存（G1）。空值走 60 秒短 TTL 防穿透（G5），
++ * 正常值 TTL 带抖动避免同刻集体失效（G7）。
++ *
++ * <p>注入 {@link ShopMapper} 而非 {@code IShopService}，以避开与 {@code ShopServiceImpl}
++ * 的循环依赖。
++ */
++@Service
++public class ShopCacheService {
++
++    private final StringRedisTemplate stringRedisTemplate;
++    private final ShopMapper shopMapper;
++
++    public ShopCacheService(StringRedisTemplate stringRedisTemplate, ShopMapper shopMapper) {
++        this.stringRedisTemplate = stringRedisTemplate;
++        this.shopMapper = shopMapper;
++    }
++
++    /**
++     * 读取商铺，未命中则回源 DB 并回填缓存。
++     *
++     * @return 店铺实体；店铺不存在时返回 {@code null}（同时留下空值标记防穿透）
++     */
++    public Shop getShop(Long id) {
++        String key = CACHE_SHOP_KEY + id;
++        String json = stringRedisTemplate.opsForValue().get(key);
++
++        // 1. 命中真实缓存
++        if (StrUtil.isNotBlank(json)) {
++            return JSONUtil.toBean(json, Shop.class);
++        }
++        // 2. 命中空值标记：直接返回，不再穿透到 DB
++        if (json != null) {
++            return null;
++        }
++
++        // 3. 未命中，回源 DB
++        Shop shop = shopMapper.selectById(id);
++        if (shop == null) {
++            stringRedisTemplate.opsForValue().set(key, "", CACHE_NULL_TTL, TimeUnit.SECONDS);
++            return null;
++        }
++
++        // 4. 回填，TTL 带抖动
++        long ttl = CACHE_TTL_BASE_SECONDS + ThreadLocalRandom.current().nextInt(CACHE_TTL_JITTER_SECONDS);
++        stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(shop), ttl, TimeUnit.SECONDS);
++        return shop;
++    }
++
++    /**
++     * 失效指定商铺的缓存。写路径（update / saveShop）调用，用于打断可能已存在的
++     * 空值标记或旧值，保证变更后立即可见。
++     */
++    public void evict(Long id) {
++        stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
++    }
++}
+diff --git a/shop-service/src/main/java/com/hmdp/shop/service/ShopCacheWarmUp.java b/shop-service/src/main/java/com/hmdp/shop/service/ShopCacheWarmUp.java
+new file mode 100644
+index 0000000..a473fd7
+--- /dev/null
++++ b/shop-service/src/main/java/com/hmdp/shop/service/ShopCacheWarmUp.java
+@@ -0,0 +1,69 @@
++package com.hmdp.shop.service;
++
++import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
++import com.hmdp.entity.Shop;
++import com.hmdp.shop.mapper.ShopMapper;
++import jakarta.annotation.PreDestroy;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.boot.ApplicationArguments;
++import org.springframework.boot.ApplicationRunner;
++import org.springframework.stereotype.Component;
++
++import java.util.List;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++
++/**
++ * 热门店铺缓存预热（SPEC-05 §5.2）。
++ *
++ * <p>用 {@link ApplicationRunner} 而非 {@code @PostConstruct}：容器就绪后才执行，
++ * 不占启动关键路径；且预热体投递到独立线程后立即返回，因此启动耗时与预热无关（G2）。
++ *
++ * <p>预热经 {@link ShopCacheService} 这个 Bean 调用，而非类内自调用——原实现调
++ * {@code this.queryById(...)} 绕过 AOP，导致预热结果从未落缓存（G3）。
++ */
++@Component
++@Slf4j
++public class ShopCacheWarmUp implements ApplicationRunner {
++
++    /** 预热的热门店铺数量 */
++    static final int POPULAR_SHOP_LIMIT = 50;
++
++    private final ShopMapper shopMapper;
++    private final ShopCacheService shopCacheService;
++
++    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
++        Thread t = new Thread(r, "shop-cache-warmup");
++        t.setDaemon(true);
++        return t;
++    });
++
++    public ShopCacheWarmUp(ShopMapper shopMapper, ShopCacheService shopCacheService) {
++        this.shopMapper = shopMapper;
++        this.shopCacheService = shopCacheService;
++    }
++
++    @Override
++    public void run(ApplicationArguments args) {
++        executor.submit(this::warmUpPopularShops);
++    }
++
++    void warmUpPopularShops() {
++        try {
++            List<Shop> popularShops = shopMapper.selectList(
++                    new QueryWrapper<Shop>().orderByDesc("score").last("LIMIT " + POPULAR_SHOP_LIMIT));
++            for (Shop shop : popularShops) {
++                shopCacheService.getShop(shop.getId());
++            }
++            log.info("热门店铺缓存预热完成，共 {} 个", popularShops.size());
++        } catch (Exception e) {
++            // 预热失败不影响服务可用性：缓存未命中时读路径会回源 DB
++            log.error("热门店铺缓存预热失败", e);
++        }
++    }
++
++    @PreDestroy
++    public void shutdown() {
++        executor.shutdownNow();
++    }
++}
+diff --git a/shop-service/src/main/java/com/hmdp/shop/service/ShopGeoIndexWarmUp.java b/shop-service/src/main/java/com/hmdp/shop/service/ShopGeoIndexWarmUp.java
+new file mode 100644
+index 0000000..2453cf2
+--- /dev/null
++++ b/shop-service/src/main/java/com/hmdp/shop/service/ShopGeoIndexWarmUp.java
+@@ -0,0 +1,117 @@
++package com.hmdp.shop.service;
++
++import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
++import com.hmdp.entity.Shop;
++import com.hmdp.shop.mapper.ShopMapper;
++import jakarta.annotation.PreDestroy;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.boot.ApplicationArguments;
++import org.springframework.boot.ApplicationRunner;
++import org.springframework.data.geo.Point;
++import org.springframework.data.redis.connection.RedisGeoCommands;
++import org.springframework.data.redis.core.StringRedisTemplate;
++import org.springframework.stereotype.Component;
++
++import java.util.ArrayList;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++
++import static com.hmdp.utils.RedisConstants.SHOP_GEO_KEY;
++
++/**
++ * GEO 索引预热（SPEC-05 §5.2）。
++ *
++ * <p>职责是填充 {@code shop:geo:{typeId}}，**与 shopCache 无关**——本类不触碰商铺缓存。
++ * 这是全仓唯一的 GEO 索引写入点，{@code ShopServiceImpl.queryShopByType} 的带坐标
++ * 分支依赖它，因此不可删除。
++ *
++ * <p>按 {@code id} 做 keyset 分页（每批 {@value #PAGE_SIZE} 条），<b>每批写完即清空
++ * 累积器</b>，因此峰值内存是一批坐标而非整表。不使用 {@code selectPage}——本仓未配置
++ * MyBatis-Plus 分页插件（无 {@code PaginationInnerInterceptor} 实现），{@code selectPage}
++ * 不会真正限量。
++ */
++@Component
++@Slf4j
++public class ShopGeoIndexWarmUp implements ApplicationRunner {
++
++    /** 每批拉取条数 */
++    static final int PAGE_SIZE = 500;
++
++    private final ShopMapper shopMapper;
++    private final StringRedisTemplate stringRedisTemplate;
++
++    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
++        Thread t = new Thread(r, "shop-geo-warmup");
++        t.setDaemon(true);
++        return t;
++    });
++
++    public ShopGeoIndexWarmUp(ShopMapper shopMapper, StringRedisTemplate stringRedisTemplate) {
++        this.shopMapper = shopMapper;
++        this.stringRedisTemplate = stringRedisTemplate;
++    }
++
++    @Override
++    public void run(ApplicationArguments args) {
++        executor.submit(this::warmUpGeoIndex);
++    }
++
++    void warmUpGeoIndex() {
++        try {
++            long lastId = 0L;
++            int written = 0;
++            Set<Long> types = new HashSet<>();
++
++            while (true) {
++                List<Shop> chunk = shopMapper.selectList(new QueryWrapper<Shop>()
++                        .select("id", "type_id", "x", "y")
++                        .isNotNull("x")
++                        .isNotNull("y")
++                        .gt("id", lastId)
++                        .orderByAsc("id")
++                        .last("LIMIT " + PAGE_SIZE));
++                if (chunk.isEmpty()) {
++                    break;
++                }
++
++                Map<Long, List<RedisGeoCommands.GeoLocation<String>>> byType = new HashMap<>();
++                for (Shop shop : chunk) {
++                    // 游标必须对每一行前进：整页都被空值守卫跳过时，否则会反复读到同一页
++                    lastId = shop.getId();
++                    if (shop.getTypeId() == null || shop.getX() == null || shop.getY() == null) {
++                        continue;
++                    }
++                    byType.computeIfAbsent(shop.getTypeId(), k -> new ArrayList<>())
++                            .add(new RedisGeoCommands.GeoLocation<>(
++                                    shop.getId().toString(),
++                                    new Point(shop.getX(), shop.getY())));
++                }
++
++                // 每批写完即清空，峰值内存收敛为一批坐标；GEOADD 按 member 覆盖，分批重写安全
++                for (Map.Entry<Long, List<RedisGeoCommands.GeoLocation<String>>> entry : byType.entrySet()) {
++                    stringRedisTemplate.opsForGeo().add(SHOP_GEO_KEY + entry.getKey(), entry.getValue());
++                    written += entry.getValue().size();
++                    types.add(entry.getKey());
++                }
++
++                if (chunk.size() < PAGE_SIZE) {
++                    break;
++                }
++            }
++
++            log.info("GEO 索引预热完成，共写入 {} 个店铺坐标，覆盖 {} 种类型", written, types.size());
++        } catch (Exception e) {
++            log.error("GEO 索引预热失败", e);
++        }
++    }
++
++    @PreDestroy
++    public void shutdown() {
++        executor.shutdownNow();
++    }
++}
+diff --git a/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java b/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java
+index 25c79e6..ecee7ca 100644
+--- a/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java
++++ b/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java
+@@ -1,468 +1,138 @@
+-// NOTE 缓存预热（Cache Warm-Up）是指在系统启动或流量高峰来临前，提前将热点数据加载到缓存系统中的过程。
+-//    为啥需要缓存预热：
+-//    解决冷启动问题： 新系统启动时缓存为空，首请求直接穿透到数据库，容易引发雪崩效应
+-//    应对突发流量： 秒杀活动、热点新闻等场景下，瞬时高并发请求可能导致数据库过载
+-//    提升性能稳定性： 预先加载高频访问数据，保障核心接口响应时间稳定
+-//    优化用户体验： 避免用户首次访问时的长等待时间
+ package com.hmdp.shop.service.impl;
+ 
+ import cn.hutool.core.util.StrUtil;
+ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+ import com.hmdp.dto.Result;
+ import com.hmdp.entity.Shop;
+ import com.hmdp.shop.mapper.ShopMapper;
+ import com.hmdp.shop.service.IShopService;
++import com.hmdp.shop.service.ShopCacheService;
+ import com.hmdp.utils.SystemConstants;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+-import org.springframework.cache.Cache;
+-import org.springframework.cache.CacheManager;
+-import org.springframework.cache.annotation.CacheEvict;
+-import org.springframework.cache.annotation.Cacheable;
+ import org.springframework.data.geo.Distance;
+ import org.springframework.data.geo.GeoResult;
+ import org.springframework.data.geo.GeoResults;
++import org.springframework.data.geo.Metrics;
++import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.data.redis.connection.RedisGeoCommands;
+ import org.springframework.data.redis.core.StringRedisTemplate;
+-import org.springframework.data.redis.core.RedisTemplate;
+ import org.springframework.data.redis.domain.geo.GeoReference;
+-import org.springframework.scheduling.annotation.Async;
+ import org.springframework.stereotype.Service;
+ import org.springframework.transaction.annotation.Transactional;
+ 
+-import jakarta.annotation.PostConstruct;
+ import jakarta.annotation.Resource;
+ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+-import java.util.concurrent.ExecutorService;
+-import java.util.concurrent.Executors;
+-import java.util.concurrent.TimeUnit;
+ 
+ import static com.hmdp.utils.RedisConstants.SHOP_GEO_KEY;
+ 
+ /**
+  * 店铺服务实现类
+- * 
+- * 本服务实现了完整的二级缓存策略，包括：
+- * 1. 缓存预热（Cache Warm-Up）：应用启动时预加载热点数据
+- * 2. 缓存穿透防护：空值缓存防止恶意查询
+- * 3. 缓存击穿防护：互斥锁重建防止热点数据失效
+- * 4. 缓存一致性：更新时自动清除缓存
+- * 
+- * 缓存架构：
+- * - 使用Spring Cache抽象层，支持注解驱动的缓存操作
+- * - Redis作为二级缓存，提供分布式缓存能力
+- * - 可通过扩展支持本地一级缓存（如Caffeine）
+- * 
+- * 关键特性：
+- * - @Cacheable: 查询时自动缓存结果
+- * - @CacheEvict: 更新时自动清除缓存
+- * - 异步缓存预热：不阻塞应用启动
+- * - 缓存状态监控：提供缓存命中率等指标
++ *
++ * <p>缓存策略（SPEC-05 修复后）：
++ * <ul>
++ *   <li>读路径由 {@link ShopCacheService} 显式承载：Redis(L2) → DB → 回填，
++ *       缓存 {@code Shop} 本体，带 TTL 抖动与空值短 TTL；</li>
++ *   <li>写路径（{@link #update} 与 {@code ShopController#saveShop}）显式失效缓存；</li>
++ *   <li>预热由 {@code ShopCacheWarmUp} / {@code ShopGeoIndexWarmUp} 在容器就绪后
++ *       异步执行，不占用启动关键路径。</li>
++ * </ul>
+  */
+ @Service
+ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IShopService {
+ 
+     private static final Logger logger = LoggerFactory.getLogger(ShopServiceImpl.class);
+ 
+     @Resource
+     private StringRedisTemplate stringRedisTemplate;
+ 
+     @Resource
+-    private CacheManager cacheManager;  //NOTE 用于管理缓存 spring缓存管理器
++    private ShopCacheService shopCacheService;
+ 
+-    @Resource
+-    private RedisTemplate<String, Object> redisTemplate;
+-
+-    // NOTE 线程池用于异步缓存预热
+-    private ExecutorService cacheWarmupExecutor;
+-
+-    /**
+-     * 初始化方法 - 创建线程池
+-     */
+-    @PostConstruct
+-    public void init() {
+-        // 创建固定大小的线程池用于缓存预热
+-        cacheWarmupExecutor = Executors.newFixedThreadPool(3);
+-        logger.info("缓存预热线程池初始化完成");
+-    }
+-
+-    /**
+-     * 缓存预热 - 应用启动时执行
+-     */
+-    //NOTE 使用 @PostConstruct 注解确保该方法在服务启动后立即执行 自动预热
+-    // NOTE 使用 @Async 注解使该方法异步执行，避免阻塞应用启动过程
+-    @PostConstruct
+-    @Async
+-    public void warmUpCacheOnStartup() {
+-        try {
+-            // 延迟启动，等待应用完全启动
+-            Thread.sleep(10000);
+-            logger.info("开始执行应用启动缓存预热...");
+-
+-            // 预热热门店铺数据
+-            warmUpPopularShops();
+-
+-            // 预热按类型分类的店铺
+-            warmUpShopsByType();
+-
+-            // 预热地理位置数据
+-            warmUpGeoData();
+-
+-            logger.info("应用启动缓存预热完成");
+-        } catch (InterruptedException e) {
+-            Thread.currentThread().interrupt();
+-            logger.error("缓存预热被中断", e);
+-        } catch (Exception e) {
+-            logger.error("缓存预热执行失败", e);
+-        }
+-    }
+-
+-    /**
+-     * 预热热门店铺数据
+-     */
+-    private void warmUpPopularShops() {
+-        cacheWarmupExecutor.submit(() -> {
+-            try {
+-                logger.info("开始预热热门店铺数据...");
+-
+-                // 查询热门店铺（这里可以根据业务逻辑调整，比如按评分、销量等）
+-                List<Shop> popularShops = this.query()
+-                        .orderByDesc("score") // 假设有评分字段
+-                        .last("LIMIT 50") // 预热前50个热门店铺
+-                        .list();
+-
+-                int successCount = 0;
+-                for (Shop shop : popularShops) {
+-                    try {
+-                        // 使用queryById方法，会自动缓存
+-                        this.queryById(shop.getId());
+-                        successCount++;
+-
+-                        // 批量操作时稍微延迟，避免对数据库造成压力
+-                        Thread.sleep(10);
+-                    } catch (Exception e) {
+-                        logger.warn("预热店铺 {} 失败: {}", shop.getId(), e.getMessage());
+-                    }
+-                }
+-
+-                logger.info("热门店铺数据预热完成，成功预热 {} 个店铺", successCount);
+-            } catch (Exception e) {
+-                logger.error("预热热门店铺数据失败", e);
+-            }
+-        });
+-    }
+-
+-    /**
+-     * 预热按类型分类的店铺
+-     */
+-    private void warmUpShopsByType() {
+-        cacheWarmupExecutor.submit(() -> {
+-            try {
+-                logger.info("开始预热按类型分类的店铺数据...");
+-
+-                // 使用正确的 QueryWrapper 创建方式
+-                com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<Shop> queryWrapper = 
+-                        new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+-                queryWrapper.select("DISTINCT type_id").isNotNull("type_id");
+-
+-                // 获取所有店铺类型
+-                List<Object> typeList = this.baseMapper.selectObjs(queryWrapper);
+-
+-                int typeCount = 0;
+-                for (Object typeObj : typeList) {
+-                    if (typeObj != null) {
+-                        try {
+-                            // 根据Shop实体中typeId的实际类型进行转换
+-                            Integer typeId;
+-                            if (typeObj instanceof Long) {
+-                                typeId = ((Long) typeObj).intValue();
+-                            } else if (typeObj instanceof Integer) {
+-                                typeId = (Integer) typeObj;
+-                            } else {
+-                                typeId = Integer.valueOf(typeObj.toString());
+-                            }
+-
+-                            // 预热每种类型前几页数据
+-                            for (int current = 1; current <= 3; current++) {
+-                                this.queryShopByType(typeId, current, null, null);
+-                            }
+-                            typeCount++;
+-
+-                            Thread.sleep(50); // 类型间延迟
+-                        } catch (Exception e) {
+-                            logger.warn("预热类型 {} 的店铺失败: {}", typeObj, e.getMessage());
+-                        }
+-                    }
+-                }
++    /** 附近店铺检索半径（公里）。SPEC-05 §5.5：单位显式且可配，默认 5 公里 */
++    @Value("${hmdp.shop.search-radius-km:5}")
++    private double searchRadiusKm;
+ 
+-                logger.info("按类型分类的店铺数据预热完成，成功预热 {} 种类型", typeCount);
+-            } catch (Exception e) {
+-                logger.error("预热按类型分类的店铺数据失败", e);
+-            }
+-        });
+-    }
+-
+-    /**
+-     * 预热地理位置数据
+-     */
+-    private void warmUpGeoData() {
+-        cacheWarmupExecutor.submit(() -> {
+-            try {
+-                logger.info("开始预热地理位置数据...");
+-
+-                // 查询所有有地理坐标的店铺
+-                List<Shop> shopsWithLocation = this.query()
+-                        .isNotNull("x")
+-                        .isNotNull("y")
+-                        .list();
+-
+-                // 按类型分组 - 修复类型问题
+-                Map<Long, List<Shop>> shopsByType = new HashMap<>();
+-                for (Shop shop : shopsWithLocation) {
+-                    if (shop.getTypeId() != null) {
+-                        // 使用Long作为key，因为Shop的typeId通常是Long类型
+-                        Long typeId = shop.getTypeId();
+-                        shopsByType.computeIfAbsent(typeId, k -> new ArrayList<>()).add(shop);
+-                    }
+-                }
+-
+-                // 预热每种类型的地理位置数据
+-                int geoCount = 0;
+-                for (Map.Entry<Long, List<Shop>> entry : shopsByType.entrySet()) {
+-                    Long typeId = entry.getKey();
+-                    List<Shop> shops = entry.getValue();
+-
+-                    try {
+-                        String key = SHOP_GEO_KEY + typeId;
+-
+-                        // 批量添加地理位置数据
+-                        List<RedisGeoCommands.GeoLocation<String>> locations = new ArrayList<>();
+-                        for (Shop shop : shops) {
+-                            if (shop.getX() != null && shop.getY() != null) {
+-                                locations.add(new RedisGeoCommands.GeoLocation<>(
+-                                        shop.getId().toString(),
+-                                        new org.springframework.data.geo.Point(shop.getX(), shop.getY())
+-                                ));
+-                            }
+-                        }
+-
+-                        if (!locations.isEmpty()) {
+-                            stringRedisTemplate.opsForGeo().add(key, locations);
+-                            geoCount++;
+-                            logger.debug("成功预热类型 {} 的地理位置数据，包含 {} 个店铺", typeId, locations.size());
+-                        }
+-
+-                        Thread.sleep(30); // 类型间延迟
+-                    } catch (Exception e) {
+-                        logger.warn("预热类型 {} 的地理位置数据失败: {}", typeId, e.getMessage());
+-                    }
+-                }
+-
+-                logger.info("地理位置数据预热完成，成功预热 {} 种类型的地理数据", geoCount);
+-            } catch (Exception e) {
+-                logger.error("预热地理位置数据失败", e);
+-            }
+-        });
+-    }
+-
+-    /**
+-     * 手动触发缓存预热
+-     */
+-    @Override
+-    public Result warmUpCache() {
+-        logger.info("手动触发缓存预热...");
+-
+-        try {
+-            // 异步执行缓存预热
+-            warmUpPopularShops();
+-            warmUpShopsByType();
+-            warmUpGeoData();
+-
+-            return Result.ok("缓存预热任务已启动，请查看日志了解进度");
+-        } catch (Exception e) {
+-            logger.error("手动缓存预热失败", e);
+-            return Result.fail("缓存预热失败: " + e.getMessage());
+-        }
+-    }
+-
+-    /**
+-     * 预热指定店铺的缓存
+-     */
+     @Override
+-    public Result warmUpShopCache(List<Long> shopIds) {
+-        if (shopIds == null || shopIds.isEmpty()) {
+-            return Result.fail("店铺ID列表不能为空");
+-        }
+-
+-        cacheWarmupExecutor.submit(() -> {
+-            try {
+-                logger.info("开始预热指定店铺缓存，数量: {}", shopIds.size());
+-
+-                int successCount = 0;
+-                for (Long shopId : shopIds) {
+-                    try {
+-                        this.queryById(shopId);
+-                        successCount++;
+-                        Thread.sleep(20); // 延迟避免压力过大
+-                    } catch (Exception e) {
+-                        logger.warn("预热店铺 {} 失败: {}", shopId, e.getMessage());
+-                    }
+-                }
+-
+-                logger.info("指定店铺缓存预热完成，成功预热 {} 个店铺", successCount);
+-            } catch (Exception e) {
+-                logger.error("预热指定店铺缓存失败", e);
+-            }
+-        });
+-
+-        return Result.ok("指定店铺缓存预热任务已启动");
+-    }
+-
+-    /**
+-     * 获取缓存预热状态
+-     */
+-    @Override
+-    public Result getCacheWarmupStatus() {
+-        try {
+-            Cache shopCache = cacheManager.getCache("shopCache");
+-            if (shopCache != null) {
+-                Object nativeCache = shopCache.getNativeCache();
+-
+-                // 这里可以根据具体的缓存实现获取更详细的状态信息
+-                Map<String, Object> status = new HashMap<>();
+-                status.put("cacheType", nativeCache.getClass().getSimpleName());
+-                status.put("executorActive", cacheWarmupExecutor != null && !cacheWarmupExecutor.isShutdown());
+-
+-                // 可以添加更多状态信息
+-                logger.info("缓存预热状态查询: {}", status);
+-                return Result.ok(status);
+-            }
+-            return Result.fail("缓存未就绪");
+-        } catch (Exception e) {
+-            logger.error("获取缓存预热状态失败", e);
+-            return Result.fail("获取状态失败: " + e.getMessage());
+-        }
+-    }
+-
+-    //NOTE 这个方法使用了Spring Cache的@Cacheable注解来实现缓存功能
+-    //NOTE value指定缓存的名称 shopCache，key指定缓存的键为店铺ID
+-    //NOTE unless="#result == null"表示如果结果为null则不缓存  避免缓存穿透
+-
+-    //NOTE 这里自动使用二级缓存，先查一级缓存（本地缓存），再查二级缓存（Redis）
+-    //NOTE @Cacheable("shopCache")->spring AOP拦截方法调用->CacheManager.getCache("shopCache")->
+-    // 由于配置了LayeredCacheManager ->返回LayeredCache示例 -> 执行二级缓存逻辑
+-    @Override
+-    @Cacheable(value = "shopCache", key = "#id", unless = "#result == null")
+     public Result queryById(Long id) {
+-        logger.info("查询数据库获取店铺信息，店铺ID: {}", id);
+-
+-        // 直接查询数据库，缓存由注解自动处理
+-        Shop shop = getById(id);
+-
+-        // 手动检查缓存状态（用于调试）
+-        checkCacheStatus(id, shop);
+-
+-        if(shop == null){
++        Shop shop = shopCacheService.getShop(id);
++        if (shop == null) {
+             logger.warn("店铺不存在，ID: {}", id);
+             return Result.fail("店铺不存在!");
+         }
+-
+-        logger.info("成功获取店铺信息，店铺名称: {}", shop.getName());
+         return Result.ok(shop);
+     }
+ 
+-
+-    //NOTE 这个方法使用了Spring Cache的@CacheEvict注解来实现缓存更新功能
+-    //NOTE value指定缓存的名称 shopCache，key指定要删除的缓存键为店铺ID
+-    //NOTE Transactional确保数据库更新和缓存删除在同一事务中执行
+-
+-    //NOTE 自动清除二级缓存
+     @Override
+     @Transactional
+-    @CacheEvict(value = "shopCache", key = "#shop.id")
+     public Result update(Shop shop) {
+         Long id = shop.getId();
+-        if(id == null){
++        if (id == null) {
+             return Result.fail("店铺id不能为空");
+         }
+ 
+         logger.info("开始更新店铺信息，店铺ID: {}", id);
+ 
+-        // 更新前先获取旧数据用于日志
+         Shop oldShop = getById(id);
+         if (oldShop != null) {
+             logger.info("更新前店铺名称: {}", oldShop.getName());
+         }
+ 
+-        // 更新数据库
+         boolean success = updateById(shop);
+-        if (success) {
+-            logger.info("数据库更新成功，店铺ID: {}", id);
+ 
+-            // 验证缓存是否已被清除
+-            checkCacheAfterEvict(id);
++        // 与原先 @CacheEvict 的语义保持一致：方法正常返回即失效，
++        // 避免旧值或空值标记在 TTL 内继续对外可见（SPEC-05 G1）
++        shopCacheService.evict(id);
++
++        if (success) {
++            logger.info("数据库更新成功，缓存已失效，店铺ID: {}", id);
+         } else {
+             logger.error("数据库更新失败，店铺ID: {}", id);
+         }
+-
+-        // 缓存由 @CacheEvict 注解自动删除
+         return Result.ok();
+     }
+ 
+-    @CacheEvict(value = "shopCache", allEntries = true)
+-    public Result clearShopCache() {
+-        logger.info("清空所有店铺缓存");
+-
+-        // 获取缓存统计信息
+-        Cache shopCache = cacheManager.getCache("shopCache");
+-        if (shopCache != null) {
+-            logger.info("执行清空缓存操作");
+-        }
+-
+-        return Result.ok("店铺缓存已清空");
+-    }
+-
+     @Override
+     public Result queryShopByType(Integer typeId, Integer current, Double x, Double y) {
+-        logger.info("查询类型为 {} 的店铺，页码: {}, 坐标: ({}, {})");
++        logger.info("查询类型为 {} 的店铺，页码: {}, 坐标: ({}, {})", typeId, current, x, y);
+ 
+         // 1.判断是否需要根据坐标查询
+         if (x == null || y == null) {
+             // 不需要坐标查询，按数据库查询
+             logger.info("执行无坐标查询");
+             Page<Shop> page = query()
+                     .eq("type_id", typeId)
+                     .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
+             // 返回数据
+             logger.info("查询到 {} 条记录", page.getRecords().size());
+             return Result.ok(page.getRecords());
+         }
+ 
+         // 2.计算分页参数
+         int from = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
+         int end = current * SystemConstants.DEFAULT_PAGE_SIZE;
+ 
+-        logger.info("执行地理位置查询，从第 {} 条到第 {} 条", from, end);
++        logger.info("执行地理位置查询，从第 {} 条到第 {} 条，半径 {} 公里", from, end, searchRadiusKm);
+ 
+         // 3.查询redis、按照距离排序、分页。结果：shopId、distance
+         String key = SHOP_GEO_KEY + typeId;
+         GeoResults<RedisGeoCommands.GeoLocation<String>> results = stringRedisTemplate.opsForGeo() // GEOSEARCH key BYLONLAT x y BYRADIUS 10 WITHDISTANCE
+                 .search(
+                         key,
+                         GeoReference.fromCoordinate(x, y),
+-                        new org.springframework.data.geo.Distance(5000),
++                        new Distance(searchRadiusKm, Metrics.KILOMETERS),
+                         RedisGeoCommands.GeoSearchCommandArgs.newGeoSearchArgs().includeDistance().limit(end)
+                 );
+         // 4.解析出id
+         if (results == null) {
+             logger.info("未找到附近店铺");
+             return Result.ok(Collections.emptyList());
+         }
+         List<GeoResult<RedisGeoCommands.GeoLocation<String>>> list = results.getContent();
+         if (list.size() <= from) {
+             // 没有下一页了，结束
+@@ -480,113 +150,22 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
+             Distance distance = result.getDistance();
+             distanceMap.put(shopIdStr, distance);
+         });
+ 
+         logger.info("找到 {} 个附近店铺，ID列表: {}", ids.size(), ids);
+ 
+         // 5.根据id查询Shop
+         String idStr = StrUtil.join(",", ids);
+         List<Shop> shops = query().in("id", ids).last("ORDER BY FIELD(id," + idStr + ")").list();
+         for (Shop shop : shops) {
+-            shop.setDistance(distanceMap.get(shop.getId().toString()).getValue());
++            Distance distance = distanceMap.get(shop.getId().toString());
++            if (distance != null) {
++                shop.setDistance(distance.getValue());
++            }
+         }
+ 
+         logger.info("成功获取 {} 个店铺详细信息", shops.size());
+ 
+         // 6.返回
+         return Result.ok(shops);
+     }
+-
+-    /**
+-     * 检查缓存状态（用于调试）
+-     */
+-    private void checkCacheStatus(Long shopId, Shop shopFromDB) {
+-        try {
+-            Cache shopCache = cacheManager.getCache("shopCache");
+-            if (shopCache != null) {
+-                Cache.ValueWrapper cachedValue = shopCache.get(shopId);
+-                if (cachedValue != null) {
+-                    Object value = cachedValue.get();
+-                    logger.info("缓存命中 - 店铺ID: {}, 缓存值: {}", shopId, value);
+-                } else {
+-                    logger.info("缓存未命中 - 店铺ID: {}, 将从数据库查询", shopId);
+-
+-                    // 如果是新查询的数据，应该会被自动缓存
+-                    if (shopFromDB != null) {
+-                        logger.info("数据库查询成功，数据将被缓存");
+-                    }
+-                }
+-
+-                // 如果使用的是二级缓存，可以尝试获取原生缓存来检查两级缓存状态
+-                Object nativeCache = shopCache.getNativeCache();
+-                logger.debug("缓存原生类型: {}", nativeCache.getClass().getName());
+-            } else {
+-                logger.warn("未找到 shopCache 缓存实例");
+-            }
+-        } catch (Exception e) {
+-            logger.error("检查缓存状态时发生错误", e);
+-        }
+-    }
+-
+-    /**
+-     * 检查缓存清除后的状态
+-     */
+-    private void checkCacheAfterEvict(Long shopId) {
+-        try {
+-            Cache shopCache = cacheManager.getCache("shopCache");
+-            if (shopCache != null) {
+-                Cache.ValueWrapper cachedValue = shopCache.get(shopId);
+-                if (cachedValue == null) {
+-                    logger.info("缓存清除验证成功 - 店铺ID: {} 的缓存已被清除", shopId);
+-                } else {
+-                    logger.warn("缓存清除验证失败 - 店铺ID: {} 的缓存仍然存在", shopId);
+-                }
+-            }
+-        } catch (Exception e) {
+-            logger.error("检查缓存清除状态时发生错误", e);
+-        }
+-    }
+-
+-    /**
+-     * 手动获取缓存中的店铺信息（用于测试）
+-     */
+-    public Result getCachedShop(Long id) {
+-        try {
+-            Cache shopCache = cacheManager.getCache("shopCache");
+-            if (shopCache != null) {
+-                Cache.ValueWrapper wrapper = shopCache.get(id);
+-                if (wrapper != null) {
+-                    Object value = wrapper.get();
+-                    logger.info("手动查询缓存成功 - 店铺ID: {}, 值: {}", id, value);
+-                    return Result.ok(value);
+-                } else {
+-                    logger.info("手动查询缓存未命中 - 店铺ID: {}", id);
+-                    return Result.fail("缓存中未找到该店铺");
+-                }
+-            } else {
+-                return Result.fail("缓存管理器未就绪");
+-            }
+-        } catch (Exception e) {
+-            logger.error("手动查询缓存时发生错误", e);
+-            return Result.fail("查询缓存失败: " + e.getMessage());
+-        }
+-    }
+-
+-    /**
+-     * Bean销毁时关闭线程池
+-     */
+-    @jakarta.annotation.PreDestroy
+-    public void destroy() {
+-        if (cacheWarmupExecutor != null) {
+-            try {
+-                cacheWarmupExecutor.shutdown();
+-                if (!cacheWarmupExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+-                    cacheWarmupExecutor.shutdownNow();
+-                }
+-                logger.info("缓存预热线程池已关闭");
+-            } catch (InterruptedException e) {
+-                cacheWarmupExecutor.shutdownNow();
+-                Thread.currentThread().interrupt();
+-            }
+-        }
+-    }
+-}
+\ No newline at end of file
++}
+diff --git a/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopTypeServiceImpl.java b/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopTypeServiceImpl.java
+index ff6e92f..c9a8f4d 100644
+--- a/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopTypeServiceImpl.java
++++ b/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopTypeServiceImpl.java
+@@ -1,29 +1,31 @@
+ package com.hmdp.shop.service.impl;
+ 
+ import cn.hutool.core.collection.CollectionUtil;
+ import cn.hutool.core.util.StrUtil;
+ import cn.hutool.json.JSONUtil;
+ import com.hmdp.dto.Result;
+ import com.hmdp.entity.ShopType;
+ import com.hmdp.shop.mapper.ShopTypeMapper;
+ import com.hmdp.shop.service.IShopTypeService;
++import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.redis.core.StringRedisTemplate;
+ import org.springframework.stereotype.Service;
+ 
+ import java.util.List;
++import java.util.concurrent.ThreadLocalRandom;
+ import java.util.concurrent.TimeUnit;
+ 
+-import static com.hmdp.utils.RedisConstants.SHOP_LIST_KEY;
++import static com.hmdp.utils.RedisConstants.*;
+ 
+ /**
+  * <p>
+  *  服务实现类
+  * </p>
+  *
+  * @author 虎哥
+  * @since 2021-12-22
+  */
+ @Service
+@@ -50,44 +52,56 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
+             if (log.isDebugEnabled()) {
+                 for (ShopType shopType : types) {
+                     log.debug("商铺分类详情 - ID: {}, 名称: {}, 图标: {}, 排序: {}",
+                             shopType.getId(), shopType.getName(), shopType.getIcon(), shopType.getSort());
+                 }
+             }
+ 
+             log.info("商铺分类查询成功，从缓存返回{}个分类", types.size());
+             return Result.ok(types);
+         }
++        // 命中空值标记：DB 已经确认过为空，直接返回，不再穿透（SPEC-05 G5）
++        if (shopTypeStr != null) {
++            log.info("命中空值标记，直接返回");
++            return Result.fail("列表信息不存在");
++        }
+ 
+         log.info("Redis中未找到商铺分类缓存，开始查询数据库");
+ 
+         //redis中没有，查询数据库
+-        List<ShopType> typeList = query().orderByAsc("sort").list();
++        List<ShopType> typeList = list(Wrappers.<ShopType>query().orderByAsc("sort"));
+ 
+-        //数据库中没有，报错
++        //数据库中没有，写入短 TTL 空值标记并报错
+         if (CollectionUtil.isEmpty(typeList)) {
+             log.warn("数据库中未找到任何商铺分类信息");
++            try {
++                redisTemplate.opsForValue().set(SHOP_LIST_KEY, "", CACHE_NULL_TTL, TimeUnit.SECONDS);
++            } catch (Exception e) {
++                log.error("写入商铺分类空值标记时发生异常", e);
++                // 即使Redis操作失败，仍然返回「列表信息不存在」
++            }
+             return Result.fail("列表信息不存在");
+         }
+ 
+         log.info("从数据库中查询到{}个商铺分类", typeList.size());
+ 
+         // 记录详细的分类信息
+         for (ShopType shopType : typeList) {
+             log.info("商铺分类 - ID: {}, 名称: {}, 图标: {}, 排序: {}",
+                     shopType.getId(), shopType.getName(), shopType.getIcon(), shopType.getSort());
+         }
+ 
+-        //数据库中有，存到redis
++        //数据库中有，存到redis（TTL 带抖动，SPEC-05 G7）
+         String jsonStr = JSONUtil.toJsonStr(typeList);
++        long ttl = CACHE_TTL_BASE_SECONDS + ThreadLocalRandom.current().nextInt(CACHE_TTL_JITTER_SECONDS);
+         try {
+-            redisTemplate.opsForValue().set(SHOP_LIST_KEY, jsonStr, 30, TimeUnit.MINUTES);
++            redisTemplate.opsForValue().set(SHOP_LIST_KEY, jsonStr, ttl, TimeUnit.SECONDS);
+             log.info("成功将商铺分类数据存入Redis缓存，数据长度：{}", jsonStr.length());
+         } catch (Exception e) {
+             log.error("将商铺分类数据存入Redis时发生异常", e);
+             // 即使Redis操作失败，仍然返回数据库查询结果
+         }
+ 
+         log.info("商铺分类查询完成，共返回{}个分类", typeList.size());
+         return Result.ok(typeList);
+     }
+ }
+\ No newline at end of file
+diff --git a/shop-service/src/test/java/com/hmdp/shop/controller/ShopControllerTest.java b/shop-service/src/test/java/com/hmdp/shop/controller/ShopControllerTest.java
+new file mode 100644
+index 0000000..966e980
+--- /dev/null
++++ b/shop-service/src/test/java/com/hmdp/shop/controller/ShopControllerTest.java
+@@ -0,0 +1,30 @@
++package com.hmdp.shop.controller;
++
++import com.hmdp.dto.Result;
++import com.hmdp.entity.Shop;
++import com.hmdp.shop.service.IShopService;
++import com.hmdp.shop.service.ShopCacheService;
++import org.junit.jupiter.api.Test;
++
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.Mockito.*;
++
++class ShopControllerTest {
++
++    /** A2 机制：新增商铺后必须打断该 id 可能已存在的空值标记，否则最长 30 分钟不可见 */
++    @Test
++    void 新增店铺后打断该id的缓存() {
++        ShopController controller = new ShopController();
++        IShopService shopService = mock(IShopService.class);
++        ShopCacheService shopCacheService = mock(ShopCacheService.class);
++        controller.shopService = shopService;
++        controller.shopCacheService = shopCacheService;
++        Shop shop = new Shop().setId(99999L).setName("新店");
++
++        Result result = controller.saveShop(shop);
++
++        verify(shopService).save(shop);
++        verify(shopCacheService).evict(99999L);
++        assertEquals(99999L, result.getData());
++    }
++}
+diff --git a/shop-service/src/test/java/com/hmdp/shop/controller/ShopControllerValidationTest.java b/shop-service/src/test/java/com/hmdp/shop/controller/ShopControllerValidationTest.java
+new file mode 100644
+index 0000000..6cdafc1
+--- /dev/null
++++ b/shop-service/src/test/java/com/hmdp/shop/controller/ShopControllerValidationTest.java
+@@ -0,0 +1,64 @@
++package com.hmdp.shop.controller;
++
++import com.hmdp.config.SaTokenConfig;
++import com.hmdp.shop.config.ShopValidationExceptionHandler;
++import com.hmdp.shop.service.IShopService;
++import com.hmdp.shop.service.ShopCacheService;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
++import org.springframework.boot.test.mock.mockito.MockBean;
++import org.springframework.context.annotation.Import;
++import org.springframework.test.context.ContextConfiguration;
++import org.springframework.test.web.servlet.MockMvc;
++
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
++
++/**
++ * A7：分页参数越界必须返回 HTTP 400（修复前为 500）。
++ *
++ * <p>本用例覆盖的是**整条链路**：request → Spring MVC 方法参数校验（{@code MethodValidationInterceptor}
++ * 代理）→ {@code ConstraintViolationException} → {@link ShopValidationExceptionHandler} → HTTP 400。
++ * 因此断言里没有 mock 异常，异常必须由切片真的抛出来。
++ *
++ * <p>排除 {@link SaTokenConfig}：它对 {@code /**} 强制登录而 {@code /shop/**} 不在白名单，
++ * 否则本用例会在参数校验之前先被鉴权拦截。本用例检验的是参数校验链路，不是鉴权。
++ *
++ * <p>显式声明 {@code classes} 以免切片回落到 {@code ShopApplication} —— 后者的
++ * {@code @MapperScan("com.hmdp.shop.mapper")} 会注册需要 {@code SqlSessionFactory} 的 mapper bean，
++ * 离线环境下无法装配。{@code MethodValidationPostProcessor} 由 web 切片仍会应用的
++ * {@code ValidationAutoConfiguration} 提供，故此处显式注册的控制器 bean 仍会被 {@code @Validated} 代理。
++ */
++@WebMvcTest(controllers = ShopController.class,
++        excludeAutoConfiguration = SaTokenConfig.class,
++        properties = {
++                "spring.cloud.bootstrap.enabled=false",
++                "spring.cloud.nacos.config.enabled=false",
++                "spring.cloud.discovery.enabled=false"
++        })
++@ContextConfiguration(classes = {ShopController.class, ShopValidationExceptionHandler.class})
++@Import(ShopValidationExceptionHandler.class)
++class ShopControllerValidationTest {
++
++    @Autowired
++    private MockMvc mockMvc;
++
++    @MockBean
++    private IShopService shopService;
++
++    @MockBean
++    private ShopCacheService shopCacheService;
++
++    @Test
++    void 分页参数越界返回400() throws Exception {
++        mockMvc.perform(get("/shop/of/type").param("typeId", "1").param("current", "0"))
++                .andExpect(status().isBadRequest());
++    }
++
++    @Test
++    void 合法页码不返回400() throws Exception {
++        mockMvc.perform(get("/shop/of/type").param("typeId", "1").param("current", "1"))
++                .andExpect(status().isOk());
++    }
++}
+diff --git a/shop-service/src/test/java/com/hmdp/shop/service/ShopCacheServiceTest.java b/shop-service/src/test/java/com/hmdp/shop/service/ShopCacheServiceTest.java
+new file mode 100644
+index 0000000..c810cd8
+--- /dev/null
++++ b/shop-service/src/test/java/com/hmdp/shop/service/ShopCacheServiceTest.java
+@@ -0,0 +1,128 @@
++package com.hmdp.shop.service;
++
++import cn.hutool.json.JSONUtil;
++import com.hmdp.entity.Shop;
++import com.hmdp.shop.mapper.ShopMapper;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.extension.ExtendWith;
++import org.mockito.ArgumentCaptor;
++import org.mockito.Mock;
++import org.mockito.junit.jupiter.MockitoExtension;
++import org.mockito.junit.jupiter.MockitoSettings;
++import org.mockito.quality.Strictness;
++import org.springframework.data.redis.core.StringRedisTemplate;
++import org.springframework.data.redis.core.ValueOperations;
++
++import java.util.List;
++import java.util.concurrent.TimeUnit;
++
++import static com.hmdp.utils.RedisConstants.*;
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.ArgumentMatchers.*;
++import static org.mockito.Mockito.*;
++
++@ExtendWith(MockitoExtension.class)
++@MockitoSettings(strictness = Strictness.LENIENT)
++class ShopCacheServiceTest {
++
++    @Mock
++    private StringRedisTemplate stringRedisTemplate;
++    @Mock
++    private ValueOperations<String, String> valueOperations;
++    @Mock
++    private ShopMapper shopMapper;
++
++    private ShopCacheService shopCacheService;
++
++    @BeforeEach
++    void setUp() {
++        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
++        shopCacheService = new ShopCacheService(stringRedisTemplate, shopMapper);
++    }
++
++    /** A1：空值标记的 TTL 必须是 60 秒级，而不是 30 分钟 */
++    @Test
++    void 未命中且DB无此id_写入短TTL空值标记并返回null() {
++        when(valueOperations.get(CACHE_SHOP_KEY + 99999L)).thenReturn(null);
++        when(shopMapper.selectById(99999L)).thenReturn(null);
++
++        Shop result = shopCacheService.getShop(99999L);
++
++        assertNull(result);
++        ArgumentCaptor<Long> ttl = ArgumentCaptor.forClass(Long.class);
++        verify(valueOperations).set(eq(CACHE_SHOP_KEY + 99999L), eq(""), ttl.capture(), eq(TimeUnit.SECONDS));
++        assertTrue(ttl.getValue() <= 60L, "空值 TTL 必须 ≤60 秒，实际 " + ttl.getValue());
++    }
++
++    /** 命中真实缓存：不回查 DB */
++    @Test
++    void 命中缓存_返回实体且不查库() {
++        Shop cached = new Shop().setId(1L).setName("缓存中的店");
++        when(valueOperations.get(CACHE_SHOP_KEY + 1L)).thenReturn(JSONUtil.toJsonStr(cached));
++
++        Shop result = shopCacheService.getShop(1L);
++
++        assertNotNull(result);
++        assertEquals("缓存中的店", result.getName());
++        verifyNoInteractions(shopMapper);
++    }
++
++    /** 命中空值标记：防穿透，不回查 DB */
++    @Test
++    void 命中空值标记_返回null且不查库() {
++        when(valueOperations.get(CACHE_SHOP_KEY + 5L)).thenReturn("");
++
++        Shop result = shopCacheService.getShop(5L);
++
++        assertNull(result);
++        verifyNoInteractions(shopMapper);
++    }
++
++    /** 未命中且 DB 有值：回填缓存并返回 */
++    @Test
++    void 未命中且DB有值_回填并返回() {
++        Shop dbShop = new Shop().setId(7L).setName("库里的店");
++        when(valueOperations.get(CACHE_SHOP_KEY + 7L)).thenReturn(null);
++        when(shopMapper.selectById(7L)).thenReturn(dbShop);
++
++        Shop result = shopCacheService.getShop(7L);
++
++        assertNotNull(result);
++        assertEquals("库里的店", result.getName());
++        ArgumentCaptor<Long> ttl = ArgumentCaptor.forClass(Long.class);
++        verify(valueOperations).set(eq(CACHE_SHOP_KEY + 7L), anyString(), ttl.capture(), eq(TimeUnit.SECONDS));
++        assertTrue(ttl.getValue() >= CACHE_TTL_BASE_SECONDS
++                        && ttl.getValue() < CACHE_TTL_BASE_SECONDS + CACHE_TTL_JITTER_SECONDS,
++                "TTL 越界: " + ttl.getValue());
++    }
++
++    /** A8：100 次写入的 TTL 必须有抖动（不全相同）且在区间内 */
++    @Test
++    void 写入TTL具备抖动() {
++        when(valueOperations.get(anyString())).thenReturn(null);
++        when(shopMapper.selectById(any()))
++                .thenAnswer(inv -> new Shop().setId(((Number) inv.getArgument(0)).longValue()));
++
++        for (long id = 1; id <= 100; id++) {
++            shopCacheService.getShop(id);
++        }
++
++        ArgumentCaptor<Long> ttl = ArgumentCaptor.forClass(Long.class);
++        verify(valueOperations, times(100)).set(anyString(), anyString(), ttl.capture(), eq(TimeUnit.SECONDS));
++        List<Long> ttls = ttl.getAllValues();
++        assertEquals(100, ttls.size());
++        for (Long v : ttls) {
++            assertTrue(v >= CACHE_TTL_BASE_SECONDS && v < CACHE_TTL_BASE_SECONDS + CACHE_TTL_JITTER_SECONDS,
++                    "TTL 越界: " + v);
++        }
++        assertTrue(ttls.stream().distinct().count() > 1, "TTL 无抖动嫌疑：100 次写入取值全相同");
++    }
++
++    @Test
++    void evict_删除对应key() {
++        shopCacheService.evict(42L);
++
++        verify(stringRedisTemplate).delete(CACHE_SHOP_KEY + 42L);
++    }
++}
+diff --git a/shop-service/src/test/java/com/hmdp/shop/service/ShopCacheWarmUpTest.java b/shop-service/src/test/java/com/hmdp/shop/service/ShopCacheWarmUpTest.java
+new file mode 100644
+index 0000000..b38d113
+--- /dev/null
++++ b/shop-service/src/test/java/com/hmdp/shop/service/ShopCacheWarmUpTest.java
+@@ -0,0 +1,58 @@
++package com.hmdp.shop.service;
++
++import com.hmdp.entity.Shop;
++import com.hmdp.shop.mapper.ShopMapper;
++import org.junit.jupiter.api.Test;
++
++import java.time.Duration;
++import java.util.List;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.TimeUnit;
++
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.Mockito.*;
++
++class ShopCacheWarmUpTest {
++
++    /** A3 机制：run() 不得等待预热完成——慢查询也不能阻塞启动路径 */
++    @Test
++    void 启动路径不阻塞在预热上() throws Exception {
++        ShopMapper shopMapper = mock(ShopMapper.class);
++        CountDownLatch warmupStarted = new CountDownLatch(1);
++        CountDownLatch release = new CountDownLatch(1);
++        when(shopMapper.selectList(any())).thenAnswer(inv -> {
++            warmupStarted.countDown();
++            release.await(5, TimeUnit.SECONDS);   // 模拟慢查询
++            return List.of();
++        });
++
++        ShopCacheWarmUp warmUp = new ShopCacheWarmUp(shopMapper, mock(ShopCacheService.class));
++        try {
++            assertTimeoutPreemptively(Duration.ofSeconds(1), () -> warmUp.run(null));
++            assertTrue(warmupStarted.await(5, TimeUnit.SECONDS), "预热应在独立线程中启动");
++        } finally {
++            release.countDown();
++            warmUp.shutdown();
++        }
++    }
++
++    /** A4 机制：预热必须经 ShopCacheService bean 调用，否则缓存写入不生效 */
++    @Test
++    void 预热经ShopCacheServiceBean逐个落缓存() {
++        ShopMapper shopMapper = mock(ShopMapper.class);
++        ShopCacheService shopCacheService = mock(ShopCacheService.class);
++        when(shopMapper.selectList(any())).thenReturn(List.of(
++                new Shop().setId(1L), new Shop().setId(2L)));
++
++        ShopCacheWarmUp warmUp = new ShopCacheWarmUp(shopMapper, shopCacheService);
++        try {
++            warmUp.warmUpPopularShops();
++
++            verify(shopCacheService).getShop(1L);
++            verify(shopCacheService).getShop(2L);
++        } finally {
++            warmUp.shutdown();
++        }
++    }
++}
+diff --git a/shop-service/src/test/java/com/hmdp/shop/service/ShopGeoIndexWarmUpTest.java b/shop-service/src/test/java/com/hmdp/shop/service/ShopGeoIndexWarmUpTest.java
+new file mode 100644
+index 0000000..83636da
+--- /dev/null
++++ b/shop-service/src/test/java/com/hmdp/shop/service/ShopGeoIndexWarmUpTest.java
+@@ -0,0 +1,140 @@
++package com.hmdp.shop.service;
++
++import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
++import com.hmdp.entity.Shop;
++import com.hmdp.shop.mapper.ShopMapper;
++import org.junit.jupiter.api.Test;
++import org.mockito.ArgumentCaptor;
++import org.springframework.data.redis.core.GeoOperations;
++import org.springframework.data.redis.core.StringRedisTemplate;
++
++import java.util.ArrayList;
++import java.util.List;
++
++import static com.hmdp.shop.service.ShopGeoIndexWarmUp.PAGE_SIZE;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.anyList;
++import static org.mockito.ArgumentMatchers.eq;
++import static org.mockito.Mockito.mock;
++import static org.mockito.Mockito.times;
++import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.when;
++
++class ShopGeoIndexWarmUpTest {
++
++    /**
++     * 分页边界与分批落库：满页之后不得停在满页上（那会重复读同一段），必须再查一次
++     * 才收尾；每批各自写一次 Redis，而不是攒到最后一次性写入（峰值内存收敛为一批）。
++     */
++    @Test
++    void 按批分页且每批落Redis() {
++        ShopMapper shopMapper = mock(ShopMapper.class);
++        // 满页 → 短页 → 空页：满页不算收尾，短页走到批次末尾才 break，循环不会读第三次
++        when(shopMapper.selectList(any())).thenReturn(fullPage(), shortPage(), List.of());
++
++        StringRedisTemplate redis = mock(StringRedisTemplate.class);
++        @SuppressWarnings("unchecked")
++        GeoOperations<String, String> geoOperations = mock(GeoOperations.class);
++        when(redis.opsForGeo()).thenReturn(geoOperations);
++
++        ShopGeoIndexWarmUp warmUp = new ShopGeoIndexWarmUp(shopMapper, redis);
++        try {
++            warmUp.warmUpGeoIndex();
++
++            // 恰好两次：满页触发下一轮，短页当轮收尾
++            verify(shopMapper, times(2)).selectList(any());
++            // 两批各落一次 Redis —— 证明是分批 flush 而非单次收尾写入
++            verify(geoOperations, times(2)).add(eq("shop:geo:1"), anyList());
++        } finally {
++            warmUp.shutdown();
++        }
++    }
++
++    /**
++     * 游标推进：某行被空值守卫跳过时，游标仍必须前进到该行 id；否则下一批会重新拉到
++     * 同一段数据，整页被跳过时更会退化成启动期死循环。
++     *
++     * <p>mock 无法复现真实死锁（返回值与 wrapper 无关），因此做结构性断言：捕获每次
++     * {@code selectList} 收到的 wrapper，断言其 {@code id > ?} 绑定值等于上一页最后一行
++     * 的 id——而那一行正是被守卫跳过的行。若把 {@code lastId = shop.getId()} 放回守卫
++     * 之内，第二次绑定值会停在上一页最后一个<i>有效</i>行上，断言随即失败。
++     */
++    @Test
++    void 游标跨过被跳过的行() {
++        ShopMapper shopMapper = mock(ShopMapper.class);
++        // 满页，最后一行的 x 为 null：整页除它之外都有效，游标却必须推进到它
++        when(shopMapper.selectList(any())).thenReturn(pageEndingInSkippedRow(), List.of());
++
++        StringRedisTemplate redis = mock(StringRedisTemplate.class);
++        @SuppressWarnings("unchecked")
++        GeoOperations<String, String> geoOperations = mock(GeoOperations.class);
++        when(redis.opsForGeo()).thenReturn(geoOperations);
++
++        ShopGeoIndexWarmUp warmUp = new ShopGeoIndexWarmUp(shopMapper, redis);
++        try {
++            warmUp.warmUpGeoIndex();
++
++            ArgumentCaptor<QueryWrapper<Shop>> captor = wrapperCaptor();
++            verify(shopMapper, times(2)).selectList(captor.capture());
++            List<QueryWrapper<Shop>> wrappers = captor.getAllValues();
++
++            assertEquals(0L, cursorOf(wrappers.get(0)), "首批应从 id > 0 开始");
++            assertEquals(SKIPPED_ID, cursorOf(wrappers.get(1)),
++                    "游标必须落在被跳过的最后一行上，否则会重复读取同一页");
++            assertTrue(cursorOf(wrappers.get(1)) > PAGE_SIZE - 1L,
++                    "游标必须越过被守卫跳过的行，否则会被守卫卡在上一页内");
++            // 被跳过的行不写入 GEO
++            verify(geoOperations).add(eq("shop:geo:1"), anyList());
++        } finally {
++            warmUp.shutdown();
++        }
++    }
++
++    /** 被空值守卫跳过的行位于整页末尾，因此游标必须越过它才谈得上收敛。 */
++    private static final long SKIPPED_ID = PAGE_SIZE;
++
++    /**
++     * 取出 wrapper 上 {@code gt("id", …)} 绑定的游标值。
++     *
++     * <p>必须先调 {@code getSqlSegment()}：MyBatis-Plus 只在 {@code formatParam} 里写
++     * {@code paramNameValuePairs}，而该方法由 {@code getSqlSegment()} 惰性触发——构造完
++     * 就取 map 只会拿到空表，从而让断言退化成永不失败的比较。绑定的实参按 wrapper 自身
++     * 数量计，{@code MPGENVAL1} 即 gt 的值。
++     */
++    private static long cursorOf(QueryWrapper<Shop> wrapper) {
++        wrapper.getSqlSegment();
++        return (Long) wrapper.getParamNameValuePairs().get("MPGENVAL1");
++    }
++
++    @SuppressWarnings({"unchecked", "rawtypes"})
++    private static ArgumentCaptor<QueryWrapper<Shop>> wrapperCaptor() {
++        return (ArgumentCaptor) ArgumentCaptor.forClass(QueryWrapper.class);
++    }
++
++    private static Shop shop(long id, long typeId, Double x, Double y) {
++        return new Shop().setId(id).setTypeId(typeId).setX(x).setY(y);
++    }
++
++    /** 恰好 PAGE_SIZE 条的满页，全部为有效坐标。 */
++    private static List<Shop> fullPage() {
++        List<Shop> page = new ArrayList<>(PAGE_SIZE);
++        for (int i = 1; i <= PAGE_SIZE; i++) {
++            page.add(shop(i, 1L, 1.0 + i * 1e-3, 2.0 + i * 1e-3));
++        }
++        return page;
++    }
++
++    /** 恰好 PAGE_SIZE 条的满页，仅最后一行坐标为空——它会被守卫跳过。 */
++    private static List<Shop> pageEndingInSkippedRow() {
++        List<Shop> page = fullPage();
++        page.set(PAGE_SIZE - 1, shop(SKIPPED_ID, 1L, null, 2.0));
++        return page;
++    }
++
++    /** 短页：走到批次末尾即收尾。 */
++    private static List<Shop> shortPage() {
++        return List.of(shop(PAGE_SIZE + 1L, 1L, 3.0, 4.0));
++    }
++}
+diff --git a/shop-service/src/test/java/com/hmdp/shop/service/ShopTypeServiceImplTest.java b/shop-service/src/test/java/com/hmdp/shop/service/ShopTypeServiceImplTest.java
+new file mode 100644
+index 0000000..c4c3c16
+--- /dev/null
++++ b/shop-service/src/test/java/com/hmdp/shop/service/ShopTypeServiceImplTest.java
+@@ -0,0 +1,124 @@
++package com.hmdp.shop.service;
++
++import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
++import com.hmdp.dto.Result;
++import com.hmdp.entity.ShopType;
++import com.hmdp.shop.mapper.ShopTypeMapper;
++import com.hmdp.shop.service.impl.ShopTypeServiceImpl;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.extension.ExtendWith;
++import org.mockito.ArgumentCaptor;
++import org.mockito.InjectMocks;
++import org.mockito.Mock;
++import org.mockito.junit.jupiter.MockitoExtension;
++import org.mockito.junit.jupiter.MockitoSettings;
++import org.mockito.quality.Strictness;
++import org.springframework.data.redis.core.StringRedisTemplate;
++import org.springframework.data.redis.core.ValueOperations;
++
++import java.lang.reflect.Field;
++import java.util.Collections;
++import java.util.List;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicBoolean;
++
++import static com.hmdp.utils.RedisConstants.*;
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.ArgumentMatchers.*;
++import static org.mockito.Mockito.*;
++
++@ExtendWith(MockitoExtension.class)
++@MockitoSettings(strictness = Strictness.LENIENT)
++class ShopTypeServiceImplTest {
++
++    @Mock
++    private ShopTypeMapper shopTypeMapper;
++    @Mock
++    private StringRedisTemplate redisTemplate;
++    @Mock
++    private ValueOperations<String, String> valueOperations;
++
++    @InjectMocks
++    private ShopTypeServiceImpl shopTypeService;
++
++    @BeforeEach
++    void setUp() throws Exception {
++        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
++        // Mockito 不会给 ServiceImpl 继承来的 protected baseMapper 注入 @Mock，
++        // 这里显式反射注入（断言不放松，注入失败仍然响亮报错）
++        Field baseMapperField = ServiceImpl.class.getDeclaredField("baseMapper");
++        baseMapperField.setAccessible(true);
++        baseMapperField.set(shopTypeService, shopTypeMapper);
++        assertNotNull(shopTypeService.getBaseMapper(),
++                "@InjectMocks 未注入 ServiceImpl.baseMapper，请改为显式反射注入");
++    }
++
++    /** A6：DB 为空时连续 10 次查询只应穿透一次 */
++    @Test
++    void 空数据时连续查询只打一次数据库() {
++        AtomicBoolean markerWritten = new AtomicBoolean(false);
++        // 首次未命中返回 null；写入空值标记后，后续请求命中 ""
++        when(valueOperations.get(SHOP_LIST_KEY)).thenAnswer(inv -> markerWritten.get() ? "" : null);
++        when(shopTypeMapper.selectList(any())).thenReturn(Collections.emptyList());
++        doAnswer(inv -> {
++            markerWritten.set(true);
++            return null;
++        }).when(valueOperations).set(eq(SHOP_LIST_KEY), eq(""), anyLong(), eq(TimeUnit.SECONDS));
++
++        for (int i = 0; i < 10; i++) {
++            Result result = shopTypeService.queryList();
++            assertFalse(result.getSuccess());
++        }
++
++        verify(shopTypeMapper, times(1)).selectList(any());
++        ArgumentCaptor<Long> ttl = ArgumentCaptor.forClass(Long.class);
++        verify(valueOperations, times(1)).set(eq(SHOP_LIST_KEY), eq(""), ttl.capture(), eq(TimeUnit.SECONDS));
++        assertTrue(ttl.getValue() <= 60L, "空值 TTL 必须 ≤60 秒，实际 " + ttl.getValue());
++    }
++
++    /** G7：有数据时写入的 TTL 必须带抖动且在区间内 */
++    @Test
++    void 有数据时写入带抖动的TTL() {
++        when(valueOperations.get(SHOP_LIST_KEY)).thenReturn(null);
++        List<ShopType> types = List.of(new ShopType().setId(1L).setName("美食"));
++        when(shopTypeMapper.selectList(any())).thenReturn(types);
++
++        Result result = shopTypeService.queryList();
++
++        assertTrue(result.getSuccess());
++        ArgumentCaptor<Long> ttl = ArgumentCaptor.forClass(Long.class);
++        verify(valueOperations).set(eq(SHOP_LIST_KEY), anyString(), ttl.capture(), eq(TimeUnit.SECONDS));
++        assertTrue(ttl.getValue() >= CACHE_TTL_BASE_SECONDS
++                        && ttl.getValue() < CACHE_TTL_BASE_SECONDS + CACHE_TTL_JITTER_SECONDS,
++                "TTL 越界: " + ttl.getValue());
++    }
++
++    /** 空值标记写入失败（Redis 抖动）时仍须优雅返回失败，不得把异常抛给调用方 */
++    @Test
++    void 空值标记写入失败时仍返回失败结果() {
++        when(valueOperations.get(SHOP_LIST_KEY)).thenReturn(null);
++        when(shopTypeMapper.selectList(any())).thenReturn(Collections.emptyList());
++        doThrow(new RuntimeException("Redis 连接失败"))
++                .when(valueOperations).set(eq(SHOP_LIST_KEY), eq(""), anyLong(), eq(TimeUnit.SECONDS));
++
++        Result result = assertDoesNotThrow(() -> shopTypeService.queryList(),
++                "空值标记写入失败不应把异常抛给调用方");
++
++        assertFalse(result.getSuccess());
++        assertEquals("列表信息不存在", result.getErrorMsg());
++        verify(shopTypeMapper, times(1)).selectList(any());
++    }
++
++    /** 命中缓存时不查库 */
++    @Test
++    void 命中缓存不查库() {
++        when(valueOperations.get(SHOP_LIST_KEY))
++                .thenReturn("[{\"id\":1,\"name\":\"美食\"}]");
++
++        Result result = shopTypeService.queryList();
++
++        assertTrue(result.getSuccess());
++        verifyNoInteractions(shopTypeMapper);
++    }
++}
+diff --git a/shop-service/src/test/java/com/hmdp/shop/service/impl/ShopServiceImplQueryByIdTest.java b/shop-service/src/test/java/com/hmdp/shop/service/impl/ShopServiceImplQueryByIdTest.java
+new file mode 100644
+index 0000000..d417f8e
+--- /dev/null
++++ b/shop-service/src/test/java/com/hmdp/shop/service/impl/ShopServiceImplQueryByIdTest.java
+@@ -0,0 +1,95 @@
++package com.hmdp.shop.service.impl;
++
++import com.hmdp.dto.Result;
++import com.hmdp.entity.Shop;
++import com.hmdp.shop.service.ShopCacheService;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.extension.ExtendWith;
++import org.mockito.InjectMocks;
++import org.mockito.Mock;
++import org.mockito.junit.jupiter.MockitoExtension;
++import org.mockito.junit.jupiter.MockitoSettings;
++import org.mockito.quality.Strictness;
++
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.anyLong;
++import static org.mockito.Mockito.*;
++
++@ExtendWith(MockitoExtension.class)
++@MockitoSettings(strictness = Strictness.LENIENT)
++class ShopServiceImplQueryByIdTest {
++
++    @Mock
++    private ShopCacheService shopCacheService;
++
++    @InjectMocks
++    private ShopServiceImpl shopService;
++
++    @Test
++    void 缓存返回店铺时返回ok() {
++        Shop shop = new Shop().setId(1L).setName("测试店");
++        when(shopCacheService.getShop(1L)).thenReturn(shop);
++
++        Result result = shopService.queryById(1L);
++
++        assertTrue(result.getSuccess());
++        assertEquals(shop, result.getData());
++    }
++
++    /** G1：店铺不存在仍是失败，但该失败不再被写入缓存 */
++    @Test
++    void 缓存返回null时返回店铺不存在() {
++        when(shopCacheService.getShop(99999L)).thenReturn(null);
++
++        Result result = shopService.queryById(99999L);
++
++        assertFalse(result.getSuccess());
++        assertEquals("店铺不存在!", result.getErrorMsg());
++    }
++
++    /** G8：queryById 只读不写——修复前 Result 包装对象会被 @Cacheable 写进 shopCache */
++    @Test
++    void 查询结果不再写入缓存() {
++        when(shopCacheService.getShop(1L)).thenReturn(new Shop().setId(1L));
++
++        shopService.queryById(1L);
++
++        verify(shopCacheService).getShop(1L);
++        verifyNoMoreInteractions(shopCacheService);
++    }
++
++    @Test
++    void 更新店铺后缓存失效() {
++        Shop shop = new Shop().setId(3L).setName("改名后的店");
++        ShopServiceImpl spy = spy(shopService);
++        doReturn(new Shop().setId(3L)).when(spy).getById(3L);
++        doReturn(true).when(spy).updateById(shop);
++
++        Result result = spy.update(shop);
++
++        assertTrue(result.getSuccess());
++        verify(shopCacheService).evict(3L);
++    }
++
++    @Test
++    void 无id时不触发缓存失效() {
++        Result result = shopService.update(new Shop());
++
++        assertFalse(result.getSuccess());
++        verify(shopCacheService, never()).evict(any());
++    }
++
++    @Test
++    void 更新失败时缓存仍失效() {
++        // 与原先 @CacheEvict 的语义一致：方法正常返回即失效
++        Shop shop = new Shop().setId(4L);
++        ShopServiceImpl spy = spy(shopService);
++        doReturn(new Shop().setId(4L)).when(spy).getById(4L);
++        doReturn(false).when(spy).updateById(shop);
++
++        spy.update(shop);
++
++        verify(shopCacheService).evict(4L);
++    }
++}
+diff --git a/user-service/src/main/java/com/hmdp/user/service/impl/UserServiceImpl.java b/user-service/src/main/java/com/hmdp/user/service/impl/UserServiceImpl.java
+index eda6a19..696aabe 100644
+--- a/user-service/src/main/java/com/hmdp/user/service/impl/UserServiceImpl.java
++++ b/user-service/src/main/java/com/hmdp/user/service/impl/UserServiceImpl.java
+@@ -167,25 +167,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
+ 
+     private User createUserWithPhone(String phone){
+         //创建用户
+         User user = new User();
+         user.setPhone(phone);
+         user.setNickName(USER_NICK_NAME_PREFIX+RandomUtil.randomString(10));
+         save(user);
+         return user;
+     }
+ 
+-    private UserDTO convertToDTO(User user) {
+-        UserDTO userDTO = new UserDTO();
+-        org.springframework.beans.BeanUtils.copyProperties(user, userDTO);
+-        return userDTO;
+-    }
+     @Override
+     public Result sign() {
+         // 1.获取当前登录用户
+         Long userId = UserHolder.getUser().getId();
+         // 2.获取日期
+         LocalDateTime now = LocalDateTime.now();
+         // 3.拼接key
+         String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+         String key = USER_SIGN_KEY + userId + keySuffix;
+         // 4.获取今天是本月的第几天

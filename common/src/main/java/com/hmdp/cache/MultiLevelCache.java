@@ -37,10 +37,17 @@ public class MultiLevelCache<V> {
     private final CacheRebuildLock rebuildLock;
     private final Cache<String, V> l1;
 
-    /** 抢锁失败后的重读间隔（毫秒） */
+    /** 抢锁失败后的退避间隔（毫秒） */
     private static final long LOCK_WAIT_STEP_MILLIS = 50L;
 
-    /** 抢锁失败后的最长等待（毫秒）：超时即降级为无锁回源 */
+    /**
+     * 抢锁失败后的最长退避（毫秒）。
+     *
+     * <p>超时后降级为无锁回源 —— 这是**保可用性**的取舍：持锁者崩溃或回源异常慢时，
+     * 宁可多打一次 DB 也不让读接口失败。为把这条路径压到真正罕见，
+     * 退避期间每一步都会**重新抢锁**（见 {@link #get}），因此只有"竞争者连续持锁
+     * 超过本窗口"才会走到无锁回源，而不是"重建比窗口慢一点"就走。
+     */
     private static final long MAX_LOCK_WAIT_MILLIS = 500L;
 
     MultiLevelCache(String name, Type valueType, StringRedisTemplate stringRedisTemplate,
@@ -65,9 +72,14 @@ public class MultiLevelCache<V> {
      * 一个热点 key 过期瞬间就能把 DB 连接打满（缓存击穿）。同一 key 的并发回源
      * 收敛为 1 次。
      *
-     * <p><b>两条降级路径</b>（都不改变"读不到就回源"的可用性）：
-     * 抢不到锁 → 短暂重读 L2；等满 {@value #MAX_LOCK_WAIT_MILLIS}ms 仍未命中 → 无锁回源。
-     * 后者覆盖"持锁者崩溃/回源极慢"的场景，宁可多打一次 DB 也不让接口失败。
+     * <p><b>抢不到锁时的退避</b>（SPEC-15 §2.2.1 的「sleep 后重读 L2」）：每一步先重读
+     * L2（拿锁者可能已完成重建，即标准双检），**再重新抢锁**。重抢是必要的——若只重读
+     * L2，一旦重建耗时超过 {@value #MAX_LOCK_WAIT_MILLIS}ms，所有等待者会同时越过窗口、
+     * 一起无锁回源，互斥当场退化成"人人回源"。
+     *
+     * <p><b>唯一的降级路径</b>：整个退避窗口内每次都抢不到锁（= 有竞争者连续持锁
+     * 超过该窗口），才无锁回源。此路径保可用性——持锁者崩溃或回源极慢时，
+     * 宁可多打一次 DB 也不让读接口失败。
      *
      * @return 值；loader 返回 null 时写空值标记并返回 null
      */
@@ -83,6 +95,19 @@ public class MultiLevelCache<V> {
         }
 
         String rebuildToken = rebuildLock.tryLock(key);
+        for (long waited = 0;
+             rebuildToken == null && waited < MAX_LOCK_WAIT_MILLIS;
+             waited += LOCK_WAIT_STEP_MILLIS) {
+            sleepQuietly(LOCK_WAIT_STEP_MILLIS);
+            L2Result<V> retried = readL2(key);
+            if (retried.present()) {
+                return retried.value();
+            }
+            // 持锁者可能刚刚释放，或其锁已过 TTL 自动到期：这时应当由本线程接手重建，
+            // 而不是继续等（等下去只会撞上同一个窗口超时）。
+            rebuildToken = rebuildLock.tryLock(key);
+        }
+
         if (rebuildToken != null) {
             try {
                 // 双检：等锁期间可能已有其它线程/实例完成了重建（含写入空值标记）
@@ -94,14 +119,6 @@ public class MultiLevelCache<V> {
             } finally {
                 // 令牌必须原样回传：锁实现靠它做"只删自己的锁"的比对
                 rebuildLock.unlock(key, rebuildToken);
-            }
-        }
-
-        for (long waited = 0; waited < MAX_LOCK_WAIT_MILLIS; waited += LOCK_WAIT_STEP_MILLIS) {
-            sleepQuietly(LOCK_WAIT_STEP_MILLIS);
-            L2Result<V> retried = readL2(key);
-            if (retried.present()) {
-                return retried.value();
             }
         }
 

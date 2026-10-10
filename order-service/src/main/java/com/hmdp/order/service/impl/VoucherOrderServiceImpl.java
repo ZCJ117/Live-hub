@@ -71,11 +71,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private SeckillOutboxMapper seckillOutboxMapper;
 
-    /** 本地事件表状态：待投递 */
-    static final int OUTBOX_STATUS_PENDING = 0;
-    /** 本地事件表状态：已投递（MQ 已确认） */
-    static final int OUTBOX_STATUS_DELIVERED = 1;
-
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
     static {
         SECKILL_SCRIPT = new DefaultRedisScript<>();
@@ -165,7 +160,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     .setId(orderId)
                     .setUserId(userId)
                     .setVoucherId(voucherId)
-                    .setStatus(OUTBOX_STATUS_PENDING)
+                    .setStatus(SeckillOutbox.STATUS_PENDING)
                     .setRetryCount(0);
             try {
                 seckillOutboxMapper.insert(outbox);
@@ -325,8 +320,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         try {
             seckillOutboxMapper.update(null, Wrappers.<SeckillOutbox>lambdaUpdate()
                     .eq(SeckillOutbox::getId, orderId)
-                    .eq(SeckillOutbox::getStatus, OUTBOX_STATUS_PENDING)
-                    .set(SeckillOutbox::getStatus, OUTBOX_STATUS_DELIVERED));
+                    .eq(SeckillOutbox::getStatus, SeckillOutbox.STATUS_PENDING)
+                    .set(SeckillOutbox::getStatus, SeckillOutbox.STATUS_DELIVERED));
         } catch (Exception e) {
             log.warn("秒杀事件行标记已投递失败，补投器会重投（消费端幂等）: orderId={}", orderId, e);
         }

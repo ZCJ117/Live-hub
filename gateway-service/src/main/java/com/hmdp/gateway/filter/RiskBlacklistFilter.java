@@ -85,6 +85,21 @@ public class RiskBlacklistFilter implements GlobalFilter, Ordered {
         return Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember(key, identity));
     }
 
+    /**
+     * 取请求来源 IP，用于黑名单查询。
+     *
+     * <p><b>取的是传输层对端地址</b>（{@code getRemoteAddress()}），**不读
+     * {@code X-Forwarded-For}**。这与 {@code PathRateLimitFilter} 同口径，
+     * 两者的前提都是：**网关本身就是流量入口**（本仓部署形态如此，见 CLAUDE.md
+     * 「所有请求通过网关入口」）。
+     *
+     * <p>⚠️ 若将来把网关部署到 LB / Nginx 之后，本方法返回的将是**代理的 IP**，
+     * 后果不是"少拦"而是"多杀"——任何一个用户被误判拉黑该 IP，全部用户一起 403
+     * （SPEC-15 §2.6「误杀率」）。届时必须改为
+     * {@code XForwardedRemoteAddressResolver.maxTrustedIndex(n)}（{@code n} = 可信代理跳数），
+     * 而不是在这里直接取 XFF 首项：后者可被客户端伪造，等于把黑名单的
+     * **封禁权**交给攻击者（伪造他人 IP 即可拉黑之），也会让 IP 维度失效。
+     */
     private String resolveIp(ServerWebExchange exchange) {
         InetSocketAddress remote = exchange.getRequest().getRemoteAddress();
         if (remote == null || remote.getAddress() == null) {

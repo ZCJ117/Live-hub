@@ -1,5 +1,7 @@
 package com.hmdp.agent.snapshot;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.hmdp.agent.entity.AgentSession;
 import com.hmdp.agent.entity.AgentSessionSnapshot;
 import com.hmdp.agent.mapper.AgentSessionMapper;
@@ -28,6 +30,12 @@ import static org.mockito.Mockito.when;
 /** FR-13 T5.3：回放快照——固化内容与实时会话一致率 100%（写入→读回 diff）、失败不阻断关闭 */
 @ExtendWith(MockitoExtension.class)
 class SessionSnapshotServiceTest {
+
+    static {
+        // 纯 Mockito 单测无 MyBatis 上下文，手动注册实体 lambda 缓存
+        TableInfoHelper.initTableInfo(new org.apache.ibatis.builder.MapperBuilderAssistant(
+                new MybatisConfiguration(), ""), AgentSession.class);
+    }
 
     @Mock private AgentSessionSnapshotMapper snapshotMapper;
     @Mock private ChatMemoryService memoryService;

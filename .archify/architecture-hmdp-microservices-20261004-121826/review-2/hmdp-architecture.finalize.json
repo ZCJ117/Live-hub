@@ -1,0 +1,405 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-10-04T04:31:53.393Z",
+  "specification": {
+    "path": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\candidate.json",
+    "sha256": "340a95163e2a6c64734f6118a3d504056b4514d3b5987ba5f7acc1f2f4b64628",
+    "bytes": 16249
+  },
+  "artifact": {
+    "path": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+    "sha256": "677fc05e3559ab6c0535475aeed336baf13666976fc276a32fa1df647bf8f70e",
+    "bytes": 808582
+  },
+  "stages": {
+    "validate": {
+      "status": "fail",
+      "exitCode": 1,
+      "durationMs": null,
+      "command": [
+        "D:\\Utils\\newnodejs\\node.exe",
+        "C:\\Users\\86178\\.agents\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "architecture",
+        "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\candidate.json",
+        "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "D:\\hm-dianping",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "deliver",
+        "receiptId": "457340e2-25e0-4469-9f99-83eaa21dd44a",
+        "stage": "render",
+        "type": "architecture",
+        "input": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\candidate.json",
+        "output": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\hmdp-architecture.html",
+        "error": "Architecture layout validation failed:\n- [clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"shop\" (unrelated to this relationship) on segment 0 [952, 104] -> [952, 363] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.\n- [clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"rag\" (unrelated to this relationship) on segment 0 [952, 104] -> [952, 363] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.\n- [clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"nacos\" (unrelated to this relationship) on segment 1 [952, 363] -> [1525, 363] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.\n- [clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"mysql\" (unrelated to this relationship) on segment 2 [1525, 363] -> [1525, 622] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.\n- [composition/ambiguous-corridor] showcase architecture connections[17] id \"social-mysql\" \"social\" -> \"mysql\" shares a 24px corridor with connections[18] id \"user-redis\" \"user\" -> \"redis\" at [1525, 576] -> [1525, 600] (segments 3 and 2; minimum 8px) — adjust route/via or fromSide/toSide so distinct connections do not visually merge.",
+        "diagnostics": [
+          {
+            "code": "clean-flow/edge-through-node",
+            "severity": "error",
+            "message": "[clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"shop\" (unrelated to this relationship) on segment 0 [952, 104] -> [952, 363] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.",
+            "subject": {
+              "diagramType": "architecture",
+              "collection": "connections",
+              "index": 18,
+              "id": "user-redis",
+              "from": "user",
+              "to": "redis"
+            },
+            "evidence": {
+              "obstacleKind": "component",
+              "obstacleId": "shop",
+              "segmentIndex": 0,
+              "from": [
+                952,
+                104
+              ],
+              "to": [
+                952,
+                363
+              ],
+              "clearancePx": 2
+            },
+            "supportedFixes": [
+              "adjust fromSide/toSide, set route/via, or move the component"
+            ]
+          },
+          {
+            "code": "clean-flow/edge-through-node",
+            "severity": "error",
+            "message": "[clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"rag\" (unrelated to this relationship) on segment 0 [952, 104] -> [952, 363] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.",
+            "subject": {
+              "diagramType": "architecture",
+              "collection": "connections",
+              "index": 18,
+              "id": "user-redis",
+              "from": "user",
+              "to": "redis"
+            },
+            "evidence": {
+              "obstacleKind": "component",
+              "obstacleId": "rag",
+              "segmentIndex": 0,
+              "from": [
+                952,
+                104
+              ],
+              "to": [
+                952,
+                363
+              ],
+              "clearancePx": 2
+            },
+            "supportedFixes": [
+              "adjust fromSide/toSide, set route/via, or move the component"
+            ]
+          },
+          {
+            "code": "clean-flow/edge-through-node",
+            "severity": "error",
+            "message": "[clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"nacos\" (unrelated to this relationship) on segment 1 [952, 363] -> [1525, 363] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.",
+            "subject": {
+              "diagramType": "architecture",
+              "collection": "connections",
+              "index": 18,
+              "id": "user-redis",
+              "from": "user",
+              "to": "redis"
+            },
+            "evidence": {
+              "obstacleKind": "component",
+              "obstacleId": "nacos",
+              "segmentIndex": 1,
+              "from": [
+                952,
+                363
+              ],
+              "to": [
+                1525,
+                363
+              ],
+              "clearancePx": 2
+            },
+            "supportedFixes": [
+              "adjust fromSide/toSide, set route/via, or move the component"
+            ]
+          },
+          {
+            "code": "clean-flow/edge-through-node",
+            "severity": "error",
+            "message": "[clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"mysql\" (unrelated to this relationship) on segment 2 [1525, 363] -> [1525, 622] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.",
+            "subject": {
+              "diagramType": "architecture",
+              "collection": "connections",
+              "index": 18,
+              "id": "user-redis",
+              "from": "user",
+              "to": "redis"
+            },
+            "evidence": {
+              "obstacleKind": "component",
+              "obstacleId": "mysql",
+              "segmentIndex": 2,
+              "from": [
+                1525,
+                363
+              ],
+              "to": [
+                1525,
+                622
+              ],
+              "clearancePx": 2
+            },
+            "supportedFixes": [
+              "adjust fromSide/toSide, set route/via, or move the component"
+            ]
+          },
+          {
+            "code": "composition/ambiguous-corridor",
+            "severity": "error",
+            "message": "[composition/ambiguous-corridor] showcase architecture connections[17] id \"social-mysql\" \"social\" -> \"mysql\" shares a 24px corridor with connections[18] id \"user-redis\" \"user\" -> \"redis\" at [1525, 576] -> [1525, 600] (segments 3 and 2; minimum 8px) — adjust route/via or fromSide/toSide so distinct connections do not visually merge.",
+            "subject": {
+              "diagramType": "architecture",
+              "collection": "connections",
+              "index": 17,
+              "id": "social-mysql",
+              "from": "social",
+              "to": "mysql"
+            },
+            "evidence": {
+              "otherRelationship": {
+                "diagramType": "architecture",
+                "collection": "connections",
+                "index": 18,
+                "id": "user-redis",
+                "from": "user",
+                "to": "redis"
+              },
+              "overlapLengthPx": 24,
+              "minimumPx": 8,
+              "from": [
+                1525,
+                576
+              ],
+              "to": [
+                1525,
+                600
+              ],
+              "segmentIndex": 3,
+              "otherSegmentIndex": 2
+            },
+            "supportedFixes": [
+              "adjust route/via or fromSide/toSide so distinct connections do not visually merge"
+            ]
+          }
+        ],
+        "provenance": "failed",
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      },
+      "execution": "embedded-in-deliver"
+    },
+    "deliver": {
+      "status": "not-run",
+      "execution": "blocked-by-validate"
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "clean-flow/edge-through-node",
+      "severity": "error",
+      "message": "[clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"shop\" (unrelated to this relationship) on segment 0 [952, 104] -> [952, 363] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.",
+      "subject": {
+        "diagramType": "architecture",
+        "collection": "connections",
+        "index": 18,
+        "id": "user-redis",
+        "from": "user",
+        "to": "redis"
+      },
+      "evidence": {
+        "obstacleKind": "component",
+        "obstacleId": "shop",
+        "segmentIndex": 0,
+        "from": [
+          952,
+          104
+        ],
+        "to": [
+          952,
+          363
+        ],
+        "clearancePx": 2
+      },
+      "supportedFixes": [
+        "adjust fromSide/toSide, set route/via, or move the component"
+      ]
+    },
+    {
+      "code": "clean-flow/edge-through-node",
+      "severity": "error",
+      "message": "[clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"rag\" (unrelated to this relationship) on segment 0 [952, 104] -> [952, 363] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.",
+      "subject": {
+        "diagramType": "architecture",
+        "collection": "connections",
+        "index": 18,
+        "id": "user-redis",
+        "from": "user",
+        "to": "redis"
+      },
+      "evidence": {
+        "obstacleKind": "component",
+        "obstacleId": "rag",
+        "segmentIndex": 0,
+        "from": [
+          952,
+          104
+        ],
+        "to": [
+          952,
+          363
+        ],
+        "clearancePx": 2
+      },
+      "supportedFixes": [
+        "adjust fromSide/toSide, set route/via, or move the component"
+      ]
+    },
+    {
+      "code": "clean-flow/edge-through-node",
+      "severity": "error",
+      "message": "[clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"nacos\" (unrelated to this relationship) on segment 1 [952, 363] -> [1525, 363] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.",
+      "subject": {
+        "diagramType": "architecture",
+        "collection": "connections",
+        "index": 18,
+        "id": "user-redis",
+        "from": "user",
+        "to": "redis"
+      },
+      "evidence": {
+        "obstacleKind": "component",
+        "obstacleId": "nacos",
+        "segmentIndex": 1,
+        "from": [
+          952,
+          363
+        ],
+        "to": [
+          1525,
+          363
+        ],
+        "clearancePx": 2
+      },
+      "supportedFixes": [
+        "adjust fromSide/toSide, set route/via, or move the component"
+      ]
+    },
+    {
+      "code": "clean-flow/edge-through-node",
+      "severity": "error",
+      "message": "[clean-flow/edge-through-node] architecture connections[18] id \"user-redis\" \"user\" -> \"redis\" crosses component \"mysql\" (unrelated to this relationship) on segment 2 [1525, 363] -> [1525, 622] (2px clearance) — adjust fromSide/toSide, set route/via, or move the component.",
+      "subject": {
+        "diagramType": "architecture",
+        "collection": "connections",
+        "index": 18,
+        "id": "user-redis",
+        "from": "user",
+        "to": "redis"
+      },
+      "evidence": {
+        "obstacleKind": "component",
+        "obstacleId": "mysql",
+        "segmentIndex": 2,
+        "from": [
+          1525,
+          363
+        ],
+        "to": [
+          1525,
+          622
+        ],
+        "clearancePx": 2
+      },
+      "supportedFixes": [
+        "adjust fromSide/toSide, set route/via, or move the component"
+      ]
+    },
+    {
+      "code": "composition/ambiguous-corridor",
+      "severity": "error",
+      "message": "[composition/ambiguous-corridor] showcase architecture connections[17] id \"social-mysql\" \"social\" -> \"mysql\" shares a 24px corridor with connections[18] id \"user-redis\" \"user\" -> \"redis\" at [1525, 576] -> [1525, 600] (segments 3 and 2; minimum 8px) — adjust route/via or fromSide/toSide so distinct connections do not visually merge.",
+      "subject": {
+        "diagramType": "architecture",
+        "collection": "connections",
+        "index": 17,
+        "id": "social-mysql",
+        "from": "social",
+        "to": "mysql"
+      },
+      "evidence": {
+        "otherRelationship": {
+          "diagramType": "architecture",
+          "collection": "connections",
+          "index": 18,
+          "id": "user-redis",
+          "from": "user",
+          "to": "redis"
+        },
+        "overlapLengthPx": 24,
+        "minimumPx": 8,
+        "from": [
+          1525,
+          576
+        ],
+        "to": [
+          1525,
+          600
+        ],
+        "segmentIndex": 3,
+        "otherSegmentIndex": 2
+      },
+      "supportedFixes": [
+        "adjust route/via or fromSide/toSide so distinct connections do not visually merge"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\review-2\\hmdp-architecture.finalize.json",
+    "summaryReceipt": "D:\\hm-dianping\\.archify\\architecture-hmdp-microservices-20261004-121826\\review-2\\hmdp-architecture.finalize-summary.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "validate",
+  "finishedAt": "2026-10-04T04:31:55.348Z",
+  "durationMs": 1955,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-04T04:04:30.115Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}

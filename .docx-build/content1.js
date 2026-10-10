@@ -1,0 +1,175 @@
+// Live-Hub 面试题内容数据 · Q1~Q10（缓存/锁/ID/秒杀）
+// t: "h"=小节标题, "p"=正文段落, "code"=代码/路径引用块
+module.exports = [
+  {
+    cat: "缓存",
+    title: "什么是缓存穿透？你的项目中是如何解决的？除了缓存空值，还有哪些方案，各自适用什么场景？",
+    focus: "考察点：缓存穿透的成因与危害、空值缓存的实现细节、布隆过滤器等替代方案的对比、纵深防御思想。",
+    blocks: [
+      { t: "h", x: "1．问题定义" },
+      { t: "p", x: "缓存穿透指请求查询的数据在缓存和数据库中都不存在，缓存永远不会命中，每次请求都直接打到数据库。与缓存击穿（热点 key 失效瞬间大量请求落库）、缓存雪崩（大量 key 同时失效或 Redis 宕机）的区别在于：穿透的数据“根本不存在”。恶意攻击者常用随机 id、负数 id 高频请求，把 DB 打挂。" },
+      { t: "h", x: "2．项目实现：缓存空值" },
+      { t: "code", x: "common/src/main/java/com/hmdp/utils/CacheClient.java → queryWithPassThrough(keyPrefix, id, type, dbFallback, time, unit)" },
+      { t: "p", x: "① 先查 Redis，json 非空直接反序列化返回；② 若命中的是“空值”（json 为空串而非 null）直接返回 null，不再查库——这一步是防穿透的关键；③ 未命中则通过函数式接口 dbFallback 查数据库，DB 也查不到时执行 set(key, \"\", CACHE_NULL_TTL=2, MINUTES) 写入空值后返回 null。空值 TTL 仅 2 分钟（RedisConstants.CACHE_NULL_TTL = 2L），既能在短窗口内挡住重复的恶意请求，又把“该 id 后续真实写入数据后不可见”的代价限制在 2 分钟内。" },
+      { t: "p", x: "注解层也有对应设计：ShopServiceImpl.queryById() 标注 @Cacheable(value=\"shopCache\", key=\"#id\", unless=\"#result == null\")，unless 保证 null 结果不写入缓存。需要注意该方法返回的是 Result 包装对象，业务上“店铺不存在”时返回的是 Result.fail 而非 null——unless 只能拦截 null，所以完整的防穿透以 CacheClient 的空值方案为准，这是包装返回值场景下值得留意的细节。" },
+      { t: "h", x: "3．方案对比" },
+      { t: "p", x: "① 缓存空值：实现简单、零依赖；缺点是恶意随机 key 会占用 Redis 内存（上限 = 去重后 key 数 × TTL），适合穿透 key 集合有限、数据未来可能被写入的场景。② 布隆过滤器：前置一层“一定不存在 / 可能存在”的判断，内存极省（1 亿 key 约百 MB 级）；缺点是有误判率（漏过少量穿透）、标准布隆不支持删除（需计数布隆/布谷鸟过滤器）、数据变更要同步重建，适合 key 集合大且稳定的场景（如存量商品 id）。③ 入口参数校验与鉴权：网关 Sa-Token 统一登录校验 + id 合法性校验，把明显非法的请求挡在缓存之前。④ 限流兜底：异常流量模式用限流保护 DB（网关 AgentRateLimitFilter 同思路），形成纵深防御。" },
+      { t: "h", x: "4．性能效果" },
+      { t: "p", x: "空值方案把穿透场景的 DB 压力从“每请求一次查询”降为“每 key 每 2 分钟至多一次查询”；配合网关鉴权、Sentinel 熔断构成多层防线，任何单层失效都不会导致 DB 直接裸奔。" },
+    ],
+    follow: "追问：空值缓存会不会被攻击者用海量随机 key 打爆 Redis？——TTL + Redis 内存淘汰策略（allkeys-lru）兜底，极端场景可对空值 key 命中做计数限流，或上布隆过滤器。"
+  },
+  {
+    cat: "缓存",
+    title: "热点 key 过期瞬间大量请求打到数据库（缓存击穿），你实现了哪两种解法？各自的优缺点和取舍依据是什么？",
+    focus: "考察点：互斥锁重建与逻辑过期两种方案、一致性与可用性的取舍、异步重建线程池、两方案锁语义的本质差异。",
+    blocks: [
+      { t: "h", x: "1．问题背景" },
+      { t: "p", x: "某个高热度 key（如首页爆款商铺）过期瞬间，成百上千并发同时 miss，全部执行“查 DB + 回填”，DB 瞬时压力激增甚至引发连锁超时。项目在 CacheClient 中完整实现了两种方案。" },
+      { t: "h", x: "2．方案一：互斥锁重建（一致性优先）——queryWithMutex()" },
+      { t: "code", x: "common/src/main/java/com/hmdp/utils/CacheClient.java → queryWithMutex()：tryLock(\"lock:shop:\"+id) 未拿到锁 → Thread.sleep(50) 后递归重试整个查询" },
+      { t: "p", x: "miss 后先 tryLock（setIfAbsent，10 秒 TTL 防死锁）；拿到锁的线程查库并回填（set(key, r, time, unit)），finally 中释放锁；拿不到锁的线程休眠 50ms 后递归重试（重新查缓存，命中即返回）。效果是同一时刻只有一个线程重建，其余线程自旋等待，最终都能读到新数据。缺点：等待线程阻塞占用 Tomcat 工作线程，吞吐下降；自旋无上限存在极端风险；锁 TTL 到期但业务未完成时可能并发重建。" },
+      { t: "h", x: "3．方案二：逻辑过期（可用性优先）——queryWithLogicalExpire()" },
+      { t: "code", x: "CacheClient → setWithLogicalExpire()：value 包装为 RedisData{data, expireTime}，不设物理 TTL；queryWithLogicalExpire()：已过期 → tryLock 成功则提交 CACHE_REBUILD_EXECUTOR（固定 10 线程池）异步重建，无论是否拿到锁都立即返回旧数据" },
+      { t: "p", x: "缓存不设物理过期时间，value 用 RedisData 包装逻辑过期时间。命中后判断 expireTime：未过期直接返回；已过期则尝试获取互斥锁——拿到锁就向 CACHE_REBUILD_EXECUTOR（固定 10 线程）提交“查库 → setWithLogicalExpire 重写 → finally unlock”的异步任务，主线程不等待；没拿到锁什么都不做。两种情况都立即返回旧数据，用户拿到的是过期前的快照。优点：所有请求零阻塞、线程池隔离重建任务；缺点：牺牲一致性（脏读窗口 = 重建耗时）、key 常驻内存不过期、必须依赖预热保证 key 先存在（ShopServiceImpl.warmUpCacheOnStartup() 启动预热热门 50 家商铺正是为此）。" },
+      { t: "h", x: "4．取舍与本质差异" },
+      { t: "p", x: "商铺详情是典型读多写少的热点数据：首页热门商铺用逻辑过期保吞吐（是压测 QPS 21K+ 的基础之一），对一致性敏感的长尾数据用互斥锁。两方案锁语义的本质差异：互斥锁的目标是“大家都等到新值”，所以拿不到锁要重试；逻辑过期的目标是“只有一个人去重建，其他人无所谓”，所以拿不到锁直接返回旧值。这是“一致性 vs 可用性”在缓存层的具体投射。" },
+    ],
+    follow: "追问：逻辑过期方案的重建线程池为什么是固定 10 线程？——重建是短任务（一次 DB 查询），同时过期的热点 key 数有限，固定池既并行提速又避免线程膨胀。"
+  },
+  {
+    cat: "缓存",
+    title: "什么是缓存雪崩？项目从 TTL 策略、缓存预热、多级缓存、高可用四个方面分别做了什么？",
+    focus: "考察点：雪崩成因分类、TTL 分层与随机化、@PostConstruct 异步预热的工程细节、多级缓存的兜底价值。",
+    blocks: [
+      { t: "h", x: "1．成因" },
+      { t: "p", x: "缓存雪崩是整体性失效：同一时刻大量 key 集中过期（如批量导入时统一 TTL），或 Redis 实例宕机，流量整体涌向数据库。与击穿的单点失效不同，雪崩是面状失效。" },
+      { t: "h", x: "2．TTL 策略" },
+      { t: "code", x: "shop-service/src/main/java/com/hmdp/shop/config/CacheConfig.java → RedisCacheConfiguration.defaultCacheConfig().entryTtl(Duration.ofMinutes(30))" },
+      { t: "p", x: "项目中不同类数据的 TTL 天然分层：业务缓存 30 分钟（CacheConfig）、空值 2 分钟（CACHE_NULL_TTL）、验证码 2 分钟（LOGIN_CODE_TTL）、登录会话 30 天（Sa-Token timeout=2592000）。针对“集中过期”的进阶做法是 TTL 加随机抖动（如 30min + random(0~5min)）把过期时间打散，CacheClient.set(key, value, time, unit) 的参数化设计可直接支持。" },
+      { t: "h", x: "3．缓存预热（解决冷启动雪崩）" },
+      { t: "code", x: "shop-service/.../service/impl/ShopServiceImpl.java → warmUpCacheOnStartup()：@PostConstruct + @Async，启动后延迟 10s 执行；cacheWarmupExecutor = Executors.newFixedThreadPool(3)" },
+      { t: "p", x: "新服务上线时缓存全空，首批请求全部穿透，配合空值缓存还可能把“不存在”也缓存住——预热避免冷启动雪崩。实现细节：① 延迟 10 秒启动，等连接池、服务注册完全就绪；② 3 线程固定池并行预热三类数据——热门店铺（warmUpPopularShops：按 score 降序 LIMIT 50，逐个走 queryById 借 @Cacheable 回填）、按类型分页（warmUpShopsByType：每类型前 3 页）、GEO 地理数据（warmUpGeoData：按 type 分组批量 opsForGeo().add）；③ 批量操作间 Thread.sleep(10/30/50ms) 节流，避免预热本身对 DB 形成冲击；④ 另有手动接口 warmUpCache() 与 warmUpShopCache(List&lt;Long&gt;)，供大促前主动触发。" },
+      { t: "h", x: "4．多级缓存与高可用" },
+      { t: "p", x: "多级缓存（Caffeine L1 + Redis L2）的价值之一就是雪崩兜底：Redis 抖动或宕机时，本地缓存仍能扛住最热那部分读流量，不会 100% 落到 DB；L1 的接入点在 CacheManager（Spring Cache 抽象），业务注解零改动。高可用层面：Redis 生产部署主从/哨兵/集群；网关限流（AgentRateLimitFilter）与 Sentinel 熔断作为 DB 的最后防线，在缓存整体失效时限制落到 DB 的流量。" },
+    ],
+    follow: "追问：为什么预热要拆成 3 个独立任务提交线程池而不是串行执行？——三类预热并行缩短窗口、互不阻塞；固定 3 线程控制对 DB 的并发压力，节流 sleep 保证压测/生产环境安全。"
+  },
+  {
+    cat: "缓存",
+    title: "商铺数据更新时，缓存与数据库的一致性如何保证？为什么是“先更新数据库，再删除缓存”而不是更新缓存？",
+    focus: "考察点：Cache Aside 模式、删除与更新的选择、先删与后删的竞态分析、@CacheEvict 事务时序、延时双删演进。",
+    blocks: [
+      { t: "h", x: "1．项目实现（Cache Aside 模式）" },
+      { t: "code", x: "shop-service/.../ShopServiceImpl.java → update()：@Transactional + @CacheEvict(value=\"shopCache\", key=\"#shop.id\")，事务内 updateById(shop) 成功后由切面删除缓存；queryById() 的 @Cacheable 负责下次 miss 时回填" },
+      { t: "p", x: "读路径：查缓存，miss 查库回填；写路径：先更新 DB，成功后删除对应缓存 key（全量清理场景用 @CacheEvict(allEntries=true)，见 clearShopCache()）。这是标准的 Cache Aside（旁路缓存）模式。" },
+      { t: "h", x: "2．为什么删缓存而不是更新缓存" },
+      { t: "p", x: "① 并发写覆盖：写 A 更新 DB 后、写缓存前被写 B 抢先完成（B 更新 DB 与缓存均为新值），A 随后把旧值写入缓存——缓存长期脏数据直到过期；② 缓存值可能是多表聚合结果，写时更新计算昂贵，且更新后的值未必会被再读（浪费）；③ 删除是幂等操作，配合懒加载把“是否缓存”交给读行为决定。" },
+      { t: "h", x: "3．为什么先更新数据库再删缓存" },
+      { t: "p", x: "若先删缓存再更新 DB：删除后到 DB 提交前的窗口内，读请求 miss → 读到旧值 → 回填旧值，DB 更新完成后缓存仍是旧值，不一致窗口 = 缓存 TTL。先更库后删缓存的不一致只发生在“读请求在更新前 miss、且回填动作落在删除之后”的小概率交错（读-回填通常远快于写事务），即便出现删除失败也可补偿。@CacheEvict 默认 beforeInvocation=false（方法成功返回后删）与该顺序一致。" },
+      { t: "h", x: "4．残余风险与演进" },
+      { t: "p", x: "删除缓存这一步本身可能失败（Redis 抖动），残留脏缓存直到 TTL 到期。标准补偿是延时双删（写后延迟数百 ms 再删一次）或订阅 binlog（Canal）异步删除；本项目中商铺数据读远大于写、TTL 30 分钟，脏读影响可控，属于典型的工程取舍。强一致刚需场景应放弃 Cache Aside，改用分布式锁串行化读写或直接读穿到 DB。" },
+    ],
+    follow: "追问：@CacheEvict 与 @Transactional 同用时，缓存删除发生在事务提交前还是提交后？若删缓存后事务回滚会怎样？——缓存多删一次只会引起一次 miss 回填，无害；反过来“先删缓存、事务回滚”才可能产生旧值回填，这正是选择“后删”的原因之一。"
+  },
+  {
+    cat: "缓存",
+    title: "商户查询压测 QPS 21K+（21027），从请求链路上分析这个数字是如何达到的？@Cacheable 注解背后发生了什么？",
+    focus: "考察点：二级缓存架构、Spring Cache 抽象与序列化配置、性能瓶颈归因、命中率与容量估算、Caffeine L1 的演进路线。",
+    blocks: [
+      { t: "h", x: "1．请求链路" },
+      { t: "code", x: "前端 → Gateway(8081, 路由 lb://shop-service 负载均衡) → shop-service queryById(id) → Spring Cache AOP 拦截 → CacheManager.getCache(\"shopCache\")（Redis L2）→ miss 才走 MyBatis-Plus getById 查 MySQL" },
+      { t: "p", x: "热点读请求在 Redis 层即终止，数据库只承担 miss 回填与写流量——这是 21K QPS 的根本来源：DB 不在主链路上。" },
+      { t: "h", x: "2．Spring Cache 实现细节" },
+      { t: "code", x: "ShopServiceImpl.queryById()：@Cacheable(value=\"shopCache\", key=\"#id\", unless=\"#result == null\")；update()：@CacheEvict(key=\"#shop.id\")\nCacheConfig.cacheManager()：entryTtl(30min) + StringRedisSerializer（key）+ GenericJackson2JsonRedisSerializer（value）" },
+      { t: "p", x: "@Cacheable 的执行流程：AOP 拦截方法调用 → 以 SpEL key（#id）查 Cache → 命中直接返回（方法体不执行）→ miss 执行方法、返回值按 unless 条件写回缓存。value 用 GenericJackson2JsonRedisSerializer 序列化，自带 @class 类型信息，反序列化无需预知类型；key 用 String 序列化保证可读可运维。业务代码里 queryById 只有一行 getById，缓存策略（TTL/缓存名/序列化）集中在 CacheConfig 一处，调整零侵入。" },
+      { t: "h", x: "3．性能归因（8 核 16G 压测）" },
+      { t: "p", x: "① Redis 单实例简单 GET 的能力在 10 万 QPS 量级，远高于应用层，瓶颈不在缓存本身；② Spring Boot 3 默认 Lettuce 驱动基于 Netty，连接复用 + 连接池（gateway 配置 max-active:10 同类思路），避免连接建立开销；③ 命中率是关键变量——启动预热 + 30 分钟 TTL 使稳态命中率 &gt;99%，DB QPS 仅个位数；④ 内网 RTT 约 0.5ms，应用→Redis 一跳的成本可控。真正的瓶颈在应用层：Tomcat 线程数、GC 停顿、序列化开销。" },
+      { t: "h", x: "4．Caffeine L1 的演进路线" },
+      { t: "p", x: "进一步演进是加 Caffeine 本地一级缓存：本地内存读吞吐百万级 QPS 且省一次网络 RTT，用极小内存（top-N 热点 key 的 W-TinyLFU 淘汰）挡住最热读。项目以 Spring Cache + RedisCacheManager 为基线，L1 的接入点就是 CacheManager——替换为两级实现即可，@Cacheable/@CacheEvict 注解与业务代码完全不变，这正是走抽象层的价值。二级缓存的核心难点在 L1 副本一致性：update 删 L2 后各节点 L1 仍是旧值，需要失效广播（Redis pub/sub 或 MQ）+ L1 短 TTL 兜底，否则脏读窗口不可控——这也是当前版本先只上 Redis、预留 L1 的工程权衡。" },
+    ],
+    follow: "追问：如果要把 QPS 再提一倍，你会做什么？——接入 Caffeine L1（省 RTT + 挡热点）、热点 key 探测与本地缓存主动加载、Redis 集群分片、无状态应用横向扩容。"
+  },
+  {
+    cat: "分布式锁",
+    title: "手写一个 Redis 分布式锁需要处理哪些问题？讲讲 SimpleRedisLock 的实现，它有哪些缺陷，如何演进到 Redisson？",
+    focus: "考察点：SET NX EX 原子加锁、唯一标识防误删、Lua 脚本原子释放、不可重入/不可重试/超时释放三大缺陷及 Redisson 的解法。",
+    blocks: [
+      { t: "h", x: "1．必须解决的四个问题" },
+      { t: "p", x: "互斥性（同一时刻只有一个客户端持锁）、防死锁（锁必须带过期时间）、防误删（只能释放自己的锁）、释放的原子性（校验 + 删除不可分割）。" },
+      { t: "h", x: "2．SimpleRedisLock 实现" },
+      { t: "code", x: "common/src/main/java/com/hmdp/utils/SimpleRedisLock.java（implements ILock）\ntryLock：stringRedisTemplate.opsForValue().setIfAbsent(\"lock:\"+name, ID_PREFIX+Thread.currentThread().getId(), timeoutSec, SECONDS)\n标识：ID_PREFIX = UUID.randomUUID() + \"-\"（静态常量，JVM 级唯一）\nunlock：通过 DefaultRedisScript 执行 Lua 脚本：GET 校验标识一致才 DEL" },
+      { t: "p", x: "加锁用 setIfAbsent 带 TTL——Spring Data Redis 将其封装为一条 SET key value NX EX 命令，“判存在 + 写入 + 设过期”天然原子，避免了早期“先 SETNX 再 EXPIRE”两条命令间宕机导致死锁的经典问题。锁的值是“UUID + 线程 id”：只用地线程 id 不够，因为集群下不同 JVM 实例的线程 id 会重复（都是 1、2、3…），加 UUID 才能区分“这把锁是不是我这个 JVM 里这个线程加的”。释放锁通过 Lua 脚本完成“GET 比对标识 → 一致才 DEL”：如果拆成两步，校验通过后、DEL 执行前锁恰好过期且被其他客户端抢到，DEL 删掉的就是别人的锁——校验与删除之间的间隙就是竞态窗口，Lua 脚本在 Redis 单线程内原子执行消除了这个窗口。类中注释掉的非原子版本（先 get 再 delete）恰好是这个反例的对照。" },
+      { t: "h", x: "3．缺陷与 Redisson 的解法" },
+      { t: "p", x: "① 不可重入：同线程重入会 SETNX 失败——Redisson 用 Hash 结构（field=线程标识、value=重入次数）实现可重入；② 不可重试：拿不到锁直接返回——Redisson 基于 pub/sub 订阅解锁事件唤醒等待线程，避免无效自旋；③ 超时释放：业务耗时超过 TTL，锁提前过期引发并发——Redisson watchdog（看门狗）在未显式指定 leaseTime 时默认 30 秒 TTL、每 10 秒（1/3 周期）自动续期，业务执行多久锁就持有多久；④ 主从切换丢锁：master 写入后未同步到 slave 即宕机，新 master 上锁丢失——RedLock 多数派方案（争议较大，实践中通常接受小概率风险并用业务幂等兜底）。" },
+      { t: "h", x: "4．与 Zookeeper 方案对比" },
+      { t: "p", x: "ZK 用临时顺序节点 + watch 实现锁，节点宕机自动释放、无锁丢失问题（CP 系统），但吞吐低于 Redis 一个量级。本项目已有 Redis 基础设施且锁场景容忍极小概率失效（配合幂等兜底），选 Redis 方案。" },
+    ],
+    follow: "追问：为什么锁的值不用“业务线程 id”而要加 UUID？——跨 JVM 线程 id 重复，会出现 A 服务的线程 1 误删 B 服务线程 1 的锁。"
+  },
+  {
+    cat: "分布式锁",
+    title: "项目中哪些地方用了 Redisson？看门狗（watchdog）机制的原理是什么？为什么消费端的锁显式传了 leaseTime？",
+    focus: "考察点：Redisson API 使用、tryLock 三参语义、isHeldByCurrentThread 防误删、看门狗的启用条件、锁粒度设计。",
+    blocks: [
+      { t: "h", x: "1．项目应用：秒杀订单消费的串行化保护" },
+      { t: "code", x: "order-service/src/main/java/com/hmdp/order/mq/SeckillOrderConsumer.java → onMessage()\nRLock lock = redissonClient.getLock(\"lock:order:\" + orderId);\nboolean locked = lock.tryLock(10, 30, TimeUnit.SECONDS);\nfinally { if (lock.isHeldByCurrentThread()) lock.unlock(); }" },
+      { t: "p", x: "锁粒度是单个订单 id：不同订单并行消费、同一订单串行处理。tryLock(10, 30, SECONDS) 表示最多等待 10 秒、持锁上限 30 秒。finally 中先判断 isHeldByCurrentThread() 再 unlock——只有当前线程仍持有才释放，防止“锁已超时被别人持有、误释放别人的锁”，与手写锁里唯一标识的语义一致。这把锁与“订单 ID 查重”配合，保证 RocketMQ 重复投递或并发消费时同一订单只落一次库。" },
+      { t: "h", x: "2．看门狗原理" },
+      { t: "p", x: "Redisson 的 tryLock() 不传 leaseTime 参数时启用看门狗：锁默认 TTL 30 秒，后台定时任务每 1/3 周期（10 秒）检查持锁线程是否仍在（Redisson 用 Hash 结构记录线程标识与重入计数），存活就把 TTL 重置回 30 秒——业务执行多久锁就持有多久；显式 unlock 或客户端进程宕机后停止续期，锁最多 30 秒自动释放。底层加锁、续期、解锁全部通过 Lua 脚本原子执行，等待方通过 pub/sub 订阅解锁消息被动唤醒而非自旋轮询。" },
+      { t: "h", x: "3．为什么这里显式传了 leaseTime=30s" },
+      { t: "p", x: "显式指定 leaseTime 会禁用看门狗。这里锁保护的只是一次“查重 + Feign 扣库存 + insert”的短操作，30 秒绰绰有余；显式租约上限可以防止消费线程假死时锁被无限续期导致后续消费永久阻塞。用“短租约 + 幂等去重”替代“无限续期”，是可用性优先的选择——即便锁提前过期引发并发，查重与一人一单校验仍会兜住。" },
+      { t: "h", x: "4．锁方案的演进脉络" },
+      { t: "p", x: "项目保留了完整的演进痕迹：早期同步秒杀链路用 SimpleRedisLock（手写 SETNX + Lua 释放）解决集群下的误删问题；主线方案被 Redis Lua 原子脚本（seckill.lua）替代后，分布式锁退守到消费端做幂等保护——这是“能用原子操作就不用锁”的性能考量。" },
+    ],
+    follow: "追问：tryLock 的 10 秒等待期间线程在做什么？——Redisson 订阅该锁的 unlock 消息（pub/sub），用 Semaphore 阻塞等待唤醒，不是忙等轮询。"
+  },
+  {
+    cat: "数据库/ID生成",
+    title: "订单 ID 为什么不用数据库自增主键或 UUID？讲讲 RedisIdWorker 的 64 位结构设计，以及与雪花算法的对比。",
+    focus: "考察点：ID 生成器选型（自增/UUID/Redis/雪花）、位运算拼接、天粒度 INCR key 的双重价值、时钟回拨问题。",
+    blocks: [
+      { t: "h", x: "1．选型问题" },
+      { t: "p", x: "① 数据库自增：分库分表后主键冲突；单号连续会暴露业务量（竞品按天爬单号估算 GMV）；自增器是单点写入瓶颈。② UUID：36 字符完全无序——InnoDB 聚簇索引要求主键有序，随机主键导致频繁页分裂、写放大、缓冲池命中率下降。③ Redis INCR：纯数字但 64 位全部用于计数，无法附加时间等语义信息。" },
+      { t: "h", x: "2．RedisIdWorker 的位结构" },
+      { t: "code", x: "common/src/main/java/com/hmdp/utils/RedisIdWorker.java → nextId(keyPrefix)\nBEGIN_TIMESTAMP = 1640995200L（2022-01-01 的秒级时间戳）；COUNT_BITS = 32\nlong timestamp = nowSecond - BEGIN_TIMESTAMP;\nlong count = stringRedisTemplate.opsForValue().increment(\"icr:\" + keyPrefix + \":\" + date);\nreturn timestamp << COUNT_BITS | count;" },
+      { t: "p", x: "64 位 = 1 bit 符号位（恒 0）+ 31 bit 时间戳（相对 2022-01-01 的秒数，可用约 68 年）+ 32 bit 序列号。时间戳左移 32 位后与序列号按位或拼接。订单号整体趋势递增（时间戳高位 + 天内序列号递增），对 InnoDB 主键友好（顺序插入，页写满再开新页，不产生随机页分裂）。" },
+      { t: "h", x: "3．天粒度 key 的双重价值" },
+      { t: "p", x: "INCR 的 key 是 icr:{业务前缀}:{yyyy-MM-dd}，按天滚动：① 单 key 计数不会无限增长，32 bit 序列号单日上限约 42.9 亿，业务远达不到，天然安全；② 这个 key 本身就是当日单量计数器——运营报表直接读 icr:order:2026-09-04 即得当日订单量，生成 ID 的同时附赠了统计能力，无需额外计数表。" },
+      { t: "h", x: "4．与雪花算法对比" },
+      { t: "p", x: "雪花（41 bit 时间戳 + 10 bit 机器 id + 12 bit 序列）纯本地生成、不依赖外部存储、性能极限更高；缺陷是时钟回拨会产生重复 ID（需回拨检测或等待），workerId 分配需要额外协调（DB/ZK）。Redis 方案的代价是每次生成一次 Redis 往返（一次 INCR 约 0.1ms 量级），但换来无回拨问题 + 天然统计。本项目订单量在 Redis 方案舒适区内，且秒杀入口每单只调一次，压测百万请求未见瓶颈；若追求极致性能可演进为号段模式（一次取一段）或改雪花。" },
+    ],
+    follow: "追问：为什么时间戳用“相对值”而不是绝对秒数？——31 bit 放不下绝对时间戳（当前约 1.7×10^9 &gt; 2^31），减去自定义纪元 1640995200 后可用到 2052 年左右。"
+  },
+  {
+    cat: "秒杀/高并发",
+    title: "描述你的秒杀下单全链路设计。为什么要做成“Redis 预扣 + MQ 异步落库”？链路上每一步失败分别怎么处理？",
+    focus: "考察点：异步削峰架构的完整时序、快速失败设计、MQ 削峰填谷原理、失败补偿闭环、异步下单的体验代价。",
+    blocks: [
+      { t: "h", x: "1．全链路时序" },
+      { t: "code", x: "order-service/.../service/impl/VoucherOrderServiceImpl.java → seckillVoucher(voucherId)\n① 网关 Sa-Token 鉴权 → order-service；② redisIdWorker.nextId(\"order\") 生成订单号；\n③ stringRedisTemplate.execute(SECKILL_SCRIPT, ..., voucherId, userId, orderId) 原子执行 seckill.lua；\n④ 返回 1（库存不足）/2（重复下单）→ 立即快速失败；⑤ 返回 0 → seckillOrderProducer.sendSeckillOrderMessageAsync(message)（RocketMQ）；\n⑥ 立即把 orderId 返回给用户（此时订单尚未落库）；⑦ SeckillOrderConsumer 消费：Redisson 锁 → 查重 → Feign 扣库存 → insert 订单" },
+      { t: "h", x: "2．为什么异步化" },
+      { t: "p", x: "① 性能：同步链路（分布式锁 + 查库 + 写库 + 跨服务 Feign）单请求几十毫秒，DB 写能力只有几千 QPS，万级并发直接打爆；异步化后用户路径只剩一次 Redis Lua 脚本调用（毫秒级），DB 侧由消费者按自身能力匀速消费——MQ 是蓄水池，把瞬时洪峰摊平成平稳水流（削峰填谷）。② 可用性：DB 或下游故障时消息堆积在 broker 不丢失，恢复后继续消费，用户侧无感。③ 解耦：秒杀入口与订单落库、库存同步（stock-sync-topic）、后续通知天然解耦。" },
+      { t: "h", x: "3．每一步失败的补偿闭环" },
+      { t: "p", x: "① MQ 发送失败：asyncSend 提交异常时仅记录日志与指标（incrementMqSendFail）——Redis 已预扣库存、订单详情已 HSET 到 seckill:order:detail:{voucherId}、订单号已 LPUSH 到 seckill:order:queue，可对账兜底；broker 侧生产者自带重试。② 消费失败：异常上抛 → RocketMQ 自动重投，@RocketMQMessageListener(maxReconsumeTimes=3) 限制 3 次；仍失败进死信 topic（seckill-order-dlq-topic）→ SeckillOrderDLQConsumer 把“orderId:userId:voucherId:时间戳”rightPush 到 seckill:order:pending 待处理列表并输出 error 日志，等待人工干预。③ 业务性失败（一人一单校验不过 / DB 库存不足）：rollbackRedisData(voucherId, userId)——INCR 回补 Redis 库存 + SREM 移除购买记录，恢复 Redis 预扣与 DB 的最终一致。" },
+      { t: "h", x: "4．异步化的体验代价" },
+      { t: "p", x: "用户拿到 orderId 时订单尚未落库，客户端凭单号查单存在短暂的“查无此单”窗口——这是异步秒杀的标准体验代价，前端用轮询/订阅通知消化。全程由 SeckillMetrics（Micrometer Timer）埋点请求量、失败原因、时延，压测百万请求未出现超卖或重复落库。" },
+    ],
+    follow: "追问：为什么发送 MQ 失败不直接回滚 Redis？——异步发送回调晚于用户响应，且消息可能只是“提交失败”而非“必然丢失”；Redis 侧留有 detail/queue 双记录供对账，回滚反而可能误伤已成功的投递。"
+  },
+  {
+    cat: "秒杀/高并发",
+    title: "为什么秒杀的库存校验与扣减必须用 Lua 脚本？逐行讲一下 seckill.lua。不用 Lua 的话有哪些替代方案，为什么都没选？",
+    focus: "考察点：Redis 单线程模型与脚本原子性语义、脚本逐行解读、KEYS/ARGV 传参规范、与分布式锁/WATCH 事务的性能对比。",
+    blocks: [
+      { t: "h", x: "1．原子性原理" },
+      { t: "p", x: "Redis 采用单线程命令处理模型，一个 Lua 脚本提交后作为一个整体执行，执行期间不会插入任何其他客户端的命令。库存的“读—判—减—记”四步若拆成多个客户端命令，中间每一步都可能插入其他请求的写操作，产生竞态（两个请求都读到 stock=1 → 都判断通过 → 都扣减 → 超卖）。Lua 把 N 步变成网络上的一条命令、服务端的一个原子操作，同时把 N-1 次网络 RTT 压缩成 1 次。" },
+      { t: "h", x: "2．脚本逐行解读" },
+      { t: "code", x: "order-service/src/main/resources/seckill.lua（Java 侧经 DefaultRedisScript 预加载，execute 传入 voucherId/userId/orderId）\nlocal stockKey = 'seckill:stock:' .. voucherId      -- 库存（发布时由 VoucherServiceImpl.addSeckillVoucher 写入 Redis）\nlocal orderKey = 'seckill:order:' .. voucherId      -- 已购用户 Set\nlocal stock = tonumber(redis.call('GET', stockKey))\nif stock == nil then return 1 end                   -- 库存不存在\nif stock <= 0 then return 1 end                     -- 库存不足\nif redis.call('SISMEMBER', orderKey, userId) == 1 then return 2 end   -- 一人一单判重\nredis.call('DECR', stockKey)                        -- 扣减库存\nredis.call('SADD', orderKey, userId)                -- 记录已购（判断与写入同脚本，无窗口）\nredis.call('HSET', orderDetailKey, orderId, cjson.encode({voucherId=voucherId, userId=userId, orderId=orderId}))\nredis.call('LPUSH', 'seckill:order:queue', orderId) -- 待处理队列（供下游消费/对账）\nreturn 0" },
+      { t: "p", x: "Java 侧对返回值三分支处理：1 → incrementStockInsufficient 返回“库存不足”；2 → incrementDuplicateOrder 返回“不能重复下单”；0 → 走 MQ 异步下单。库存不存在与库存不足统一返回 1，防御“库存 key 未预热/丢失”的场景。值得自省的细节：当前脚本 key 全在脚本内拼接、KEYS 列表传空——单实例部署没问题，但集群模式下 Redis 要求所有 key 落在同一 slot，规范做法是用 KEYS[] 显式传 key 并配合 hash tag，这是可以优化的点。" },
+      { t: "h", x: "3．替代方案及未选原因" },
+      { t: "p", x: "① 分布式锁（SETNX）串行化：能防超卖，但吞吐骤降（所有请求排队竞争一把锁，持锁期间其他请求阻塞），且要处理误删、续期、释放原子性一堆细节。② WATCH + MULTI/EXEC 乐观事务：高竞争下大量事务被取消重试，性能差。③ 先 DECR 再判负回补：DECR 与判负之间其他请求会读到“已被多扣”的库存值，回补与新增购买交错极易出错。④ 直接靠数据库行锁/乐观锁扛：DB 连接数与行锁竞争成为瓶颈，违背“把流量挡在 DB 之外”的设计目标。Lua 方案本质是“无锁的原子性”——吞吐只受 Redis 单线程处理能力约束，脚本短小可达 10 万 QPS 级。" },
+    ],
+    follow: "追问：Lua 脚本执行过长会有什么后果？——脚本原子执行期间 Redis 无法处理其他命令，长脚本会阻塞整个实例，所以脚本必须短小、避免 KEYS *、SMEMBERS 大集合等慢命令。"
+  },
+];

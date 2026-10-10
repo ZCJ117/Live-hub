@@ -40,6 +40,14 @@ public class DocumentPipeline {
             return;
         }
 
+        //NOTE 1,6 抢占式幂等（SPEC-08 §5.4）：CAS 只有 PENDING 能改成 PROCESSING，
+        // 重复投递时前一次已把状态推离 PENDING，这里影响 0 行，直接放弃，避免重复调 GLM embedding 与重复写向量
+        int claimed = documentMapper.casToProcessing(documentId);
+        if (claimed == 0) {
+            log.info("Document {} already claimed or not PENDING, skip processing", documentId);
+            return;
+        }
+
         try {
             //获取知识库配置
             KnowledgeBase kb = kbMapper.selectById(doc.getKbId());

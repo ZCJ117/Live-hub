@@ -5,6 +5,9 @@ spring:
     nacos:
       server-addr: ${NACOS_ADDR:localhost:8848}
       discovery:
+        # 注册地址必须与 server.address 一致（BUG-01）：默认 inetutils 探测到的是 Docker/WSL vNIC 地址，
+        # 网关 lb:// 拿到它必然 Connection refused，表现为「直连正常、经网关 100% 500」
+        ip: ${SERVICE_HOST:127.0.0.1}
         namespace: public
       config:
         namespace: public

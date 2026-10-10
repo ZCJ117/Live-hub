@@ -1,0 +1,742 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "hm-dianping 微服务架构",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-hmdp-microservices-20261004-121826/hmdp-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://gitee.com/zuo-changjian/live-hub.git",
+      "provider": "gitee",
+      "link_mode": "web",
+      "revision": "814159670df53e09ae1ea4cee897120a9adc8009"
+    }
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "用户端",
+      "sublabel": "浏览器 / 移动端",
+      "pos": [
+        40,
+        451
+      ],
+      "size": [
+        120,
+        64
+      ],
+      "sources": [
+        {
+          "path": "frontend-livehub/nginx-1.18.0/conf/nginx.conf",
+          "line": 20,
+          "end_line": 22,
+          "label": "静态页入口"
+        }
+      ]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Nginx 静态站点",
+      "sublabel": ":8080 · html/hmdp",
+      "pos": [
+        255,
+        451
+      ],
+      "size": [
+        145,
+        64
+      ],
+      "sources": [
+        {
+          "path": "frontend-livehub/nginx-1.18.0/conf/nginx.conf",
+          "line": 17,
+          "end_line": 21,
+          "label": "listen/root"
+        },
+        {
+          "path": "frontend-livehub/nginx-1.18.0/conf/nginx.conf",
+          "line": 31,
+          "end_line": 42,
+          "label": "/api 反代"
+        }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "API 网关",
+      "sublabel": "Spring Cloud Gateway :8081",
+      "tag": "Sa-Token 鉴权",
+      "pos": [
+        520,
+        403
+      ],
+      "size": [
+        175,
+        160
+      ],
+      "sources": [
+        {
+          "path": "gateway-service/src/main/resources/application.yaml",
+          "line": 10,
+          "end_line": 47,
+          "label": "lb:// 路由表"
+        },
+        {
+          "path": "gateway-service/src/main/resources/bootstrap.yaml",
+          "line": 9,
+          "end_line": 10,
+          "label": "Nacos 注册"
+        }
+      ]
+    },
+    {
+      "id": "user",
+      "type": "backend",
+      "label": "用户服务",
+      "sublabel": ":8086 · 登录注册 / 鉴权",
+      "pos": [
+        865,
+        40
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "user-service/src/main/resources/application.yaml",
+          "line": 3,
+          "label": "server.port"
+        }
+      ]
+    },
+    {
+      "id": "shop",
+      "type": "backend",
+      "label": "商户服务",
+      "sublabel": ":8082 · 商户 / 类型",
+      "pos": [
+        883,
+        130
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "shop-service/src/main/resources/application.yaml",
+          "line": 3,
+          "label": "server.port"
+        }
+      ]
+    },
+    {
+      "id": "rag",
+      "type": "backend",
+      "label": "RAG 知识库服务",
+      "sublabel": ":8087 · 向量检索问答",
+      "pos": [
+        901,
+        244
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "rag-service/src/main/resources/application.yaml",
+          "line": 2,
+          "label": "server.port"
+        },
+        {
+          "path": "rag-service/src/main/resources/application.yaml",
+          "line": 7,
+          "end_line": 8,
+          "label": "pgvector 数据源"
+        }
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "backend",
+      "label": "智能客服 Agent",
+      "sublabel": ":8088 · SSE + ReAct",
+      "pos": [
+        919,
+        386
+      ],
+      "size": [
+        160,
+        120
+      ],
+      "sources": [
+        {
+          "path": "agent-service/src/main/resources/application.yaml",
+          "line": 2,
+          "label": "server.port"
+        },
+        {
+          "path": "agent-service/src/main/java/com/hmdp/agent/feign/RagFeignClient.java",
+          "line": 14,
+          "end_line": 17,
+          "label": "kb_search 工具"
+        }
+      ]
+    },
+    {
+      "id": "order",
+      "type": "backend",
+      "label": "订单服务",
+      "sublabel": ":8084 · 秒杀下单",
+      "pos": [
+        937,
+        578
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "order-service/src/main/resources/application.yaml",
+          "line": 3,
+          "label": "server.port"
+        },
+        {
+          "path": "order-service/src/main/java/com/hmdp/order/service/impl/VoucherOrderServiceImpl.java",
+          "line": 89,
+          "end_line": 135,
+          "label": "秒杀入口"
+        }
+      ]
+    },
+    {
+      "id": "voucher",
+      "type": "backend",
+      "label": "优惠券服务",
+      "sublabel": ":8083 · 秒杀券库存",
+      "pos": [
+        955,
+        752
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "voucher-service/src/main/resources/application.yaml",
+          "line": 3,
+          "label": "server.port"
+        },
+        {
+          "path": "voucher-service/src/main/java/com/hmdp/voucher/controller/VoucherController.java",
+          "line": 77,
+          "end_line": 81,
+          "label": "扣减库存接口"
+        }
+      ]
+    },
+    {
+      "id": "social",
+      "type": "backend",
+      "label": "社交服务",
+      "sublabel": ":8085 · 博客 / 评论 / 关注",
+      "pos": [
+        973,
+        862
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "social-service/src/main/resources/application.yaml",
+          "line": 3,
+          "label": "server.port"
+        }
+      ]
+    },
+    {
+      "id": "pgvector",
+      "type": "database",
+      "label": "PostgreSQL + pgvector",
+      "sublabel": "rag_db :5433 · 向量库",
+      "pos": [
+        1445,
+        60
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docker-compose.yml",
+          "line": 4,
+          "end_line": 14,
+          "label": "pgvector 容器"
+        },
+        {
+          "path": "rag-service/src/main/resources/application.yaml",
+          "line": 7,
+          "end_line": 8,
+          "label": "JDBC 地址"
+        }
+      ]
+    },
+    {
+      "id": "glm",
+      "type": "external",
+      "label": "GLM 大模型 API",
+      "sublabel": "open.bigmodel.cn",
+      "pos": [
+        1445,
+        170
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "rag-service/src/main/resources/application.yaml",
+          "line": 22,
+          "end_line": 26,
+          "label": "LLM/Embedding"
+        },
+        {
+          "path": "agent-service/src/main/resources/application.yaml",
+          "line": 29,
+          "end_line": 34,
+          "label": "主/轻量模型"
+        }
+      ]
+    },
+    {
+      "id": "nacos",
+      "type": "backend",
+      "label": "Nacos",
+      "sublabel": ":8848 · 注册 / 配置中心",
+      "pos": [
+        1445,
+        280
+      ],
+      "size": [
+        160,
+        130
+      ],
+      "sources": [
+        {
+          "path": "gateway-service/src/main/resources/bootstrap.yaml",
+          "line": 9,
+          "end_line": 10,
+          "label": "server-addr"
+        },
+        {
+          "path": "user-service/src/main/resources/bootstrap.yaml",
+          "line": 9,
+          "end_line": 10,
+          "label": "各服务同一注册中心"
+        }
+      ]
+    },
+    {
+      "id": "mysql",
+      "type": "database",
+      "label": "MySQL",
+      "sublabel": "hmdp / agent_service :3306",
+      "pos": [
+        1445,
+        456
+      ],
+      "size": [
+        160,
+        120
+      ],
+      "sources": [
+        {
+          "path": "user-service/src/main/resources/application.yaml",
+          "line": 10,
+          "label": "业务库 hmdp"
+        },
+        {
+          "path": "agent-service/src/main/resources/application.yaml",
+          "line": 8,
+          "label": "客服库 agent_service"
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": ":6379 · 缓存 / 锁 / 会话",
+      "pos": [
+        1445,
+        622
+      ],
+      "size": [
+        160,
+        120
+      ],
+      "sources": [
+        {
+          "path": "gateway-service/src/main/resources/application.yaml",
+          "line": 59,
+          "end_line": 62,
+          "label": "Sa-Token 会话"
+        },
+        {
+          "path": "order-service/src/main/resources/seckill.lua",
+          "line": 24,
+          "end_line": 46,
+          "label": "秒杀库存与一人一单"
+        }
+      ]
+    },
+    {
+      "id": "rocketmq",
+      "type": "messagebus",
+      "label": "RocketMQ",
+      "sublabel": ":9876 · 异步解耦",
+      "pos": [
+        1445,
+        788
+      ],
+      "size": [
+        160,
+        80
+      ],
+      "sources": [
+        {
+          "path": "order-service/src/main/resources/application.yaml",
+          "line": 31,
+          "end_line": 34,
+          "label": "name-server"
+        },
+        {
+          "path": "order-service/src/main/java/com/hmdp/order/mq/SeckillOrderProducer.java",
+          "line": 32,
+          "end_line": 36,
+          "label": "主题常量"
+        }
+      ]
+    },
+    {
+      "id": "seata",
+      "type": "backend",
+      "label": "Seata Server",
+      "sublabel": "AT 模式 :8091",
+      "pos": [
+        1445,
+        914
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "voucher-service/src/main/resources/application.yaml",
+          "line": 41,
+          "end_line": 44,
+          "label": "seata.enabled"
+        },
+        {
+          "path": "order-service/src/main/java/com/hmdp/order/service/impl/VoucherOrderServiceImpl.java",
+          "line": 143,
+          "end_line": 144,
+          "label": "@GlobalTransactional"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "client-web",
+      "from": "client",
+      "to": "web",
+      "label": "HTTP :8080"
+    },
+    {
+      "id": "web-gateway",
+      "from": "web",
+      "to": "gateway",
+      "label": "/api 反向代理",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gw-user",
+      "from": "gateway",
+      "to": "user",
+      "label": "/user/** · /auth/**"
+    },
+    {
+      "id": "gw-shop",
+      "from": "gateway",
+      "to": "shop",
+      "label": "/shop/**"
+    },
+    {
+      "id": "gw-voucher",
+      "from": "gateway",
+      "to": "voucher",
+      "label": "/voucher/**"
+    },
+    {
+      "id": "gw-order",
+      "from": "gateway",
+      "to": "order",
+      "label": "/order/**"
+    },
+    {
+      "id": "gw-social",
+      "from": "gateway",
+      "to": "social",
+      "label": "/blog/** 等"
+    },
+    {
+      "id": "gw-rag",
+      "from": "gateway",
+      "to": "rag",
+      "label": "/api/rag/**"
+    },
+    {
+      "id": "gw-agent",
+      "from": "gateway",
+      "to": "agent",
+      "label": "/agent/**"
+    },
+    {
+      "id": "agent-rag",
+      "from": "agent",
+      "to": "rag",
+      "label": "kb_search 检索",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "agent-order",
+      "from": "agent",
+      "to": "order",
+      "label": "查订单",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "order-voucher",
+      "from": "order",
+      "to": "voucher",
+      "label": "Feign 扣减库存",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "user-mysql",
+      "from": "user",
+      "to": "mysql"
+    },
+    {
+      "id": "shop-mysql",
+      "from": "shop",
+      "to": "mysql"
+    },
+    {
+      "id": "agent-mysql",
+      "from": "agent",
+      "to": "mysql"
+    },
+    {
+      "id": "order-mysql",
+      "from": "order",
+      "to": "mysql"
+    },
+    {
+      "id": "voucher-mysql",
+      "from": "voucher",
+      "to": "mysql"
+    },
+    {
+      "id": "social-mysql",
+      "from": "social",
+      "to": "mysql"
+    },
+    {
+      "id": "user-redis",
+      "from": "user",
+      "to": "redis"
+    },
+    {
+      "id": "shop-redis",
+      "from": "shop",
+      "to": "redis"
+    },
+    {
+      "id": "agent-redis",
+      "from": "agent",
+      "to": "redis"
+    },
+    {
+      "id": "order-redis",
+      "from": "order",
+      "to": "redis"
+    },
+    {
+      "id": "voucher-redis",
+      "from": "voucher",
+      "to": "redis"
+    },
+    {
+      "id": "social-redis",
+      "from": "social",
+      "to": "redis"
+    },
+    {
+      "id": "user-nacos",
+      "from": "user",
+      "to": "nacos",
+      "variant": "dashed"
+    },
+    {
+      "id": "shop-nacos",
+      "from": "shop",
+      "to": "nacos",
+      "variant": "dashed"
+    },
+    {
+      "id": "rag-nacos",
+      "from": "rag",
+      "to": "nacos",
+      "variant": "dashed"
+    },
+    {
+      "id": "agent-nacos",
+      "from": "agent",
+      "to": "nacos",
+      "variant": "dashed"
+    },
+    {
+      "id": "order-nacos",
+      "from": "order",
+      "to": "nacos",
+      "variant": "dashed"
+    },
+    {
+      "id": "voucher-nacos",
+      "from": "voucher",
+      "to": "nacos",
+      "variant": "dashed"
+    },
+    {
+      "id": "social-nacos",
+      "from": "social",
+      "to": "nacos",
+      "variant": "dashed"
+    },
+    {
+      "id": "order-mq",
+      "from": "order",
+      "to": "rocketmq",
+      "label": "seckill-order-topic",
+      "variant": "dashed"
+    },
+    {
+      "id": "rag-mq",
+      "from": "rag",
+      "to": "rocketmq",
+      "label": "rag-document-process",
+      "variant": "dashed"
+    },
+    {
+      "id": "agent-mq",
+      "from": "agent",
+      "to": "rocketmq",
+      "label": "agent-m5-ticket-route",
+      "variant": "dashed"
+    },
+    {
+      "id": "mq-social",
+      "from": "rocketmq",
+      "to": "social",
+      "label": "工单落站内信",
+      "variant": "dashed"
+    },
+    {
+      "id": "rag-pgvector",
+      "from": "rag",
+      "to": "pgvector",
+      "label": "向量写入 / 检索"
+    },
+    {
+      "id": "rag-glm",
+      "from": "rag",
+      "to": "glm",
+      "label": "Embedding / LLM",
+      "variant": "dashed"
+    },
+    {
+      "id": "agent-glm",
+      "from": "agent",
+      "to": "glm",
+      "label": "LLM 生成",
+      "variant": "dashed"
+    },
+    {
+      "id": "order-seata",
+      "from": "order",
+      "to": "seata",
+      "label": "全局事务"
+    },
+    {
+      "id": "voucher-seata",
+      "from": "voucher",
+      "to": "seata"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "接入与鉴权",
+      "items": [
+        "Nginx :8080 托管 hmdp 静态页，/api 反向代理到网关",
+        "网关按路径前缀 lb:// 转发，Sa-Token 校验后放行",
+        "网关与各业务服务同注册于 Nacos，共用同一个 Redis 存 Sa-Token 会话"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "秒杀链路（异步为主）",
+      "items": [
+        "order 用 seckill.lua 原子预扣 Redis 库存 + 一人一单，随即返回 orderId",
+        "发 seckill-order-topic，消费端加 Redisson 锁做幂等后经 Feign 让 voucher 扣库并落单",
+        "重试 3 次仍失败转入 seckill-order-dlq-topic；Seata AT 仅包在同步兼容方法 createVoucherOrder 上"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "智能客服",
+      "items": [
+        "agent :8088 以 SSE 推送流式回答，ReAct 最多 8 步，Redis 存短期记忆",
+        "工具体系：kb_search 检索 rag，另有 Feign 工具接口查 shop / voucher / order（图中仅示 agent→rag 与 agent→order）",
+        "rag 先 pgvector 检索、RRF 融合，再交 GLM 生成；工单经 MQ 由 social 落站内信"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "数据与部署",
+      "items": [
+        "MySQL :3306 承载 hmdp（业务）与 agent_service（工单 / 会话）两套 schema",
+        "PostgreSQL+pgvector :5433 rag_db 单独由 docker-compose 起，与业务库隔离",
+        "Nacos / Seata / RocketMQ 由 Docker Desktop 提供，配置从 Nacos 导入"
+      ]
+    }
+  ]
+}

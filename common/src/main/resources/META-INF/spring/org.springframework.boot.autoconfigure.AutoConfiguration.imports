@@ -1,3 +1,4 @@
 com.hmdp.config.SaTokenConfig
 com.hmdp.config.RedissonConfig
 com.hmdp.config.MultiLevelCacheAutoConfiguration
+com.hmdp.config.SaTokenExceptionHandler

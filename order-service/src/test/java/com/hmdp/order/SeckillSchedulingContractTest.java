@@ -53,7 +53,11 @@ class SeckillSchedulingContractTest {
 
         Scheduled scheduled = m.getAnnotation(Scheduled.class);
         assertNotNull(scheduled, "deliverPending 必须标 @Scheduled，否则事件表永不补投");
-        assertEquals("${hmdp.seckill.outbox.deliver-interval-ms:3000}", scheduled.fixedDelayString(),
-                "补投间隔必须可配（默认 3s），且用 fixedDelay 防止两轮扫描重叠");
+        // 字面量边界是刻意为之（与 scheduledConsistencyCheck 同一理由）：引用被测类的常量
+        // 会在常量被改时跟着变，用例永远绿，等于不设防。
+        assertEquals(3000L, scheduled.fixedDelay(), "补投间隔为 3s");
+        // fixedDelay 而非 fixedRate：后者会让大量积压时两轮扫描重叠（SPEC-15 P2-1 补投器）
+        assertEquals(-1L, scheduled.fixedRate(), "必须用 fixedDelay，不得用 fixedRate");
+        assertEquals("", scheduled.fixedDelayString(), "补投间隔不得外置为配置项");
     }
 }

@@ -1,0 +1,349 @@
+# Fix wave diff: c0159aa..c83287b (review base -> fix head)
+
+## Commits
+c83287b fix(shop): 代码评审修复波——G6 服务层页码兜底 + TTL 抖动去重 + 半径配置显式化
+
+## Stat
+ .../main/java/com/hmdp/utils/RedisConstants.java   | 12 ++++
+ .../com/hmdp/shop/service/ShopCacheService.java    |  5 +-
+ .../hmdp/shop/service/impl/ShopServiceImpl.java    | 10 ++-
+ .../shop/service/impl/ShopTypeServiceImpl.java     |  6 +-
+ shop-service/src/main/resources/application.yaml   |  2 +
+ .../impl/ShopServiceImplQueryShopByTypeTest.java   | 77 ++++++++++++++++++++++
+ 6 files changed, 102 insertions(+), 10 deletions(-)
+
+## Diff (-U10)
+diff --git a/common/src/main/java/com/hmdp/utils/RedisConstants.java b/common/src/main/java/com/hmdp/utils/RedisConstants.java
+index 283cb9e..0f75dd0 100644
+--- a/common/src/main/java/com/hmdp/utils/RedisConstants.java
++++ b/common/src/main/java/com/hmdp/utils/RedisConstants.java
+@@ -1,30 +1,42 @@
+ package com.hmdp.utils;
+ 
++import java.util.concurrent.ThreadLocalRandom;
++
+ public class RedisConstants {
+     public static final String LOGIN_CODE_KEY = "login:code:";
+     public static final Long LOGIN_CODE_TTL = 2L;
+     /** 验证码频控（SPEC-06 §5.5）：手机号 60 秒 1 次 / 24 小时 10 次，IP 24 小时 20 次 */
+     public static final String LOGIN_CODE_LIMIT_KEY = "login:code:limit:phone:";
+     public static final String LOGIN_CODE_COUNT_KEY = "login:code:count:phone:";
+     public static final String LOGIN_CODE_IP_COUNT_KEY = "login:code:count:ip:";
+ 
+     /** 空值标记 TTL，单位：秒（SPEC-05 §5.1：把负缓存窗口从 30 分钟压到 60 秒） */
+     public static final Long CACHE_NULL_TTL = 60L;
+ 
+     public static final String CACHE_SHOP_KEY = "cache:shop:";
+ 
+     /** 缓存基础 TTL，单位：秒（商铺与商铺分类共用，SPEC-05 G7） */
+     public static final Long CACHE_TTL_BASE_SECONDS = 1800L;
+     /** 缓存 TTL 抖动上限，单位：秒；实际 TTL = 基础值 + [0, 抖动) */
+     public static final Integer CACHE_TTL_JITTER_SECONDS = 300;
+ 
++    /**
++     * 计算带抖动的缓存 TTL（秒）：基础值 + [0, 抖动上限)。
++     *
++     * <p>SPEC-05 G7：同一时刻写入的缓存若 TTL 完全相同，会集体失效并同时回源 DB。
++     * 抖动规则集中在此，避免各调用点各写一份而漏改。
++     */
++    public static long cacheTtlSeconds() {
++        return CACHE_TTL_BASE_SECONDS + ThreadLocalRandom.current().nextInt(CACHE_TTL_JITTER_SECONDS);
++    }
++
+     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
+     /** 已购用户 Set —— 与 seckill.lua 的 orderKey 同拼法 */
+     public static final String SECKILL_ORDER_SET_KEY = "seckill:order:";
+     /** 订单明细 Hash —— 与 seckill.lua 的 orderDetailKey 同拼法（本批冻结的契约） */
+     public static final String SECKILL_ORDER_DETAIL_KEY = "seckill:order:detail:";
+     /** 扣减幂等 Set（SPEC-03 §5.4，键为 orderId） */
+     public static final String SECKILL_DEDUCT_KEY = "seckill:deduct:";
+     public static final String BLOG_LIKED_KEY = "blog:liked:";
+     public static final String FEED_KEY = "feed:";
+     public static final String SHOP_GEO_KEY = "shop:geo:";
+diff --git a/shop-service/src/main/java/com/hmdp/shop/service/ShopCacheService.java b/shop-service/src/main/java/com/hmdp/shop/service/ShopCacheService.java
+index 6ffb0aa..cfdecbe 100644
+--- a/shop-service/src/main/java/com/hmdp/shop/service/ShopCacheService.java
++++ b/shop-service/src/main/java/com/hmdp/shop/service/ShopCacheService.java
+@@ -1,20 +1,19 @@
+ package com.hmdp.shop.service;
+ 
+ import cn.hutool.core.util.StrUtil;
+ import cn.hutool.json.JSONUtil;
+ import com.hmdp.entity.Shop;
+ import com.hmdp.shop.mapper.ShopMapper;
+ import org.springframework.data.redis.core.StringRedisTemplate;
+ import org.springframework.stereotype.Service;
+ 
+-import java.util.concurrent.ThreadLocalRandom;
+ import java.util.concurrent.TimeUnit;
+ 
+ import static com.hmdp.utils.RedisConstants.*;
+ 
+ /**
+  * 商铺实体缓存（SPEC-05 §5.1）。
+  *
+  * <p>读路径显式实现 L2(Redis) → DB → 回填，缓存 {@link Shop} 本体而非 {@code Result}
+  * 包装对象——失败分支因此不可能被写入缓存（G1）。空值走 60 秒短 TTL 防穿透（G5），
+  * 正常值 TTL 带抖动避免同刻集体失效（G7）。
+@@ -51,22 +50,22 @@ public class ShopCacheService {
+             return null;
+         }
+ 
+         // 3. 未命中，回源 DB
+         Shop shop = shopMapper.selectById(id);
+         if (shop == null) {
+             stringRedisTemplate.opsForValue().set(key, "", CACHE_NULL_TTL, TimeUnit.SECONDS);
+             return null;
+         }
+ 
+-        // 4. 回填，TTL 带抖动
+-        long ttl = CACHE_TTL_BASE_SECONDS + ThreadLocalRandom.current().nextInt(CACHE_TTL_JITTER_SECONDS);
++        // 4. 回填，TTL 带抖动（SPEC-05 G7）
++        long ttl = cacheTtlSeconds();
+         stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(shop), ttl, TimeUnit.SECONDS);
+         return shop;
+     }
+ 
+     /**
+      * 失效指定商铺的缓存。写路径（update / saveShop）调用，用于打断可能已存在的
+      * 空值标记或旧值，保证变更后立即可见。
+      */
+     public void evict(Long id) {
+         stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
+diff --git a/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java b/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java
+index ecee7ca..adfead1 100644
+--- a/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java
++++ b/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java
+@@ -94,35 +94,39 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
+         } else {
+             logger.error("数据库更新失败，店铺ID: {}", id);
+         }
+         return Result.ok();
+     }
+ 
+     @Override
+     public Result queryShopByType(Integer typeId, Integer current, Double x, Double y) {
+         logger.info("查询类型为 {} 的店铺，页码: {}, 坐标: ({}, {})", typeId, current, x, y);
+ 
++        // 服务层兜底（SPEC-05 §5.5）：HTTP 入口已加 @Min(1)，但本方法是对外接口，
++        // 内部调用可绕过 MVC 参数校验；页码 <=0 会让 from 变负，skip(负数) 抛 IllegalArgumentException
++        int pageNum = (current == null || current < 1) ? 1 : current;
++
+         // 1.判断是否需要根据坐标查询
+         if (x == null || y == null) {
+             // 不需要坐标查询，按数据库查询
+             logger.info("执行无坐标查询");
+             Page<Shop> page = query()
+                     .eq("type_id", typeId)
+-                    .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
++                    .page(new Page<>(pageNum, SystemConstants.DEFAULT_PAGE_SIZE));
+             // 返回数据
+             logger.info("查询到 {} 条记录", page.getRecords().size());
+             return Result.ok(page.getRecords());
+         }
+ 
+         // 2.计算分页参数
+-        int from = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
+-        int end = current * SystemConstants.DEFAULT_PAGE_SIZE;
++        int from = (pageNum - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
++        int end = pageNum * SystemConstants.DEFAULT_PAGE_SIZE;
+ 
+         logger.info("执行地理位置查询，从第 {} 条到第 {} 条，半径 {} 公里", from, end, searchRadiusKm);
+ 
+         // 3.查询redis、按照距离排序、分页。结果：shopId、distance
+         String key = SHOP_GEO_KEY + typeId;
+         GeoResults<RedisGeoCommands.GeoLocation<String>> results = stringRedisTemplate.opsForGeo() // GEOSEARCH key BYLONLAT x y BYRADIUS 10 WITHDISTANCE
+                 .search(
+                         key,
+                         GeoReference.fromCoordinate(x, y),
+                         new Distance(searchRadiusKm, Metrics.KILOMETERS),
+diff --git a/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopTypeServiceImpl.java b/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopTypeServiceImpl.java
+index c9a8f4d..b34307f 100644
+--- a/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopTypeServiceImpl.java
++++ b/shop-service/src/main/java/com/hmdp/shop/service/impl/ShopTypeServiceImpl.java
+@@ -1,28 +1,26 @@
+ package com.hmdp.shop.service.impl;
+ 
+ import cn.hutool.core.collection.CollectionUtil;
+ import cn.hutool.core.util.StrUtil;
+ import cn.hutool.json.JSONUtil;
+ import com.hmdp.dto.Result;
+ import com.hmdp.entity.ShopType;
+ import com.hmdp.shop.mapper.ShopTypeMapper;
+ import com.hmdp.shop.service.IShopTypeService;
+-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+ import lombok.extern.slf4j.Slf4j;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.data.redis.core.StringRedisTemplate;
+ import org.springframework.stereotype.Service;
+ 
+ import java.util.List;
+-import java.util.concurrent.ThreadLocalRandom;
+ import java.util.concurrent.TimeUnit;
+ 
+ import static com.hmdp.utils.RedisConstants.*;
+ 
+ /**
+  * <p>
+  *  服务实现类
+  * </p>
+  *
+  * @author 虎哥
+@@ -61,21 +59,21 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
+         }
+         // 命中空值标记：DB 已经确认过为空，直接返回，不再穿透（SPEC-05 G5）
+         if (shopTypeStr != null) {
+             log.info("命中空值标记，直接返回");
+             return Result.fail("列表信息不存在");
+         }
+ 
+         log.info("Redis中未找到商铺分类缓存，开始查询数据库");
+ 
+         //redis中没有，查询数据库
+-        List<ShopType> typeList = list(Wrappers.<ShopType>query().orderByAsc("sort"));
++        List<ShopType> typeList = query().orderByAsc("sort").list();
+ 
+         //数据库中没有，写入短 TTL 空值标记并报错
+         if (CollectionUtil.isEmpty(typeList)) {
+             log.warn("数据库中未找到任何商铺分类信息");
+             try {
+                 redisTemplate.opsForValue().set(SHOP_LIST_KEY, "", CACHE_NULL_TTL, TimeUnit.SECONDS);
+             } catch (Exception e) {
+                 log.error("写入商铺分类空值标记时发生异常", e);
+                 // 即使Redis操作失败，仍然返回「列表信息不存在」
+             }
+@@ -85,21 +83,21 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
+         log.info("从数据库中查询到{}个商铺分类", typeList.size());
+ 
+         // 记录详细的分类信息
+         for (ShopType shopType : typeList) {
+             log.info("商铺分类 - ID: {}, 名称: {}, 图标: {}, 排序: {}",
+                     shopType.getId(), shopType.getName(), shopType.getIcon(), shopType.getSort());
+         }
+ 
+         //数据库中有，存到redis（TTL 带抖动，SPEC-05 G7）
+         String jsonStr = JSONUtil.toJsonStr(typeList);
+-        long ttl = CACHE_TTL_BASE_SECONDS + ThreadLocalRandom.current().nextInt(CACHE_TTL_JITTER_SECONDS);
++        long ttl = cacheTtlSeconds();
+         try {
+             redisTemplate.opsForValue().set(SHOP_LIST_KEY, jsonStr, ttl, TimeUnit.SECONDS);
+             log.info("成功将商铺分类数据存入Redis缓存，数据长度：{}", jsonStr.length());
+         } catch (Exception e) {
+             log.error("将商铺分类数据存入Redis时发生异常", e);
+             // 即使Redis操作失败，仍然返回数据库查询结果
+         }
+ 
+         log.info("商铺分类查询完成，共返回{}个分类", typeList.size());
+         return Result.ok(typeList);
+diff --git a/shop-service/src/main/resources/application.yaml b/shop-service/src/main/resources/application.yaml
+index f98cb8a..5f95f64 100644
+--- a/shop-service/src/main/resources/application.yaml
++++ b/shop-service/src/main/resources/application.yaml
+@@ -39,20 +39,22 @@ mybatis-plus:
+   mapper-locations: classpath*:/mapper/**/*.xml # Mapper XML文件扫描路径
+ 
+ # 日志配置
+ logging:
+   level:
+     com.hmdp: debug # 日志级别，debug 用于开发环境，生产环境建议调整为 info 或 warn
+ 
+ # hmdp 自定义配置
+ hmdp:
+   admin-user-ids: ${ADMIN_USER_IDS:} # 管理接口（商户增改、券创建等）的授权用户id白名单，逗号分隔
++  shop:
++    search-radius-km: 5 # 附近店铺检索半径（公里），SPEC-05 §5.5：单位显式且可配
+ 
+ # Sa-Token 配置
+ sa-token:
+   token-name: Authorization
+   timeout: 2592000
+   active-timeout: -1
+   is-concurrent: true
+   is-share: true
+   token-style: uuid
+   is-log: false
+\ No newline at end of file
+diff --git a/shop-service/src/test/java/com/hmdp/shop/service/impl/ShopServiceImplQueryShopByTypeTest.java b/shop-service/src/test/java/com/hmdp/shop/service/impl/ShopServiceImplQueryShopByTypeTest.java
+new file mode 100644
+index 0000000..363ab32
+--- /dev/null
++++ b/shop-service/src/test/java/com/hmdp/shop/service/impl/ShopServiceImplQueryShopByTypeTest.java
+@@ -0,0 +1,77 @@
++package com.hmdp.shop.service.impl;
++
++import com.hmdp.dto.Result;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.extension.ExtendWith;
++import org.mockito.InjectMocks;
++import org.mockito.Mock;
++import org.mockito.junit.jupiter.MockitoExtension;
++import org.mockito.junit.jupiter.MockitoSettings;
++import org.mockito.quality.Strictness;
++import org.springframework.data.geo.Distance;
++import org.springframework.data.geo.GeoResults;
++import org.springframework.data.redis.connection.RedisGeoCommands;
++import org.springframework.data.redis.core.GeoOperations;
++import org.springframework.data.redis.core.StringRedisTemplate;
++
++import java.util.Collections;
++
++import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.anyString;
++import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.when;
++
++/**
++ * G6 服务层兜底：{@code queryShopByType} 是对外接口，内部调用可绕过 MVC 参数校验。
++ * 页码 ≤ 0 时修复前 {@code from = (current - 1) * 5} 为负，{@code Stream.skip(负数)}
++ * 会抛 {@link IllegalArgumentException}，在 Controller 之外升级为 500。
++ */
++@ExtendWith(MockitoExtension.class)
++@MockitoSettings(strictness = Strictness.LENIENT)
++class ShopServiceImplQueryShopByTypeTest {
++
++    @Mock
++    private StringRedisTemplate stringRedisTemplate;
++
++    @Mock
++    private GeoOperations<String, String> geoOperations;
++
++    @InjectMocks
++    private ShopServiceImpl shopService;
++
++    private void mockEmptyGeoSearch() {
++        when(stringRedisTemplate.opsForGeo()).thenReturn(geoOperations);
++        // 空结果集：修复前 list.size()(0) <= from(-5) 为 false，会继续走到 skip(负数)
++        GeoResults<RedisGeoCommands.GeoLocation<String>> emptyResults =
++                new GeoResults<>(Collections.emptyList());
++        when(geoOperations.search(anyString(), any(), any(Distance.class), any())).thenReturn(emptyResults);
++    }
++
++    @Test
++    void 页码为0时服务层兜底为第一页不再抛异常() {
++        mockEmptyGeoSearch();
++
++        Result result = shopService.queryShopByType(1, 0, 116.4, 39.9);
++
++        assertEquals(Collections.emptyList(), result.getData());
++    }
++
++    @Test
++    void 页码为null时服务层兜底为第一页不再抛异常() {
++        mockEmptyGeoSearch();
++
++        assertDoesNotThrow(() -> shopService.queryShopByType(1, null, 116.4, 39.9));
++    }
++
++    /** 兜底不应改变合法页码的行为：仍按该页码发起检索 */
++    @Test
++    void 合法页码仍按原页码检索() {
++        mockEmptyGeoSearch();
++
++        shopService.queryShopByType(1, 2, 116.4, 39.9);
++
++        verify(geoOperations).search(anyString(), any(), any(Distance.class), any());
++    }
++}

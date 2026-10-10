@@ -1,0 +1,362 @@
+// 系统性缓存设计 · 10 道主问题
+module.exports = {
+  outFile: "系统性缓存设计_面试题.docx",
+  title: "系统性缓存设计 · 面试题与标准答案",
+  subtitle: "基于《左常健 · 后端研发简历》Live-Hub 项目经历 + D:\\hm-dianping 源码实证整理。缓存是本简历中「简历表述与源码实证」差异最集中的板块，每题末尾的「⚠ 简历表述 vs 源码实证」请务必逐条过一遍——这些正是面试官照着简历提问时的高概率落点。",
+  overview:
+    "当前线上生效的缓存是「Spring Cache 注解 + RedisCacheManager」的**单级 Redis 缓存**（shop-service/CacheConfig.java:44-57，TTL 30 分钟，key 用 StringRedisSerializer、value 用 GenericJackson2JsonRedisSerializer）。店铺详情走 @Cacheable(\"shopCache\", key=\"#id\", unless=\"#result == null\")，更新走 @Transactional + @CacheEvict（先更库、后删缓存）；店铺分类列表用 StringRedisTemplate 手写缓存（shop:list:，30 分钟）；地理数据用 Redis GEO（shop:geo:{typeId}，无 TTL）。启动预热热门 50 家店铺、每类前 3 页与 GEO 数据（ShopServiceImpl.warmUpCacheOnStartup）。common 模块的 CacheClient 实现了穿透空值、互斥锁重建、逻辑过期三套模板，但**当前无任何调用点**；Caffeine 3.1.8 仅在 pom 中声明，无 Java 代码引用。",
+  overviewBullets: [
+    "生效链路：@Cacheable → CacheInterceptor → CacheManager.getCache(\"shopCache\") → RedisCache → Redis GET/SET",
+    "实际 key：shopCache::{id}（Spring Cache 自动拼接 Cache 名 + key 表达式），TTL 固定 30 分钟",
+    "一致性：Cache Aside，@CacheEvict 默认 beforeInvocation=false（方法成功返回后删缓存）",
+    "预热：@PostConstruct + @Async（异步实际不生效）+ 3 线程池并行预热三类数据",
+    "未启用：Caffeine 一级缓存、逻辑过期、互斥锁重建、随机 TTL、空值缓存（CacheClient 全部无调用点）",
+  ],
+  questions: [
+    // ---------------- Q1 ----------------
+    {
+      cat: "缓存架构", level: "基础",
+      title: "讲一下你的缓存架构。Caffeine 和 Redis 分别在哪一层？它们是怎么组合起来的？",
+      focus: "考察点：能否准确说出自己系统当前的真实形态、Spring Cache 抽象层的理解、本地缓存与分布式缓存的职责分工与取舍。",
+      follows: [
+        "CacheConfig 里的 cacheManager() 返回的是什么类型？为什么不返回 CompositeCacheManager 来做多级组合？",
+        "Spring Cache 的 @Cacheable，从注解到真正读写 Redis，中间经过了哪些组件？",
+        "什么场景下必须上本地缓存？只加一层 Redis 不够吗？",
+      ],
+      blocks: [
+        { t: "h", x: "1．源码实证：当前是单级 Redis 缓存" },
+        { t: "code", x: "shop-service/src/main/java/com/hmdp/shop/config/CacheConfig.java:44-57\n@Bean\npublic CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {\n    RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()\n            .entryTtl(Duration.ofMinutes(30))\n            .serializeKeysWith(... StringRedisSerializer ...)\n            .serializeValuesWith(... GenericJackson2JsonRedisSerializer ...);\n\n    return RedisCacheManager.builder(redisConnectionFactory)\n            .cacheDefaults(config)\n            .build();            // ← 只返回 RedisCacheManager，没有 Composite/Caffeine\n}" },
+        { t: "p", x: "真实的缓存只有一层 Redis。Caffeine 依赖确实声明在 shop-service/pom.xml:91-96（com.github.ben-manes.caffeine:caffeine:3.1.8），但全仓没有任何 Java 代码 import 或引用 Caffeine 类——它是一个**未被使用的依赖**。CacheConfig 的类注释也自认这一点（:20-24）：「本配置将Redis作为二级缓存（L2 Cache）使用……注意：当前版本直接使用Redis作为缓存，未配置本地一级缓存，可根据性能需求扩展。」README.md:12 同样表述为「Caffeine本地缓存为预留扩展项」。" },
+        { t: "p", x: "另外 CacheConfig.java:31-32 的 JavaDoc 写明了未采用 LayeredCacheManager 的原因：「直接使用 Redis 作为缓存，避免使用 LayeredCacheManager 导致的版本兼容问题」。这一点可以展开成技术判断——Spring Cloud 生态里多级缓存常见做法是自定义 CompositeCacheManager 或在 CacheManager 之上再包一层，LayeredCacheManager 在部分版本确实存在兼容性问题，团队选择先跑通单级、把多级作为演进项，是合理的工程决策。" },
+        { t: "h", x: "2．Spring Cache 的完整调用链" },
+        { t: "code", x: "@Cacheable(\"shopCache\", key=\"#id\")\n  → CacheInterceptor（AOP 切面，由 @EnableCaching 注册）\n  → CacheResolver / CacheManager.getCache(\"shopCache\")   ← CacheConfig 提供的 RedisCacheManager\n  → RedisCache.get(key) → 序列化 key → Redis GET\n  → 命中：反序列化 value 返回；未命中：执行原方法 → 判 unless → Redis SET + TTL\n\n注：缓存名 shopCache 只用于定位 Cache 实例，Redis 中的实际 key 是 \"shopCache::\" + key 表达式结果" },
+        { t: "p", x: "这也是理解本项目 key 命名的关键：注解里配置的 shopCache 是逻辑 Cache 名，真正落到 Redis 的是 shopCache::{id}（Spring Cache 默认 key 生成规则为 Cache 名 + 双冒号 + key）。" },
+        { t: "h", x: "3．本地缓存的价值与代价" },
+        { t: "p", x: "价值：① 抗热点 key——Redis 单 key 受单核限制（通常 5~10 万 ops/s），本地缓存让请求根本不落到 Redis；② 省网络往返——本地访问是纳秒级，Redis 是 0.1~1ms；③ Redis 抖动/宕机时的兜底，避免流量整体压向 DB。" },
+        { t: "p", x: "代价：① 多实例之间数据不一致，必须靠短 TTL 或广播失效来兜（Spring Cache 的 RedisCacheManager 支持 pub/sub 失效广播，本地 Caffeine 需要自行接入这套机制）；② 占用 JVM 堆内存、增加 GC 压力；③ 冷启动时命中率低、预热复杂；④ 缓存容量受单机内存限制。适用场景是「极热、变更少、能容忍秒级不一致」的数据——店铺基本信息、店铺分类列表都是典型候选。" },
+      ],
+      sources: [
+        "shop-service/src/main/java/com/hmdp/shop/config/CacheConfig.java:1-58",
+        "shop-service/pom.xml:91-102（caffeine 3.1.8 + spring-boot-starter-cache）",
+        "README.md:12（「Caffeine本地缓存为预留扩展项」）、:341（「本地一级缓存（Caffeine）为 CacheConfig 中预留的扩展建议，尚未启用」）",
+        "shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java:59-62,352-360",
+      ],
+      gap: {
+        claim: "简历：在 8 核 16GB 内存环境下，二级缓存架构（Caffeine+Redis）支撑核心服务查询达 QPS 21K+(21027)；系统性缓存设计：设计 Caffeine本地缓存+ Redis分布式缓存两级架构。",
+        fact: "源码中不存在二级缓存。CacheConfig.cacheManager() 只返回 RedisCacheManager（单级）；Caffeine 3.1.8 仅在 pom.xml 声明，全仓无任何 Java 引用；CacheConfig 的类注释与 README.md:12/341 均自述「本地一级缓存尚未启用/为预留扩展项」。",
+        advice: "这是全简历第二高风险的一句（仅次于 RocketMQ 事务消息）。面试官只要问「你 Caffeine 的 CacheManager 是怎么和 Redis 组合的？用的 CompositeCacheManager 还是自定义？」就会立刻暴露。两条路：① 花半天真的把 Caffeine 接上（自定义 CompositeCacheManager 或 CacheResolver，注意本地缓存的失效广播），然后就能名正言顺地讲两级架构的取舍；② 把简历改为「Spring Cache + Redis 缓存层，Caffeine 本地缓存为规划中的演进项」。这一板块的其余 9 题也大量依赖这个前提，务必先处理。",
+      },
+    },
+
+    // ---------------- Q2 ----------------
+    {
+      cat: "Key 与 TTL", level: "基础",
+      title: "店铺缓存的 key 和 TTL 是怎么设计的？RedisConstants 里定义的那批常量都用上了吗？",
+      focus: "考察点：Spring Cache key 生成规则、TTL 设定依据、常量与实现的对应关系（是否名实相符）、大 value 与全局单 key 的识别。",
+      follows: [
+        "shopCache::{id} 这个 key 是谁拼出来的？前缀 shopCache:: 从哪来？",
+        "TTL 30 分钟配在哪一行代码？为什么定 30 分钟？",
+        "RedisConstants 里的 CACHE_SHOP_KEY=\"cache:shop:\"、CACHE_SHOP_TTL=30L、LOCK_SHOP_TTL=10L 分别被谁用到了？",
+      ],
+      blocks: [
+        { t: "h", x: "1．店铺详情缓存" },
+        { t: "code", x: "shop-service/.../service/impl/ShopServiceImpl.java:359-360\n@Override\n@Cacheable(value = \"shopCache\", key = \"#id\", unless = \"#result == null\")\npublic Result queryById(Long id) { ... }\n\nshop-service/.../config/CacheConfig.java:47-51\nRedisCacheConfiguration.defaultCacheConfig()\n        .entryTtl(Duration.ofMinutes(30))                    // ← TTL 唯一来源\n        .serializeKeysWith(... new StringRedisSerializer() ...)      // key 可读\n        .serializeValuesWith(... new GenericJackson2JsonRedisSerializer() ...)  // value 为 JSON" },
+        { t: "p", x: "Redis 中实际落地的 key 是 `shopCache::1` 这样的形式：Spring Cache 的默认 key 生成规则是 Cache 名 + \"::\" + key 表达式求值结果。选择 String 序列化 key 是为了可读性（redis-cli 里能直接看懂），value 用 Jackson JSON 是为了兼容对象且跨语言可读。" },
+        { t: "p", x: "TTL 30 分钟的依据：店铺基础信息（名称、地址、评分、营业时间）属于低频变更数据，30 分钟内的陈旧度业务可接受；同时 30 分钟也限制了「更新时删缓存失败」残留脏数据的最长影响窗口。较长的 TTL 换更高的命中率，较短的 TTL 换更新鲜的数据——这是唯一的权衡维度。" },
+        { t: "h", x: "2．另外两处缓存" },
+        { t: "code", x: "店铺分类列表（手写缓存，未走 Spring Cache）\nshop-service/.../service/impl/ShopTypeServiceImpl.java:83\nredisTemplate.opsForValue().set(SHOP_LIST_KEY, jsonStr, 30, TimeUnit.MINUTES);\n// 读：ShopTypeServiceImpl.java:41（StringRedisTemplate，value 由 JSONUtil.toJsonStr 序列化）\n// SHOP_LIST_KEY = \"shop:list:\"（RedisConstants.java:23）—— 注意没有 id 后缀\n\n地理数据（Redis GEO，无 TTL）\nShopServiceImpl.java:241 写入 opsForGeo().add(SHOP_GEO_KEY + typeId, locations)\nShopServiceImpl.java:453 查询\n// SHOP_GEO_KEY = \"shop:geo:\"（RedisConstants.java:20），永不过期" },
+        { t: "h", x: "3．追问 3：常量名实不符（重要）" },
+        { t: "code", x: "common/src/main/java/com/hmdp/utils/RedisConstants.java\n:9   CACHE_NULL_TTL    = 2L             → 仅 CacheClient 使用（无调用点）\n:11  CACHE_SHOP_TTL    = 30L            → 全仓无使用\n:12  CACHE_SHOP_KEY    = \"cache:shop:\"  → 全仓无使用\n:14  LOCK_SHOP_KEY     = \"lock:shop:\"   → 仅 CacheClient 使用（无调用点）\n:15  LOCK_SHOP_TTL     = 10L            → 全仓无使用\n:26  JETCACHE_LOCAL_LIMIT / :27 JETCACHE_EXPIRE / :28 JETCACHE_REFRESH\n                                       → 项目未引入 JetCache 依赖，属遗留占位常量" },
+        { t: "p", x: "结论：主链路真正生效的 key 是 `shopCache::{id}`（由 Spring Cache 生成）与 `shop:list:`、`shop:geo:{typeId}`；而 RedisConstants 里的 `CACHE_SHOP_KEY=\"cache:shop:\"` 与实际 key 前缀完全不同——它是一个**从未被使用的、且容易误导人的常量**。`:26-28` 的 JetCache 常量同样是死代码（pom 中无 JetCache 依赖）。这类「常量定义与实际实现脱节」的情况在面试中很值得主动提出来，它体现的是对代码库整体的掌握度。" },
+        { t: "p", x: "额外风险点：`shop:list:` 是一个**全局单 key**——所有用户、所有「店铺分类列表」请求共享同一个 key。它是典型的单点热点，且 value 是全量分类列表（大 value 会阻塞 Redis 单线程、增加网络传输）。改进方向见 Q10。" },
+      ],
+      sources: [
+        "shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java:359-360,241,453",
+        "shop-service/src/main/java/com/hmdp/shop/service/impl/ShopTypeServiceImpl.java:41,83",
+        "shop-service/src/main/java/com/hmdp/shop/config/CacheConfig.java:47-51",
+        "common/src/main/java/com/hmdp/utils/RedisConstants.java:1-30",
+      ],
+    },
+
+    // ---------------- Q3 ----------------
+    {
+      cat: "缓存穿透", level: "进阶",
+      title: "缓存穿透你是怎么解决的？@Cacheable 上的 unless=\"#result == null\" 起到防穿透作用了吗？",
+      focus: "考察点：unless 的准确语义、防穿透方案的本质、包装返回值（Result）带来的语义陷阱、负缓存的失效时机。",
+      follows: [
+        "unless 是在方法返回前还是返回后生效？它和「缓存空值」是同一个策略吗？",
+        "queryById 返回的是 Result 包装对象，店铺不存在时返回 Result.fail(...) 而不是 null，这会导致什么？",
+        "如果一定要防住穿透，有哪几种改法？各自的代价是什么？",
+      ],
+      blocks: [
+        { t: "h", x: "1．unless 的准确语义" },
+        { t: "code", x: "ShopServiceImpl.java:360\n@Cacheable(value = \"shopCache\", key = \"#id\", unless = \"#result == null\")\n\nSpring Cache 语义：unless 在方法**执行完成之后**求值，\n表达式为 true → 跳过缓存写入；为 false → 正常写入缓存。" },
+        { t: "p", x: "所以 `unless = \"#result == null\"` 的含义是「结果为 null 时不写入缓存」——它的目的是防止把 null 缓存进去。这与「缓存空值防穿透」是**两个方向相反的策略**：防穿透要求把「不存在」这个事实缓存下来（写入空值/哨兵值），而 unless 恰恰拒绝写入。仅从这行注解看，它不提供任何穿透防护。" },
+        { t: "h", x: "2．真正的行为：Result 非 null 导致了事实上的负缓存" },
+        { t: "code", x: "ShopServiceImpl.java:361-377\npublic Result queryById(Long id) {\n    Shop shop = getById(id);\n    if (shop == null) {\n        logger.warn(\"店铺不存在，ID: {}\", id);\n        return Result.fail(\"店铺不存在!\");     // ← 返回的是 Result 对象，不是 null\n    }\n    return Result.ok(shop);\n}" },
+        { t: "p", x: "关键点：方法签名返回 `Result`，店铺不存在时返回的是 `Result.fail(\"店铺不存在!\")` —— 这是一个**非 null 对象**。因此 `#result == null` 求值为 false → unless 不生效 → **这个失败结果会被正常写进 Redis 缓存，TTL 30 分钟**。" },
+        { t: "p", x: "这带来一个耐人寻味的结论：虽然代码意图是「不缓存」，实际效果却**恰好构成了一个 30 分钟粒度的负缓存**——同一个不存在的 id 被反复查询时，后续请求会命中缓存的 Result.fail，不会打到 DB。所以「穿透被挡住了」这个结果偶然成立，但成因与简历声称的「缓存空值」完全不同，且存在两个附带问题：" },
+        { t: "code", x: "问题 1：TTL 错配\n  设计意图是空值缓存 2 分钟（CACHE_NULL_TTL = 2L，RedisConstants.java:9），\n  实际生效的是 30 分钟（CacheConfig.java:48），陈旧窗口被放大 15 倍。\n\n问题 2：负缓存不会失效\n  ShopController.saveShop（新增店铺）只调用 save()，没有任何 @CacheEvict/@CachePut；\n  若此前查询过该 id 并缓存了 Result.fail，新增成功后 30 分钟内仍会返回「店铺不存在」。" },
+        { t: "h", x: "3．其它防穿透手段" },
+        { t: "p", x: "① 显式缓存空值：返回规范化的 null 或哨兵对象，配合短 TTL（本项目已有 CACHE_NULL_TTL=2L 和 CacheClient.queryWithPassThrough 的完整实现，只是没接入链路）。注意 Spring Cache 里对 null 做缓存需要额外配置（默认不缓存 null），常见做法是返回 Optional 或哨兵对象。② 布隆过滤器：前置一层「一定不存在 / 可能存在」判断，内存极省但有误判率、标准布隆不支持删除；适合 key 集合大且稳定的场景。③ 参数校验 + 网关鉴权：把明显非法的 id（负数、超长、格式错误）挡在缓存之前。④ 限流：对异常流量模式限流保护 DB。" },
+        { t: "p", x: "必须说清的一点：无论哪种方案，都挡不住「海量随机不重复 id」的攻击——每个新 id 至少穿透一次。这种场景只有布隆过滤器（或前置风控/限流）才能真正兜住。" },
+      ],
+      sources: [
+        "shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java:359-377",
+        "shop-service/src/main/java/com/hmdp/shop/config/CacheConfig.java:47-48",
+        "common/src/main/java/com/hmdp/utils/CacheClient.java:82-113（queryWithPassThrough 空值实现，TTL=CACHE_NULL_TTL）",
+        "common/src/main/java/com/hmdp/utils/RedisConstants.java:9",
+        "shop-service/src/main/java/com/hmdp/shop/controller/ShopController.java:42-48（saveShop 无缓存操作）",
+      ],
+      gap: {
+        claim: "简历：针对穿透使用缓存空值解决。",
+        fact: "真实链路中不存在「缓存空值」的实现。CacheClient.queryWithPassThrough（含 CACHE_NULL_TTL=2 分钟的空值写入）代码完整但全仓无调用点；主链路用的 @Cacheable(unless=\"#result == null\") 语义上恰恰是拒绝写入 null。实际的穿透防护是「Result.fail 作为非 null 对象被意外缓存 30 分钟」这一副作用。",
+        advice: "这个问题的危险在于「结果对但理由错」——如果候选人回答「我用空值缓存防穿透」，面试官追问「那你 CACHE_NULL_TTL 配的 2 分钟生效在哪一行」就会露馅。正确的答法是主动讲清 unless 的真实语义（拒绝写 null）+ Result 包装导致的意外负缓存 + TTL 错配与新增不失效两个缺口，然后给出修法：把 queryById 的缓存配置改为按 cache name 指定更短 TTL（RedisCacheManager.withCacheConfiguration），并给 saveShop 补 @CacheEvict。这种「知道自己的代码为什么会这样」的表达，比背标准答案更有说服力。",
+      },
+    },
+
+    // ---------------- Q4 ----------------
+    {
+      cat: "缓存击穿", level: "进阶",
+      title: "缓存击穿你说是「分布式锁 + 逻辑过期」解决的，代码具体在哪个类？被谁调用了？",
+      focus: "考察点：是否真的理解自己代码的调用关系、逻辑过期方案的完整步骤与前提、死代码的识别能力。",
+      follows: [
+        "queryWithLogicalExpire 的执行步骤是什么？为什么过期了还要返回旧数据？",
+        "这个方法在整个仓库里有哪些调用点？",
+        "逻辑过期方案对缓存预热有什么强依赖？为什么？",
+      ],
+      blocks: [
+        { t: "h", x: "1．实现确实存在（在 common 模块）" },
+        { t: "code", x: "common/src/main/java/com/hmdp/utils/CacheClient.java:144-187\npublic <R, ID> R queryWithLogicalExpire(String keyPrefix, ID id, Class<R> type,\n                                        Function<ID, R> dbFallback, Long time, TimeUnit unit) {\n    String json = stringRedisTemplate.opsForValue().get(key);\n    if (StrUtil.isBlank(json)) return null;                    // ① 缓存不存在 → 直接返回 null\n    RedisData redisData = JSONUtil.toBean(json, RedisData.class);\n    R r = JSONUtil.toBean((JSONObject) redisData.getData(), type);\n    LocalDateTime expireTime = redisData.getExpireTime();       // ② 取逻辑过期时间\n    if (expireTime.isAfter(LocalDateTime.now())) return r;      // ③ 未过期 → 直接返回\n\n    String lockKey = LOCK_SHOP_KEY + id;                        // ④ 已过期 → 尝试互斥锁\n    boolean isLock = tryLock(lockKey);\n    if (isLock) {\n        CACHE_REBUILD_EXECUTOR.submit(() -> {                   // ⑤ 异步重建，主线程不等待\n            try { R newR = dbFallback.apply(id);\n                  this.setWithLogicalExpire(key, newR, time, unit); }\n            catch (Exception e) { throw new RuntimeException(e); }\n            finally { unlock(lockKey); }\n        });\n    }\n    return r;                                                   // ⑥ 无论是否拿到锁，都返回旧数据\n}\n\n配套：\n:53-60  setWithLogicalExpire() → 把 value 包成 RedisData{data, expireTime}，**不设物理 TTL**\n:117    CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10)\ncommon/src/main/java/com/hmdp/utils/RedisData.java（data + expireTime 两个字段）" },
+        { t: "h", x: "2．为什么返回旧数据" },
+        { t: "p", x: "逻辑过期的核心取舍是「牺牲一致性换零阻塞」。缓存永不物理过期，靠 value 里的 expireTime 判断新鲜度：一旦过期，由一个拿到锁的线程在后台异步重建，而**所有请求（包括发起重建的那个）立即拿到旧快照返回**。这样任何请求都不会被阻塞，也不会出现「缓存失效瞬间成百上千请求同时落库」的击穿。" },
+        { t: "p", x: "代价也很明确：① 存在脏读窗口，长度等于一次 DB 查询 + 一次 Redis 写入的耗时；② key 常驻内存、永不释放，内存占用不可回收；③ 必须依赖预热保证 key 先存在——这是它最硬的约束。" },
+        { t: "h", x: "3．追问 2：调用点为 0（关键）" },
+        { t: "code", x: "对 CacheClient / queryWithLogicalExpire / queryWithPassThrough / queryWithMutex\n做全仓检索（*.java），命中结果：\n  common/src/main/java/com/hmdp/utils/CacheClient.java:41    ← 类定义本身\n  common/src/main/java/com/hmdp/utils/CacheClient.java:82    ← queryWithPassThrough 定义\n  common/src/main/java/com/hmdp/utils/CacheClient.java:144   ← queryWithLogicalExpire 定义\n  common/src/main/java/com/hmdp/utils/CacheClient.java:199   ← queryWithMutex 定义\n  common/src/main/java/com/hmdp/utils/CacheClient.java:225   ← queryWithMutex 内部递归\n\n没有任何 @Resource CacheClient 注入、没有任何 Service 调用这三个方法。" },
+        { t: "p", x: "即：CacheClient 是一个**完全未被使用的工具类**（虽然标了 @Component 会被 Spring 扫描注册，但没有任何 Bean 依赖它）。主链路 ShopServiceImpl.queryById 用的只是最朴素的 @Cacheable，既没有 `sync = true`（全仓无此参数），也没有分布式锁互斥重建，也没有逻辑过期兜底——**缓存击穿防护在当前主链路上是缺失的**。" },
+        { t: "h", x: "4．追问 3：逻辑过期对预热的强依赖" },
+        { t: "p", x: "因为 setWithLogicalExpire 不设置物理 TTL，key 一旦不存在就永远不会被创建——queryWithLogicalExpire 第一步 `if (StrUtil.isBlank(json)) return null` 直接返回 null，连查库重建的机会都没有。所以这套方案必须配合预热：在服务启动/大促前把所有热点 key 用 setWithLogicalExpire 预先写入。" },
+        { t: "p", x: "这也解释了 ShopServiceImpl.warmUpCacheOnStartup() 的存在意义（:99-123）：预热热门 50 家店铺正是为了让逻辑过期方案有 key 可用。但要注意，预热的 warmUpPopularShops 调用的是 `this.queryById(id)`（:143），走的是 @Cacheable（物理 TTL 30 分钟），写进去的**不是逻辑过期格式**——所以即便把 queryWithLogicalExpire 接上来，预热写入的数据结构也对不上（RedisData 包装 vs 裸 Shop JSON），会反序列化失败。" },
+      ],
+      sources: [
+        "common/src/main/java/com/hmdp/utils/CacheClient.java:41-60,117,144-197,199-246",
+        "common/src/main/java/com/hmdp/utils/RedisData.java:1-20",
+        "common/src/main/java/com/hmdp/utils/RedisConstants.java:14（LOCK_SHOP_KEY）",
+        "shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java:99-123,128-158,359-360",
+      ],
+      gap: {
+        claim: "简历：缓存击穿使用分布式锁+逻辑过期解决。",
+        fact: "逻辑过期 + 互斥锁的实现确实写在 CacheClient.queryWithLogicalExpire（CacheClient.java:144-187），但全仓检索确认**没有任何调用点**，是死代码；主链路 ShopServiceImpl.queryById 只有裸 @Cacheable，无 sync=true、无锁、无逻辑过期，击穿防护实际缺失。此外预热写入的是 @Cacheable 的裸 JSON，与逻辑过期所需的 RedisData 结构不兼容。",
+        advice: "这条与 Q1（二级缓存）同属「实现写了但没接线」的类型，面试官只要问一句「你 queryById 里怎么触发逻辑过期的」就会暴露。最快的修复是让 ShopServiceImpl.queryById 改调 cacheClient.queryWithLogicalExpire(...) 并同步调整预热写入格式（预热时也走 setWithLogicalExpire），这样「分布式锁+逻辑过期」就变成了真话，且能自然带出「预热是逻辑过期的前提」这个深度理解。若暂不改，则应把简历改为「实现了逻辑过期与互斥锁重建的缓存模板，当前链路使用 Spring Cache 注解缓存」。",
+      },
+    },
+
+    // ---------------- Q5 ----------------
+    {
+      cat: "锁的实现", level: "进阶",
+      title: "逻辑过期里的那把锁，和你秒杀用的 Redisson 锁是同一套吗？自己用 SETNX 实现的锁有什么问题？",
+      focus: "考察点：SETNX+EX 与两条命令的原子性差异、锁的持有者校验、锁超时与业务超时的竞态、看门狗机制、项目中两套锁实现的对比。",
+      follows: [
+        "tryLock 用的是什么命令？和「SETNX 后再 EXPIRE」两条命令有什么区别？",
+        "unlock 直接 delete 有什么风险？正确的做法是什么（项目里哪段代码是正确示例）？",
+        "如果重建线程崩溃或者卡死，这把锁会怎么样？缓存会怎样？",
+      ],
+      blocks: [
+        { t: "h", x: "1．两套锁不是同一套" },
+        { t: "code", x: "【逻辑过期用的手写锁】common/src/main/java/com/hmdp/utils/CacheClient.java:190-197\nprivate boolean tryLock(String key) {\n    Boolean flag = stringRedisTemplate.opsForValue()\n            .setIfAbsent(key, \"1\", 10, TimeUnit.SECONDS);   // 值恒为常量 \"1\"\n    return BooleanUtil.isTrue(flag);\n}\nprivate void unlock(String key) {\n    stringRedisTemplate.delete(key);                        // 直接删除，不校验持有者\n}\n\n【秒杀用的 Redisson 锁】common/src/main/java/com/hmdp/config/RedissonConfig.java:41-57\n@Bean public RedissonClient redissonClient() { ... config.useSingleServer() ... }\n使用点：SeckillOrderConsumer.java:86-94  redissonClient.getLock(\"lock:order:\"+orderId).tryLock(10, 30, SECONDS)" },
+        { t: "p", x: "两者是不同实现：逻辑过期用的是 StringRedisTemplate 手写的 SETNX 锁；秒杀用的是 Redisson 的 RLock（具备可重入、看门狗续期、持有者校验等能力）。" },
+        { t: "h", x: "2．追问 1：一条命令 vs 两条命令" },
+        { t: "p", x: "`opsForValue().setIfAbsent(key, value, timeout, unit)` 在 Spring Data Redis 中被编译为一条 `SET key value NX PX <ms>` 命令，**设置值与设置过期时间是原子的**。而「先 SETNX 成功 → 再 EXPIRE」是两条独立命令：如果进程在两条命令之间崩溃（或被 kill、或 Redis 连接断开），就会留下一个**永不过期的锁**，后续所有请求永远拿不到锁，缓存再也无法重建——这是经典的死锁坑。所以只要用 SETNX 加锁，就必须用带过期时间的原子形式。" },
+        { t: "h", x: "3．追问 2：unlock 直接 delete 的风险" },
+        { t: "p", x: "问题的根源是「锁的值没有身份标识」——CacheClient 写入的值是常量 \"1\"，任何人都无法判断这把锁是不是自己的。危险场景：线程 A 拿到锁，业务因 DB 慢超过了 10 秒 TTL → 锁自动过期释放 → 线程 B 拿到锁开始重建 → 此时 A 执行 unlock，`delete` 把 **B 的锁**删掉了 → 线程 C 又能拿到锁 → 互斥被破坏，可能出现多个线程同时重建（甚至更糟）。" },
+        { t: "p", x: "正确做法是「谁的锁谁才能删」：写入锁时把值设为唯一标识（UUID 或「前缀 + 线程 ID」），解锁时用 Lua 脚本做「GET 校验相等 → DEL」的原子操作（必须用 Lua，否则「校验通过」与「删除」之间仍有窗口）。项目里恰好有一个**正确示例**：common/src/main/java/com/hmdp/utils/SimpleRedisLock.java 配合 unlock.lua（README.md:4.2.2 有摘录），value 用 `ID_PREFIX + Thread.currentThread().getId()`，unlock 通过 DefaultRedisScript 执行 Lua 做比较后删除。" },
+        { t: "h", x: "4．追问 3：线程崩溃的后果" },
+        { t: "p", x: "分两个层面：① **锁本身**：因为设置了 10 秒 TTL，线程崩溃不会造成死锁，10 秒后锁自动释放；② **缓存**：重建任务失败意味着缓存一直停留在旧数据——而且因为没有物理 TTL，**它会永远停留下去**，不会有任何自动恢复机制。" },
+        { t: "p", x: "更隐蔽的问题是异常被吞：重建逻辑写在 `CACHE_REBUILD_EXECUTOR.submit(() -> {...})` 里（CacheClient.java:171-183），catch 里 `throw new RuntimeException(e)`（:177-178）在 submit 的 Runnable 中抛出后，只会被封装进返回的 Future——而这个 Future 被直接丢弃，**异常既不会传播也不会打日志**。线上表现为「某个热点 key 的数据莫名其妙一直是旧的」，且没有任何错误线索。修法：catch 中显式 log.error 并考虑上报指标；重建失败时不释放「逻辑过期」语义之外的额外补偿。" },
+      ],
+      sources: [
+        "common/src/main/java/com/hmdp/utils/CacheClient.java:117,144-197",
+        "common/src/main/java/com/hmdp/utils/SimpleRedisLock.java（正确的手写锁示例）",
+        "common/src/main/resources/unlock.lua（若存在；README.md 4.2.2 有摘录）",
+        "common/src/main/java/com/hmdp/config/RedissonConfig.java:41-57",
+        "order-service/src/main/java/com/hmdp/order/mq/SeckillOrderConsumer.java:86-94,144-148",
+        "README.md:291-317（自定义 Redis 锁实现说明）",
+      ],
+    },
+
+    // ---------------- Q6 ----------------
+    {
+      cat: "缓存雪崩", level: "进阶",
+      title: "缓存雪崩怎么防？简历里的「随机 TTL」在代码里是怎么实现的？",
+      focus: "考察点：雪崩的触发场景（集中过期 vs 实例宕机）、随机 TTL 的具体写法与取值范围、多层防御的组合思路。",
+      follows: [
+        "固定 30 分钟 TTL，如果一批 key 在同一时间被写入，会发生什么？",
+        "随机 TTL 具体怎么写？随机范围怎么定比较合理？",
+        "除了随机 TTL，还有哪些防雪崩的手段？项目里各落地了哪些？",
+      ],
+      blocks: [
+        { t: "h", x: "1．源码实证：随机 TTL 不存在" },
+        { t: "code", x: "对 shop-service 全模块检索 Random / random / Math.random / nextInt  →  0 命中\n（仅在 Map/HashMap 等无关位置有字母匹配，无任何随机数调用）\n\n实际 TTL 全部是固定值：\n  shop-service/.../config/CacheConfig.java:48           entryTtl(Duration.ofMinutes(30))\n  shop-service/.../service/impl/ShopTypeServiceImpl.java:83  set(SHOP_LIST_KEY, jsonStr, 30, TimeUnit.MINUTES)" },
+        { t: "p", x: "所以「缓存雪崩使用随机TTL」这一表述在源码中找不到对应实现。" },
+        { t: "h", x: "2．风险场景：集中写入导致集中过期" },
+        { t: "p", x: "固定 TTL 本身不会导致雪崩，但**「批量写入 + 固定 TTL」的组合会**。本项目恰好有这个组合：ShopServiceImpl.warmUpCacheOnStartup()（:99-123）在启动后短时间内批量写入热门店铺、分类列表、GEO 数据。如果这些 key 都用 30 分钟 TTL，那么 30 分钟后它们会在极短的时间窗口内**集体失效**，缓存命中率瞬时归零，全部请求同时落向 MySQL。" },
+        { t: "p", x: "雪崩的另一种成因是 Redis 实例整体不可用（宕机、主从切换、网络分区），这种场景随机 TTL 完全无能为力，只能靠多级缓存与熔断降级。" },
+        { t: "h", x: "3．随机 TTL 的正确写法" },
+        { t: "code", x: "// 写法示意（本源码未实现，属应知应会）\nlong baseMinutes = 30;\nlong jitter = ThreadLocalRandom.current().nextInt(0, 10);   // 抖动 0~10 分钟\nDuration ttl = Duration.ofMinutes(baseMinutes + jitter);\n\n// 若使用 Spring Cache，按 cache name 定制 TTL：\nRedisCacheManager.builder(connectionFactory)\n    .withCacheConfiguration(\"shopCache\",\n        RedisCacheConfiguration.defaultCacheConfig().entryTtl(ttl))\n    .build();" },
+        { t: "p", x: "随机范围的取舍：经验值是基础 TTL 的 **10%~20%**。抖动太小（如 ±10 秒）起不到打散作用，key 仍会在几秒内集中过期；抖动太大（如超过基础 TTL）会让部分数据过早被淘汰、命中率下降、DB 回源压力上升。" },
+        { t: "h", x: "4．防雪崩的组合手段与项目落地情况" },
+        { t: "code", x: "① 随机 TTL                  →  未实现\n② 缓存预热                   →  已实现（ShopServiceImpl.warmUpCacheOnStartup，但有缺陷，见 Q7）\n③ 多级缓存（本地兜底）         →  未实现（Caffeine 未接入，见 Q1）\n④ Redis 高可用（主从/哨兵/集群）→  代码层无体现，属部署配置范畴，README 未提及\n⑤ 熔断降级 + 限流（保护 DB）   →  网关仅对 /agent/** 有令牌桶；order-service 有 Feign fallback\n⑥ 逻辑过期（key 永不物理过期）  →  代码存在但未接入（见 Q4）" },
+        { t: "p", x: "可以看到，项目的雪崩防护目前实际只有「预热」一项在起作用，而它是针对**冷启动**场景的，对「运行期集中过期」并不能覆盖。合理的补法是：给预热写入的 key 加抖动 TTL（改动最小、收益最直接），中长期再考虑接入本地缓存作为二级兜底。" },
+      ],
+      sources: [
+        "shop-service/src/main/java/com/hmdp/shop/config/CacheConfig.java:47-48",
+        "shop-service/src/main/java/com/hmdp/shop/service/impl/ShopTypeServiceImpl.java:83",
+        "shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java:99-123,213-271",
+        "gateway-service/src/main/java/com/hmdp/gateway/filter/AgentRateLimitFilter.java（限流仅作用于 /agent/**）",
+        "README.md:700-706（缓存雪崩的通用解决方案清单）",
+      ],
+      gap: {
+        claim: "简历：缓存雪崩使用随机TTL+缓存预热，全方位保障高可用。",
+        fact: "「缓存预热」属实（ShopServiceImpl.warmUpCacheOnStartup，但存在 @PostConstruct+@Async 不生效的问题，见 Q7）；「随机 TTL」在 shop-service 全模块检索 Random/nextInt 零命中，TTL 为固定 30 分钟，未实现。",
+        advice: "「随机TTL」是非常容易被验证的一句话——面试官问「随机范围取的多少？为什么取这个区间？」就足以判断真假。建议二选一：① 真的补上抖动 TTL（改动仅几行，在 CacheConfig 里给 entryTtl 加 ThreadLocalRandom 抖动即可），然后就能讲清 10%~20% 范围的取舍依据；② 把简历改为「通过缓存预热 + 逻辑过期模板应对缓存失效冲击」。同时可以把「预热本身会制造集中过期」这个反直觉的风险点主动讲出来——这属于只有真正想过的人才会注意到的问题。",
+      },
+    },
+
+    // ---------------- Q7 ----------------
+    {
+      cat: "缓存预热", level: "深入",
+      title: "缓存预热是怎么做的？在 @PostConstruct 上再加 @Async，真的能异步执行吗？",
+      focus: "考察点：Spring 生命周期与 AOP 代理的关系、@Async 失效的常见原因、事件驱动初始化的正确姿势、预热任务的工程细节（限流、可观测、有效性）。",
+      follows: [
+        "为什么 Spring 的生命周期回调方法上，@Async 会被忽略？",
+        "Thread.sleep(10000) 放在启动路径上会有什么后果？",
+        "正确的预热启动姿势应该怎么写？另外 warmUpShopsByType 真的起到预热作用了吗？",
+      ],
+      blocks: [
+        { t: "h", x: "1．预热实现" },
+        { t: "code", x: "shop-service/.../service/impl/ShopServiceImpl.java:87-123\n@PostConstruct\npublic void init() { cacheWarmupExecutor = Executors.newFixedThreadPool(3); }   // :87-92\n\n@PostConstruct\n@Async\npublic void warmUpCacheOnStartup() {\n    try {\n        Thread.sleep(10000);                 // :104  延迟 10 秒等待应用启动\n        warmUpPopularShops();                // :128-158  按 score 降序 LIMIT 50，逐个 queryById，每条 sleep 10ms\n        warmUpShopsByType();                 // :163-208  SELECT DISTINCT type_id，每类预热前 3 页，每类 sleep 50ms\n        warmUpGeoData();                     // :213-271  查有坐标店铺，按 typeId 分组批量 opsForGeo().add\n    } catch (InterruptedException e) { ... }\n}" },
+        { t: "p", x: "三个子任务各自通过 cacheWarmupExecutor.submit(...) 提交（:129、:164、:214），因此**真正并行的是这三个子任务**（固定 3 线程池）；而外层的 warmUpCacheOnStartup 本身是同步执行的。此外还提供了手动触发入口 warmUpCache()、warmUpShopCache(List&lt;Long&gt;)，可用于大促前的主动预热。" },
+        { t: "h", x: "2．追问 1：@PostConstruct + @Async 为什么失效" },
+        { t: "p", x: "Spring 的 @Async 是通过 AOP 代理实现的：AsyncAnnotationBeanPostProcessor 在 Bean 初始化阶段为标注了 @Async 的类生成代理对象，调用方拿到的必须是**代理**，才会进入 AsyncExecutionInterceptor 并提交到线程池。" },
+        { t: "p", x: "而 @PostConstruct 是 Bean 的生命周期回调：容器在 Bean 实例化、属性注入完成后，**通过反射直接在原始对象上调用**这个方法，此时既不经过代理，调用方也不是外部 Bean（是容器自己），因此 @Async 被完全忽略——方法在容器启动线程上同步跑完。" },
+        { t: "p", x: "同样的「自调用失效」也会发生在类内部方法互相调用时（this.xxx() 不走代理）。这类失效在 Spring 中非常常见（@Transactional、@Cacheable、@Async 都有同样的坑），是面试高频点。" },
+        { t: "h", x: "3．追问 2：Thread.sleep(10000) 的实际后果" },
+        { t: "p", x: "因为 @Async 未生效，这 10 秒的 sleep 发生在**主启动线程**上。后果：① 服务启动时间平白增加 10 秒，健康检查可能超时（K8s 的 startupProbe/livenessProbe 配置不当会被判定启动失败并重启，形成重启循环）；② 服务注册到 Nacos 的时机与预热完成时机错位，流量可能在预热还没跑完时就打进来；③ 这 10 秒里容器其实已经「就绪」但被阻塞在半路上，属于典型的「用 sleep 猜测就绪」的反模式。" },
+        { t: "h", x: "4．追问 3：正确的姿势，以及 warmUpShopsByType 的有效性" },
+        { t: "code", x: "正确写法示意（事件驱动，确保代理已生效 + 上下文完全就绪）\n@Component\npublic class CacheWarmupRunner implements ApplicationListener<ApplicationReadyEvent> {\n    @Override\n    public void onApplicationEvent(ApplicationReadyEvent event) {\n        warmupExecutor.submit(this::warmup);   // 真正异步 + 已过代理 + 上下文就绪\n    }\n}\n// 若坚持用 @PostConstruct，必须把 @Async 方法放到**另一个 Bean** 上，\n// 由当前 Bean 注入该 Bean 后调用，才能经过代理。" },
+        { t: "p", x: "另外应当去掉 sleep 固定的 10 秒：改为监听 ApplicationReadyEvent（上下文与代理已完全就绪），或对关键依赖做健康检查后再启动预热。" },
+        { t: "p", x: "**一个更容易被忽略的问题**：warmUpShopsByType 调用的是 this.queryShopByType(typeId, current, null, null)（:192），但该方法**没有 @Cacheable 注解**（:430-497 整个方法没有任何缓存注解）——所以这段「按类型预热」实际上**没有向缓存写入任何数据**，只是空跑了一遍 DB 查询。相比之下 warmUpPopularShops 调用 queryById（有 @Cacheable）是真正有效的。这是「预热代码看起来完整，但一半没生效」的典型案例，值得主动提出来。" },
+      ],
+      sources: [
+        "shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java:81-123,128-208,213-291,297-324,430-497",
+        "docs/perf-plan/架构演进与性能优化落地方案.md:39（P1-5 对 @PostConstruct+@Async 的实证批评）",
+      ],
+      gap: {
+        claim: "简历：缓存雪崩使用随机TTL+缓存预热，全方位保障高可用。",
+        fact: "预热代码存在且三类数据都有对应方法，但：① @Async 因 @PostConstruct 而失效，Thread.sleep(10000) 实际阻塞启动线程；② warmUpShopsByType 调用的 queryShopByType 无缓存注解，该段预热无效（空跑）；③ warmUpPopularShops 的有效性依赖 @Cacheable，属真实预热。",
+        advice: "「你缓存预热怎么做的」是极高频问题，而这里恰好有三层递进的坑（@Async 失效 → sleep 阻塞 → 一段预热白做）。建议全部修复后再讲，这样你能把它讲成一段很完整的经验：事件驱动 + 独立线程池 + 节流 + 有效性验证。若被问到「怎么确认预热成功了」，理想回答是基于日志中的成功计数与 Redis key 数量做校验，而不是「看日志没报错」。",
+      },
+    },
+
+    // ---------------- Q8 ----------------
+    {
+      cat: "缓存一致性", level: "深入",
+      title: "缓存和数据库的一致性怎么保证？更新店铺时怎么处理缓存？",
+      focus: "考察点：Cache Aside 的执行顺序与依据、@CacheEvict 的时机控制、各类不一致窗口的成因与补偿手段、工程取舍的表达。",
+      follows: [
+        "@CacheEvict 默认是方法执行前删缓存还是执行后删？由哪个属性决定？",
+        "为什么是「先更库、后删缓存」而不是「先删缓存、再更库」？两种顺序各自的失败场景是什么？",
+        "如果删缓存这一步失败了呢？延迟双删和 Canal 订阅 binlog 分别解决什么问题？项目为什么没用？",
+      ],
+      blocks: [
+        { t: "h", x: "1．实现：Cache Aside（先更库、后删缓存）" },
+        { t: "code", x: "shop-service/.../service/impl/ShopServiceImpl.java:385-415\n@Override\n@Transactional\n@CacheEvict(value = \"shopCache\", key = \"#shop.id\")\npublic Result update(Shop shop) {\n    ...\n    boolean success = updateById(shop);        // ① 先更新数据库\n    if (success) { checkCacheAfterEvict(id); } // ② 调试：验证缓存是否已被清除\n    // ③ 缓存由 @CacheEvict 注解自动删除\n    return Result.ok();\n}" },
+        { t: "h", x: "2．追问 1：@CacheEvict 的时机由 beforeInvocation 控制" },
+        { t: "p", x: "`@CacheEvict` 的 `beforeInvocation` 属性默认为 **false**，含义是「方法成功返回之后再执行删除」。因此本项目实际是「先更库、后删缓存」。若设为 true，则会在方法执行前删除缓存，无论方法是否抛异常都会删。另有 allEntries 属性（clearShopCache() 用了 allEntries = true，:417-428，清空整个 shopCache）。" },
+        { t: "h", x: "3．追问 2：为什么是「先更库后删缓存」" },
+        { t: "code", x: "【先删缓存，再更库】的失败场景\n  t1: 线程 A 删除缓存\n  t2: 线程 B 读缓存 miss → 读 DB 拿到旧值 → 回填缓存（旧值）\n  t3: 线程 A 才完成 DB 更新\n  → 结果：缓存中长期残留旧值（脏数据），且期间所有请求都会落库\n  若 A 的更新失败/回滚，缓存更是被白白删掉，只剩穿透压力\n\n【先更库，再删缓存】的失败场景\n  t1: 线程 A 完成 DB 更新\n  t2: 线程 B 读缓存 —— 若此刻缓存还在（A 尚未删），B 读到旧值（短暂的脏读）\n  t3: 线程 A 删除缓存 → 后续请求回源拿到新值\n  → 结果：脏窗口很短且有界，最坏情况是删缓存失败留下旧值，由 TTL 兜底" },
+        { t: "p", x: "所以工程上选「先更库后删缓存」：它的失败后果是「短暂脏读 + TTL 兜底」，而「先删缓存」的失败后果是「缓存长期脏 + 缓存被无谓删除」，明显更差。这也是 Cache Aside Pattern 的标准做法。" },
+        { t: "p", x: "需要补充一个更严格的细节：即使「先更库后删缓存」，在 @Transactional 场景下仍存在一个窗口——`@CacheEvict`（默认 beforeInvocation=false）执行时，事务**可能尚未提交**；此时另一个线程读到缓存 miss、去查 DB，读到的仍是未提交前的旧值，然后把这个旧值回填进缓存。标准解法是把删除动作延迟到事务提交之后（用 TransactionSynchronizationManager 的 afterCommit 回调，或 Spring 4.2+ 的 @TransactionalEventListener(phase = AFTER_COMMIT)）。当前代码没有处理这一层，属于可深入讨论的点。" },
+        { t: "h", x: "4．追问 3：删缓存失败的补偿" },
+        { t: "p", x: "① **延迟双删**：更新 DB 后删一次缓存，延迟 N 百毫秒后再删一次，用于覆盖「读线程在更新期间回填了旧值」的窗口。实现简单，但延迟时长只能靠经验估计，且两次删除之间有窗口。② **Canal 订阅 binlog**：伪装成 MySQL 从库订阅 binlog，解析出数据变更后异步删除/更新缓存。优点是与业务代码解耦、可重放、不依赖开发者写对代码；成本是引入 Canal 中间件与运维复杂度。③ **设置较短 TTL 兜底**：最朴素也最常用，把不一致窗口从「永久」压缩到「TTL 长度」。" },
+        { t: "p", x: "本项目选的是 ③：TTL 30 分钟，删缓存失败的脏读窗口有界，属典型工程取舍——对一个学习型微服务项目，引入 Canal 的收益不足以覆盖其复杂度。" },
+        { t: "h", x: "5．一个实际存在的一致性缺口" },
+        { t: "code", x: "shop-service/.../controller/ShopController.java:42-48  saveShop\n    → 只调用 shopService.save(shop)，**没有任何 @CacheEvict / @CachePut**\n\n后果：若某 id 此前被查询过（缓存了 Result.fail 或 null），新增成功后\n      该 id 的负缓存不会失效，最长 30 分钟内仍返回「店铺不存在」。" },
+        { t: "p", x: "更新走 @CacheEvict 是对的，但**新增漏了**。这是缓存一致性设计里很容易被忽略的一环（大家通常只关注 update/delete）。修法：给 saveShop 加 `@CacheEvict(value = \"shopCache\", key = \"#shop.id\")`，或改用 @CachePut 直接写入新值。" },
+      ],
+      sources: [
+        "shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java:385-428",
+        "shop-service/src/main/java/com/hmdp/shop/controller/ShopController.java:42-48",
+        "shop-service/src/main/java/com/hmdp/shop/config/CacheConfig.java:47-48（TTL 兜底）",
+        "README.md:772-776（缓存使用规范：先更新数据库，再删除缓存）",
+      ],
+    },
+
+    // ---------------- Q9 ----------------
+    {
+      cat: "性能验证", level: "深入",
+      title: "简历上的「商户查询 QPS 21K+（21027）」是怎么测出来的？压测脚本、环境、报告在哪？",
+      focus: "考察点：性能数据的可复现性意识、压测方案设计能力、对无法佐证数据的诚实态度、能否把「设计目标」与「实测结果」区分清楚。",
+      follows: [
+        "用的是哪个压测工具？脚本文件在仓库的哪个路径？",
+        "「百万请求稳定」「命中率 90%+」「DB QPS 仅个位数」这些数据是怎么采集的？",
+        "如果让你从零设计一次可信的缓存压测，你会怎么设计？",
+      ],
+      blocks: [
+        { t: "h", x: "1．仓库现状：没有商户查询的压测资产" },
+        { t: "code", x: "docs/perf-plan/ 目录的全部内容（共 2 个文件）：\n  ├─ k6-seckill.js                    ← 压测脚本，压的是秒杀接口\n  │     请求：POST ${BASE_URL}/order/seckill/${VOUCHER_ID}（:52-53）\n  └─ 架构演进与性能优化落地方案.md      ← 方案文档\n\n方案文档第 5 行的自述：\n\"所有代码位置均以 文件路径:行号 标注，所有容量数字均为『测算值，以压测校准为准』。\"" },
+        { t: "p", x: "该目录下**没有**：商户查询接口（GET /shop/{id}）的压测脚本、压测报告、结果数据文件、监控截图或压测台账；文档中提到的 perf-log-template.md 文件不存在。全仓检索 21027 只命中 docs/简历项目描述.txt:2,4 与面试准备稿——即简历文案本身。" },
+        { t: "h", x: "2．追问 2：那些衍生数据的采集方式" },
+        { t: "p", x: "「命中率 90%+」需要 Redis 的 `INFO stats` 里的 keyspace_hits / keyspace_misses 才能算出来（hit_rate = hits / (hits + misses)）；「DB QPS 仅个位数」需要在压测窗口内采集 MySQL 的 `SHOW GLOBAL STATUS LIKE 'Questions'` 或 performance_schema 数据；「百万请求稳定」需要压测工具侧的请求总数统计。这些都需要在压测**当时**同步采集原始数据并留存——目前仓库中没有任何一项。" },
+        { t: "p", x: "有一说一，这类数字在个人项目中「记不清怎么来的」很常见，但面试中它属于**可被直接证伪**的表述：面试官只要说「把压测报告发我看看」就无法应对。所以要么补测，要么改口径。" },
+        { t: "h", x: "3．追问 3：可信的缓存压测应该怎么设计" },
+        { t: "code", x: "① 环境固定并记录\n   8C16G、单实例 Redis、MySQL 独立部署；记录 JVM 参数、连接池配置、Redis maxmemory 策略。\n\n② 数据分层\n   按真实分布构造热点（top 50，占 80% 流量）与长尾（剩余 20%）；\n   预热完成后才开始取数，避免把冷启动抖动算进来。\n\n③ 工具与模型\n   k6 用 ramping-arrival-rate（恒定到达率）而非 constant-vus，\n   分档加压 1k → 5k → 10k → 20k RPS，每档稳态跑够 3~5 分钟。\n\n④ 观测指标（必须同时采集）\n   应用侧：p50/p95/p99 RT、吞吐、错误率（k6 --summary-export 导出 JSON）\n   缓存侧：Redis INFO 的 keyspace_hits / keyspace_misses / used_memory / CPU\n   数据库侧：MySQL Questions / Threads_running / InnoDB 行锁等待\n   进程侧：jstat 的 GC 次数与停顿、Tomcat 线程池活跃数\n\n⑤ 对照组\n   关闭缓存（或清空 Redis）重跑同一档位，测出 DB 的真实上限，\n   两者的比值才是「缓存带来的收益」——没有对照组，QPS 数字没有意义。" },
+        { t: "p", x: "第 ⑤ 点是最容易被忽略也最有说服力的一环：只说「加缓存后 21K QPS」是没有意义的，必须能说出「不加缓存时是多少」。这个对比才能证明缓存架构的真实价值。" },
+      ],
+      sources: [
+        "docs/perf-plan/k6-seckill.js:1-10,25-53（唯一的压测脚本，压的是秒杀接口）",
+        "docs/perf-plan/架构演进与性能优化落地方案.md:5（「所有容量数字均为测算值，以压测校准为准」）、:47-56,316",
+        "docs/简历项目描述.txt:2,4（21K+ / 21027 的原始出处）",
+        "README.md:319-341（4.3 缓存策略实现，未含任何性能数据）",
+      ],
+      gap: {
+        claim: "简历：在 8 核 16GB 内存环境下，二级缓存架构（Caffeine+Redis）支撑核心服务查询达 QPS 21K+(21027)，百万请求稳定；系统性缓存设计：……商户信息查询QPS 21K+(21027)。",
+        fact: "仓库中不存在商户查询的压测脚本、报告或原始数据；唯一的压测脚本 k6-seckill.js 压的是秒杀接口；方案文档明确自述所有容量数字为测算值。21K+/21027 仅出现在简历文案与面试准备稿中。同时该数字归因于「二级缓存架构（Caffeine+Redis）」，而二级缓存本身并未落地（见 Q1）。",
+        advice: "这是全简历风险最高、最容易被要求出示证据的一条（因为它是一个精确到个位的数字，显得非常「实测」）。三个建议：① 如果时间允许，补做一次真实压测（k6 脚本很好写，Redis 与 MySQL 的指标采集也不复杂），把数字换成自己测出来的——哪怕只有 3K QPS，能讲清测试方法也远胜于一个无法佐证的 21K；② 删掉具体数字，改为方法论表述：「基于 k6 设计了缓存压测方案，通过开关缓存对照组量化缓存收益」；③ 至少把归因改对（当前归因的 Caffeine 二级缓存并不存在）。面试中若被追问细节，坦诚说明测试方法而非编造数据，是唯一安全的选择。",
+      },
+    },
+
+    // ---------------- Q10 ----------------
+    {
+      cat: "热点与扩展", level: "深入",
+      title: "如果某个店铺成了超级热点，你的架构撑得住吗？shop:list: 这个 key 有什么特殊风险？",
+      focus: "考察点：单 key 热点的本质与 Redis 单线程模型、本地缓存解决热点的代价、大 value 与全局单 key 的识别、扩展方案的分层思路。",
+      follows: [
+        "Redis 单 key 的 QPS 上限大概是多少？为什么集群也解决不了单 key 热点？",
+        "本地缓存能解决热点 key 吗？引入它要付出什么代价？",
+        "shop:list: 没有 id 后缀，所有分类列表请求打同一个 key，这里有什么风险？",
+      ],
+      blocks: [
+        { t: "h", x: "1．单 key 热点的本质" },
+        { t: "p", x: "Redis 的命令执行是单线程的（Redis 6+ 引入的多线程只用于网络 I/O 的读写与协议解析，**命令执行仍然单线程**）。因此一个 key 的全部读写只能由某台机器的一个核心串行处理，实测通常在 5~10 万 ops/s 量级（本项目方案文档的测算区间是 5~8w ops/s，属测算值）。当某个 key 成为超级热点时，它会吃满该节点的一个核心，从而**拖慢同实例上所有其他 key**——这是最危险的连带效应。" },
+        { t: "p", x: "Redis Cluster 解决的是「海量 key 的总容量与总吞吐」：它按 key 做 CRC16 哈希分片，同一个 key 永远映射到同一个 slot、同一个节点。所以无论集群有多少节点，`shopCache::123` 这个热点 key 都只会落在某一个节点的单核上——**Cluster 对单 key 热点天然无效**。这是一个非常容易被误解的点（很多人以为加集群就能抗热点）。" },
+        { t: "h", x: "2．突破单 key 热点的三类手段" },
+        { t: "code", x: "① 本地缓存（L1）\n   最热的一小部分数据放 JVM 内，请求根本不落到 Redis。\n   代价：多实例不一致（需短 TTL 或 pub/sub 广播失效）、堆内存与 GC 压力。\n\n② key 分片（把一个 key 变成 N 个）\n   shop:123:0 ~ shop:123:N-1，读取时用 userId 或随机数哈希选一片；\n   写入时需要 N 片同写（或先失效再回源），把单核压力摊到 N 个 slot。\n\n③ 读写分离 / 多副本\n   从节点同步主节点数据，读请求由代理层轮询分发到多个从节点，\n   用横向副本分摊同一个 key 的读压力（写仍受主节点单核限制）。" },
+        { t: "p", x: "实际生产中往往是组合使用：本地缓存扛最热的 top N，key 分片扛大规模并发读，多副本做兜底。" },
+        { t: "h", x: "3．追问 2：本地缓存的代价（为什么它不是免费的）" },
+        { t: "p", x: "本地缓存最大的代价是**一致性**：N 个实例各有一份副本，更新时如何让所有实例同时失效？朴素做法是设很短的 TTL（如 5~10 秒），用「短期不一致」换吞吐；进阶做法是依赖 Redis 的 pub/sub 广播失效消息（Spring Cache 的 RedisCacheManager 支持这套机制），或引入消息总线。其次是内存与 GC：堆内缓存的大小必须可控（Caffeine 的 maximumSize / weigher + 淘汰策略），否则会把 Full GC 风险引入应用进程。第三是冷启动：实例重启后缓存为空，需要重新预热，期间的流量会穿透到 Redis/DB。" },
+        { t: "p", x: "所以本地缓存适合「极热 + 变更极少 + 能容忍秒级不一致」的数据。店铺基本信息符合，但订单、库存类数据绝对不能用本地缓存。" },
+        { t: "h", x: "4．追问 3：shop:list: 的多重风险" },
+        { t: "code", x: "common/src/main/java/com/hmdp/utils/RedisConstants.java:23\npublic static final String SHOP_LIST_KEY = \"shop:list:\";       // 注意：没有 id 后缀\n\nshop-service/.../service/impl/ShopTypeServiceImpl.java:41   读\nshop-service/.../service/impl/ShopTypeServiceImpl.java:83   写：\n    redisTemplate.opsForValue().set(SHOP_LIST_KEY, jsonStr, 30, TimeUnit.MINUTES);" },
+        { t: "p", x: "风险有四层：① **全局单 key**——所有用户、所有「店铺分类列表」请求共享同一个 key，是教科书级的单点热点，而且它的 QPS 会随用户量线性增长；② **大 value**——value 是全量分类列表的 JSON 序列化结果，大 value 会让 Redis 序列化/反序列化与网络传输耗时上升，且更容易触发网络缓冲区与慢查询；③ **固定的 30 分钟 TTL**——到期瞬间所有请求同时 miss，全部落到 DB（这是 Q6 所说的「集中过期」的真实案例）；④ **失效粒度粗**——任何一个分类被修改，整个列表缓存都只能整体失效。" },
+        { t: "p", x: "改进方向：① 分类列表是典型「极少变更」的数据，可以把 TTL 显著加长（如 2 小时）并配合逻辑过期 + 异步刷新，避免过期瞬间的穿透；② 或用版本号 key（shop:list:v{n}）让新旧版本平滑切换，更新时写新版本、让旧版本自然过期；③ 分类数量有限且极少变化，最适合放进本地缓存（变更时通过广播失效）。这是一道很好的「把前面所有知识串起来」的综合题。" },
+      ],
+      sources: [
+        "common/src/main/java/com/hmdp/utils/RedisConstants.java:23",
+        "shop-service/src/main/java/com/hmdp/shop/service/impl/ShopTypeServiceImpl.java:41,83",
+        "shop-service/src/main/java/com/hmdp/shop/service/impl/ShopServiceImpl.java:359-360（店铺详情缓存）",
+        "docs/perf-plan/架构演进与性能优化落地方案.md:52（Redis 单 key 5~8w ops/s，测算值）、:316（shop 查询 10w QPS 为优化目标而非实测）",
+      ],
+    },
+  ],
+};

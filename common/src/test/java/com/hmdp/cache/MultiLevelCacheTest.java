@@ -405,4 +405,60 @@ class MultiLevelCacheTest {
 
         assertEquals("降级回源", shop.getName(), "持锁者异常时必须降级回源，而不是返回 null");
     }
+
+    /**
+     * U14：等待期间必须**重新抢锁**，而不只是重读 L2。
+     *
+     * <p>场景：另一实例正持锁回源，并在 100ms 后释放（未写 L2 —— 例如它回源后判定为空、
+     * 或它自己崩在写回之前）。等待侧的退避窗口是 500ms。
+     *
+     * <p>断言的是"回源时是否持锁"，而不是回源次数 —— 两条路径都会调用 loader，
+     * 次数无法区分它们。只重读 L2 的旧实现会在窗口耗尽后**无锁**回源（持锁者已释放，
+     * 此刻本该由本线程接手），本用例据此判红。
+     */
+    @Test
+    void 等待期间重新抢锁_持锁者释放后由等待者接手而非无锁回源() throws Exception {
+        String key = CACHE_SHOP_KEY + 204L;
+        when(valueOperations.get(key)).thenReturn(null);
+
+        AtomicBoolean held = new AtomicBoolean(true);   // 模拟"另一实例正持锁回源"
+        CacheRebuildLock lock = new CacheRebuildLock() {
+            @Override
+            public String tryLock(String k) {
+                return held.compareAndSet(false, true) ? "token" : null;
+            }
+
+            @Override
+            public void unlock(String k, String token) {
+                held.set(false);
+            }
+        };
+
+        // 持锁者 100ms 后释放；它不写 L2，所以等待侧只能靠"重新抢锁"接手
+        Thread otherHolder = new Thread(() -> {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            held.set(false);
+        });
+        otherHolder.start();
+        try {
+            MultiLevelCache<Shop> cache = new MultiLevelCache<>(
+                    "reacquire", Shop.class, redisTemplate, publisher, lock, defaultProperties());
+
+            AtomicBoolean loadedUnderLock = new AtomicBoolean();
+            Shop shop = cache.get(key, () -> {
+                loadedUnderLock.set(held.get());
+                return new Shop().setId(204L).setName("接手重建");
+            });
+
+            assertEquals("接手重建", shop.getName());
+            assertTrue(loadedUnderLock.get(),
+                    "回源必须持锁：等待者应在持锁者释放后重新抢到锁，而不是耗尽窗口降级为无锁回源");
+        } finally {
+            otherHolder.join(5_000L);
+        }
+    }
 }

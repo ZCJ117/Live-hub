@@ -47,12 +47,6 @@ import java.util.List;
 @Slf4j
 public class SeckillOutboxDeliverer {
 
-    /** 事件行状态：待投递（与 {@code VoucherOrderServiceImpl.OUTBOX_STATUS_PENDING} 同义） */
-    private static final int STATUS_PENDING = 0;
-
-    /** 事件行状态：已投递 */
-    private static final int STATUS_DELIVERED = 1;
-
     /** 刚写入/刚失败的行留多久才允许补投（秒） */
     static final long REDELIVER_AFTER_SECONDS = 30L;
 
@@ -76,13 +70,18 @@ public class SeckillOutboxDeliverer {
      *
      * <p>fixedDelay 而非 fixedRate：本轮补投的耗时不应与下一轮重叠，
      * 否则大量积压时会有两轮同时扫同一批行（与 {@code SeckillInFlightCompensator} 同口径）。
+     *
+     * <p>间隔写死为常量而非 {@code fixedDelayString} 外置：SPEC-15 未要求该旋钮，
+     * 且 {@code REDELIVER_AFTER_SECONDS} 的退避语义（{@value #REDELIVER_AFTER_SECONDS} 秒
+     * 判龄）本身就隐含了扫描间隔的量级——把它做成可配只会让"配多大才对"变成一个
+     * 需要重新论证的问题。需要调整时应连同退避一起改，而不是只拧一个数。
      */
-    @Scheduled(fixedDelayString = "${hmdp.seckill.outbox.deliver-interval-ms:3000}")
+    @Scheduled(fixedDelay = 3000L)
     public void deliverPending() {
         List<SeckillOutbox> pending;
         try {
             pending = seckillOutboxMapper.selectList(Wrappers.<SeckillOutbox>lambdaQuery()
-                    .eq(SeckillOutbox::getStatus, STATUS_PENDING)
+                    .eq(SeckillOutbox::getStatus, SeckillOutbox.STATUS_PENDING)
                     .lt(SeckillOutbox::getRetryCount, MAX_RETRY)
                     .le(SeckillOutbox::getUpdateTime,
                             LocalDateTime.now().minusSeconds(REDELIVER_AFTER_SECONDS))
@@ -123,8 +122,8 @@ public class SeckillOutboxDeliverer {
             // 条件更新天然给出了"谁真正改了行"的答案：只有一个实例会拿到 affected=1。
             int affected = seckillOutboxMapper.update(null, Wrappers.<SeckillOutbox>lambdaUpdate()
                     .eq(SeckillOutbox::getId, row.getId())
-                    .eq(SeckillOutbox::getStatus, STATUS_PENDING)
-                    .set(SeckillOutbox::getStatus, STATUS_DELIVERED));
+                    .eq(SeckillOutbox::getStatus, SeckillOutbox.STATUS_PENDING)
+                    .set(SeckillOutbox::getStatus, SeckillOutbox.STATUS_DELIVERED));
             if (affected > 0) {
                 seckillMetrics.incrementOutboxRedelivered();
                 log.warn("事件表补投成功: orderId={}, retryCount={}", row.getId(), row.getRetryCount());

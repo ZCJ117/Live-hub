@@ -74,7 +74,9 @@ public class DocumentServiceImpl implements IDocumentService {
             doc.setFileType(fileType);
             doc.setFileSize(file.getSize());
             doc.setFilePath(filePath.toString());
-            doc.setStatus("PROCESSING");
+            // 落库即 PENDING：消费端用 CAS(PENDING -> PROCESSING) 抢占（SPEC-08 §5.4），
+            // 写成 PROCESSING 会让抢占影响 0 行、每个文档都被判为「已被处理」而静默跳过
+            doc.setStatus("PENDING");
             doc.setUploadedBy(userId);
             doc.setCreatedAt(LocalDateTime.now());
             documentMapper.insert(doc);
@@ -83,10 +85,12 @@ public class DocumentServiceImpl implements IDocumentService {
             if (producer != null) {
                 producer.sendProcessMessage(doc.getId());
             } else {
-                log.warn("RocketMQ unavailable, document {} stays in PROCESSING state", doc.getId());
+                log.warn("RocketMQ unavailable, document {} stays in PENDING state", doc.getId());
             }
 
             log.info("Document uploaded: id={}, name={}, kbId={}", doc.getId(), originalName, kbId);
+            // 响应里的 PROCESSING 是面向调用方的"后台正在处理"语义，与库中的 PENDING 不是同一个字段，
+            // 不要为了"看起来一致"把库里的状态改回去
             return new UploadResponse(doc.getId(), "PROCESSING", "文档已上传，正在处理中");
         } catch (IOException e) {
             log.error("Failed to save uploaded file: {}", originalName, e);

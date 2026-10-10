@@ -28,6 +28,18 @@ public class SeckillOutbox implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * 状态取值：待投递（尚未确认送达 MQ）。
+     *
+     * <p>状态词表属于实体自身：入口侧（{@code VoucherOrderServiceImpl}）与补投器
+     * （{@code SeckillOutboxDeliverer}）都要读写 {@code status} 列，两处各声明一份
+     * 常量会把"这个 0 到底代表什么"变成两份可能漂移的事实。
+     */
+    public static final int STATUS_PENDING = 0;
+
+    /** 状态取值：已投递（已被入口侧或补投器确认送达 MQ） */
+    public static final int STATUS_DELIVERED = 1;
+
     @TableId(value = "id", type = IdType.INPUT)
     private Long id;
 

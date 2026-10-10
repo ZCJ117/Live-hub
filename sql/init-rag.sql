@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS rag_document (
     file_type   VARCHAR(20) NOT NULL,
     file_size   BIGINT,
     file_path   VARCHAR(500),
-    status      VARCHAR(20) DEFAULT 'PROCESSING',
+    -- 默认 PENDING：消费端用 CAS(PENDING -> PROCESSING) 抢占，默认值必须是抢占的前置状态
+    status      VARCHAR(20) DEFAULT 'PENDING',
     chunk_count INT DEFAULT 0,
     error_msg   TEXT,
     uploaded_by BIGINT,

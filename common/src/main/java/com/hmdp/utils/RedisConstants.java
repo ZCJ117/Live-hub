@@ -22,11 +22,20 @@ public class RedisConstants {
      * 风控黑名单 · 用户维度（Set，成员为 loginId 字符串）——SPEC-15 P2-2。
      *
      * <p>先由运维手工维护（{@code SADD risk:blacklist:user 123}），后续可对接风控规则。
-     * 放在 RedisConstants 而非就地硬编码：网关与运维脚本必须看到同一份键名。
+     * 放在 RedisConstants 而非在过滤器内就地硬编码，是为遵守本类作为**全仓 Redis 键
+     * 唯一事实源**的既有约定（{@code MultiLevelCache} 的类注释即依赖这一点）。
+     *
+     * <p>注意：运维与排障脚本读的是**字符串字面值**，不是本常量——改名不会同步到任何脚本，
+     * 运维手册里出现的键名必须与此处逐字一致。
      */
     public static final String RISK_BLACKLIST_USER_KEY = "risk:blacklist:user";
 
-    /** 风控黑名单 · IP 维度（Set，成员为点分十进制 IP）——SPEC-15 P2-2 */
+    /**
+     * 风控黑名单 · IP 维度（Set，成员为点分十进制 IP）——SPEC-15 P2-2。
+     *
+     * <p>写入的 IP 是**网关看到的对端地址**，其含义取决于部署形态；
+     * 前置代理会改变这一点，见 {@code RiskBlacklistFilter#resolveIp} 的说明。
+     */
     public static final String RISK_BLACKLIST_IP_KEY = "risk:blacklist:ip";
 
     /** 二级缓存失效广播频道（二级缓存设计文档 §4.2）：消息体为被失效的 Redis 全键 */
