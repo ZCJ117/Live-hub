@@ -48,6 +48,8 @@ public class SeckillMetrics {
     private Counter outboxRedeliveredCounter;
     private Counter outboxRedeliverFailCounter;
     private Counter outboxExhaustedCounter;
+    private Counter txCheckCommitCounter;
+    private Counter txCheckRollbackCounter;
 
     @PostConstruct
     public void init() {
@@ -186,6 +188,19 @@ public class SeckillMetrics {
                 .tag("type", "outbox_exhausted")
                 .register(meterRegistry);
 
+        // SPEC-16：broker 回查的判定结果。这是"事务消息真的在工作"唯一能从监控上看见的信号
+        // —— 稳态应为 0（回查只在进程于 executeLocalTransaction 返回前挂掉时才发生）；
+        // 非 0 说明确实发生过崩溃，且 broker 的回查机制把它兜住了。
+        txCheckCommitCounter = Counter.builder("seckill.tx.check")
+                .description("broker 事务回查判定为已提交次数（SPEC-16）")
+                .tag("result", "commit")
+                .register(meterRegistry);
+
+        txCheckRollbackCounter = Counter.builder("seckill.tx.check")
+                .description("broker 事务回查判定为回滚次数（SPEC-16）")
+                .tag("result", "rollback")
+                .register(meterRegistry);
+
         // SPEC-14 P0-2 B4：待处置队列长度。它是「秒杀成功但无订单」泄漏的**唯一对外信号**
         // ——既有对账等式会被在途订单一进一出抵消，看不见这条泄漏。
         // 稳态应为 0；非 0 意味着有订单重投耗尽被安全释放，需要人工核对。
@@ -314,6 +329,16 @@ public class SeckillMetrics {
     /** 事件表补投次数耗尽（SPEC-15 P2-1）：转人工，必须告警 */
     public void incrementOutboxExhausted() {
         outboxExhaustedCounter.increment();
+    }
+
+    /** broker 回查判定本地事务已提交（SPEC-16） */
+    public void incrementTxCheckCommit() {
+        txCheckCommitCounter.increment();
+    }
+
+    /** broker 回查判定本地事务已回滚（SPEC-16） */
+    public void incrementTxCheckRollback() {
+        txCheckRollbackCounter.increment();
     }
 
 }
