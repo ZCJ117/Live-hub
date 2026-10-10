@@ -68,6 +68,8 @@ class SeckillOutboxDelivererTest {
     void 补投成功置为已投递并计数() {
         when(seckillOutboxMapper.selectList(any())).thenReturn(List.of(pendingRow(9001L, 0)));
         when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(true);
+        // 条件更新真的改到了行（affected=1）——计数以影响行数为准，故必须桩返回 1
+        when(seckillOutboxMapper.update(any(), any())).thenReturn(1);
 
         deliverer.deliverPending();
 
@@ -79,6 +81,20 @@ class SeckillOutboxDelivererTest {
                 m.getOrderId().equals(9001L) && m.getUserId().equals(7L) && m.getVoucherId().equals(1L)));
         verify(seckillOutboxMapper).update(isNull(), any());
         verify(seckillMetrics).incrementOutboxRedelivered();
+        verify(seckillMetrics, never()).incrementOutboxRedeliverFail();
+    }
+
+    @Test
+    void 重复投递时不计入补投成功数() {
+        when(seckillOutboxMapper.selectList(any())).thenReturn(List.of(pendingRow(9004L, 0)));
+        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(true);
+        // 条件更新影响 0 行：该行已被入口侧或另一实例置为已投递
+        when(seckillOutboxMapper.update(any(), any())).thenReturn(0);
+
+        deliverer.deliverPending();
+
+        // 无条件下计数会把一笔补投算成两笔，告警口径失真
+        verify(seckillMetrics, never()).incrementOutboxRedelivered();
         verify(seckillMetrics, never()).incrementOutboxRedeliverFail();
     }
 

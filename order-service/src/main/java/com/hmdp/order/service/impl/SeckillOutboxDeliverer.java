@@ -29,6 +29,13 @@ import java.util.List;
  * 一是给入口侧的同步投递留出完成时间，避免每条正常订单都被重复投一次；
  * 二是投递失败时会刷新 {@code update_time}（列上带 {@code ON UPDATE CURRENT_TIMESTAMP}），
  * 天然形成固定间隔重试，不会对持续失败的行热循环。
+ *
+ * <p><b>为什么刻意不加 Redisson 锁</b>（与同目录的 {@code SeckillInFlightCompensator} 不同）：
+ * 补偿器的锁保护的是**不可逆**动作 —— 安全释放会 INCR 库存、把用户移出 Set，两个实例同时做就是
+ * 双倍回补（超卖）。本类的动作只是"发一条 MQ 消息"，消费端以 orderId 为主键幂等，
+ * 重复投递不产生任何数据后果；重复的那次也会因为条件更新影响 0 行而不计入补投成功数。
+ * 反过来，加锁会引入一个新的停摆模式：Redisson 故障时补投整体不执行，而它本是"崩溃兜底"，
+ * 不该再多一个依赖。取舍明确：用"可能重复投递（幂等）"换"不依赖额外组件"。
  */
 @Component
 @Slf4j
@@ -101,13 +108,24 @@ public class SeckillOutboxDeliverer {
         boolean sent = seckillOrderProducer.sendSeckillOrderMessage(
                 new SeckillOrderMessage(row.getId(), row.getUserId(), row.getVoucherId()));
         if (sent) {
-            // 条件更新：入口侧可能已抢先置位，只有仍是待投递才改写
-            seckillOutboxMapper.update(null, Wrappers.<SeckillOutbox>lambdaUpdate()
+            // 条件更新：入口侧可能已抢先置位，只有仍是待投递才改写。
+            //
+            // 【为什么按影响行数计数而不是无条件自增】多实例同 tick 会扫到同一批行、
+            // 各自投递一次（本类刻意不加 Redisson 锁，理由见类注释）。消费端以 orderId
+            // 为主键幂等，重复投递不产生数据问题；但若无条件自增，
+            // seckill.outbox.redelivered 会把一笔补投算成两笔，告警口径失真。
+            // 条件更新天然给出了"谁真正改了行"的答案：只有一个实例会拿到 affected=1。
+            int affected = seckillOutboxMapper.update(null, Wrappers.<SeckillOutbox>lambdaUpdate()
                     .eq(SeckillOutbox::getId, row.getId())
                     .eq(SeckillOutbox::getStatus, STATUS_PENDING)
                     .set(SeckillOutbox::getStatus, STATUS_DELIVERED));
-            seckillMetrics.incrementOutboxRedelivered();
-            log.warn("事件表补投成功: orderId={}, retryCount={}", row.getId(), row.getRetryCount());
+            if (affected > 0) {
+                seckillMetrics.incrementOutboxRedelivered();
+                log.warn("事件表补投成功: orderId={}, retryCount={}", row.getId(), row.getRetryCount());
+            } else {
+                // 影响 0 行：该行已被入口侧或另一实例置为已投递，本次属重复投递（消费端幂等）
+                log.info("事件表补投命中已投递行（重复投递，消费端幂等）: orderId={}", row.getId());
+            }
             return true;
         }
 
