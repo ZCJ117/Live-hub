@@ -24,6 +24,9 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.mockito.Spy;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.rocketmq.client.producer.LocalTransactionState;
+import org.apache.rocketmq.client.producer.SendStatus;
+import org.apache.rocketmq.client.producer.TransactionSendResult;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -88,6 +91,21 @@ class SeckillVoucherServiceTest {
         when(stringRedisTemplate.execute(any(), anyList(), any(), any(), any(), any())).thenReturn(value);
     }
 
+    private static TransactionSendResult txResult(SendStatus sendStatus, LocalTransactionState state) {
+        TransactionSendResult r = new TransactionSendResult();
+        r.setSendStatus(sendStatus);
+        r.setLocalTransactionState(state);
+        return r;
+    }
+
+    private static TransactionSendResult committed() {
+        return txResult(SendStatus.SEND_OK, LocalTransactionState.COMMIT_MESSAGE);
+    }
+
+    private static TransactionSendResult rolledBack() {
+        return txResult(SendStatus.SEND_OK, LocalTransactionState.ROLLBACK_MESSAGE);
+    }
+
     @Test
     void 脚本返回1_库存不足() {
         scriptReturns(1L);
@@ -124,22 +142,30 @@ class SeckillVoucherServiceTest {
     }
 
     @Test
-    void 脚本返回0_消息发送成功_返回订单号且计成功() {
+    void 事务提交_返回订单号_标记已投递且不回滚预扣() {
         scriptReturns(0L);
-        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(true);
+        when(seckillOrderProducer.sendSeckillOrderMessageInTransaction(any())).thenReturn(committed());
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
 
         Result r = service.seckillVoucher(1L);
 
         assertTrue(r.getSuccess());
         assertEquals(9001L, r.getData());
+        // evaluate：
+        // 1. 事件行不再由入口 INSERT —— 它已移入 executeLocalTransaction，由 broker 回调触发。
+        //    入口若还 INSERT，half message 与本地写入之间就没有任何绑定，是伪事务消息。
+        verify(seckillOutboxMapper, never()).insert(any());
+        // 2. 提交后要置为已投递，否则补投器 30s 后会把正常单再投一次（消费端幂等，无害但脏）
+        verify(seckillOutboxMapper).update(any(), any());
+        verify(valueOperations, never()).increment(anyString());
         verify(seckillMetrics).incrementSeckillSuccess();
         verify(seckillMetrics).incrementMqSendSuccess();
     }
 
     @Test
-    void 脚本返回0_消息发送失败_返回失败且回滚预扣_不计成功() {
+    void 事务回滚_返回失败且已回滚预扣_不计成功() {
         scriptReturns(0L);
-        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(false);
+        when(seckillOrderProducer.sendSeckillOrderMessageInTransaction(any())).thenReturn(rolledBack());
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
         when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
@@ -173,7 +199,7 @@ class SeckillVoucherServiceTest {
         String stockKeyMissing = service.seckillVoucher(1L).getErrorMsg();
 
         scriptReturns(0L);
-        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(false);
+        when(seckillOrderProducer.sendSeckillOrderMessageInTransaction(any())).thenReturn(rolledBack());
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
         when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
@@ -226,7 +252,7 @@ class SeckillVoucherServiceTest {
         // 断言 nextId（时间窗判定后的第一条语句）未被调用，而不是去 verify execute 的 varargs 参数个数——
         // Mockito 的 varargs 匹配是位置式的，用 N+1 个匹配器去 verify 一个 N 参调用会**恒真**（假绿）。
         verify(redisIdWorker, never()).nextId(anyString());
-        verify(seckillOrderProducer, never()).sendSeckillOrderMessage(any());
+        verify(seckillOrderProducer, never()).sendSeckillOrderMessageInTransaction(any());
     }
 
     @Test
@@ -241,7 +267,7 @@ class SeckillVoucherServiceTest {
         assertFalse(r.getSuccess());
         assertEquals("秒杀活动已结束", r.getErrorMsg());
         verify(seckillMetrics).incrementSeckillEnded();
-        verify(seckillOrderProducer, never()).sendSeckillOrderMessage(any());
+        verify(seckillOrderProducer, never()).sendSeckillOrderMessageInTransaction(any());
     }
 
     @Test
@@ -348,58 +374,12 @@ class SeckillVoucherServiceTest {
                 "ARGV[4] 必须是当前 epoch 毫秒（在途补偿器据此判龄），实际=" + ts + " now=" + now);
     }
 
-    // ---------- SPEC-15 P2-1：本地事件表 ----------
+    // ---------- SPEC-16：入口接入事务消息 ----------
 
     @Test
-    void 成功路径先落待投递事件行再投递_且投递成功后标记已投递() {
+    void 事务回滚时先删事件行再回滚预扣() {
         scriptReturns(0L);
-        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(true);
-
-        Result r = service.seckillVoucher(1L);
-
-        assertTrue(r.getSuccess());
-
-        ArgumentCaptor<SeckillOutbox> row = ArgumentCaptor.forClass(SeckillOutbox.class);
-        verify(seckillOutboxMapper).insert(row.capture());
-        assertEquals(9001L, row.getValue().getId());
-        assertEquals(7L, row.getValue().getUserId());
-        assertEquals(1L, row.getValue().getVoucherId());
-        assertEquals(0, row.getValue().getStatus(), "落库时必须是待投递态");
-        assertEquals(0, row.getValue().getRetryCount());
-
-        // 落库必须先于投递：反过来的话"提交后崩溃"就丢了投递决策
-        InOrder order = inOrder(seckillOutboxMapper, seckillOrderProducer);
-        order.verify(seckillOutboxMapper).insert(any());
-        order.verify(seckillOrderProducer).sendSeckillOrderMessage(any());
-
-        // 生产代码按 MP 惯例传 entity=null（条件全在 wrapper 里）。
-        // 这里用 any()：Mockito 5 的 any() 同时匹配 null 与非 null，
-        // 正好覆盖本形态的 (null, wrapper) 实参（isNull() 则无法覆盖非 null 形态）。
-        verify(seckillOutboxMapper).update(any(), any());
-    }
-
-    @Test
-    void 事件行落库失败时回滚预扣且返回失败_不投递() {
-        scriptReturns(0L);
-        when(seckillOutboxMapper.insert(any())).thenThrow(new RuntimeException("DB 不可用"));
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
-        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
-
-        Result r = service.seckillVoucher(1L);
-
-        assertFalse(r.getSuccess());
-        verify(valueOperations).increment("seckill:stock:1");
-        verify(setOperations).remove("seckill:order:1", "7");
-        verify(hashOperations).delete("seckill:order:detail:1", "9001");
-        verify(seckillOrderProducer, never()).sendSeckillOrderMessage(any());
-        verify(seckillMetrics, never()).incrementSeckillSuccess();
-    }
-
-    @Test
-    void 投递失败时先删事件行再回滚预扣() {
-        scriptReturns(0L);
-        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(false);
+        when(seckillOrderProducer.sendSeckillOrderMessageInTransaction(any())).thenReturn(rolledBack());
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
         when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
@@ -409,8 +389,7 @@ class SeckillVoucherServiceTest {
         assertFalse(r.getSuccess());
         assertEquals("订单提交繁忙，请稍后重试", r.getErrorMsg());
 
-        // 顺序即正确性（见本任务顶部的崩溃顺序论证）：
-        // 先删行、后回滚，崩溃时停在"行已删 + 预扣仍在"的少卖侧；
+        // 顺序即正确性：先删行、后回滚，崩溃时停在"行已删 + 预扣仍在"的少卖侧；
         // 反过来会停在"预扣已释放 + 行仍待投递"，补投出去就是超卖。
         InOrder order = inOrder(seckillOutboxMapper, valueOperations);
         order.verify(seckillOutboxMapper).deleteById(9001L);
@@ -418,9 +397,59 @@ class SeckillVoucherServiceTest {
     }
 
     @Test
+    void 事务消息发送抛异常_回滚预扣且不删事件行() {
+        scriptReturns(0L);
+        when(seckillOrderProducer.sendSeckillOrderMessageInTransaction(any()))
+                .thenThrow(new org.springframework.messaging.MessagingException("broker 不可达"));
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+
+        Result r = service.seckillVoucher(1L);
+
+        assertFalse(r.getSuccess());
+        verify(valueOperations).increment("seckill:stock:1");
+        // 抛异常 ⇒ half message 未落盘 ⇒ executeLocalTransaction 根本没跑 ⇒ 不可能有事件行。
+        // 这里若调 deleteById 会掩盖"异常发生在发送阶段"这个诊断信息。
+        verify(seckillOutboxMapper, never()).deleteById(any());
+        verify(seckillMetrics).incrementMqSendFail();
+    }
+
+    @Test
+    void half_message未落盘_sendStatus非OK_按失败处理并回滚() {
+        scriptReturns(0L);
+        when(seckillOrderProducer.sendSeckillOrderMessageInTransaction(any()))
+                .thenReturn(txResult(SendStatus.FLUSH_DISK_TIMEOUT, LocalTransactionState.COMMIT_MESSAGE));
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+
+        Result r = service.seckillVoucher(1L);
+
+        assertFalse(r.getSuccess(),
+                "sendStatus 非 SEND_OK 时 half message 未确认落盘，即便本地状态是 COMMIT 也不能算成功");
+        verify(valueOperations).increment("seckill:stock:1");
+        verify(seckillMetrics, never()).incrementSeckillSuccess();
+    }
+
+    @Test
+    void 事务发送返回null_按失败处理不抛NPE() {
+        scriptReturns(0L);
+        when(seckillOrderProducer.sendSeckillOrderMessageInTransaction(any())).thenReturn(null);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+
+        Result r = service.seckillVoucher(1L);
+
+        assertFalse(r.getSuccess());
+        verify(seckillMetrics, never()).incrementSeckillSuccess();
+    }
+
+    @Test
     void 事件行删除失败时保留预扣不回滚() {
         scriptReturns(0L);
-        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(false);
+        when(seckillOrderProducer.sendSeckillOrderMessageInTransaction(any())).thenReturn(rolledBack());
         when(seckillOutboxMapper.deleteById(9001L)).thenThrow(new RuntimeException("DB 不可用"));
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);

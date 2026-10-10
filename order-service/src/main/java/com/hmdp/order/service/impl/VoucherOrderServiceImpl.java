@@ -25,6 +25,9 @@ import com.hmdp.utils.UserHolder;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.client.producer.LocalTransactionState;
+import org.apache.rocketmq.client.producer.SendStatus;
+import org.apache.rocketmq.client.producer.TransactionSendResult;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -145,41 +148,39 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 }
             }
 
-            // 本地事件表（SPEC-15 P2-1 方案 a / 形态 D1-b）：先落库、再投递。
+            // 事务消息（SPEC-16）：half message 先落 broker，broker 回调 executeLocalTransaction
+            // 写本地事件行，行落库 ⟺ broker 提交投递，二者由 broker 的 commit/rollback 绑定。
+            // outbox 表因此从"投递任务表"升级为"本地事务凭据表"——broker 回查问的就是它。
             //
-            // 【为什么这样就够】落库成功即代表"这条订单一定会被投递"：即使本进程在
-            // 紧接着的一行崩溃，SeckillOutboxDeliverer 也会扫到 status=0 的行补投。
-            // 丢失窗口 = 0，不再依赖 P0-2 的 T+120s 事后补偿。
-            //
-            // 【诚实说明】本项目生产端此前没有任何 DB 写入（库存在 Redis 扣、订单由消费者落库），
-            // 因此"投递与本地状态同事务"在这里**等价于**"INSERT 自身提交后再投递"——
-            // 没有第二个 DB 写入可以与之原子化。不要把它理解成两阶段提交。
-            // 也正因为如此，本方法**没有**加 @Transactional：那只会把 Redis 预扣和
-            // MQ 同步发送（网络调用）一起圈进一个 DB 事务，长事务持有连接且毫无收益。
-            SeckillOutbox outbox = new SeckillOutbox()
-                    .setId(orderId)
-                    .setUserId(userId)
-                    .setVoucherId(voucherId)
-                    .setStatus(SeckillOutbox.STATUS_PENDING)
-                    .setRetryCount(0);
+            // 【为什么不再在这里 INSERT】INSERT 移入 executeLocalTransaction 才有原子性。
+            // 若仍留在这里，"先独立提交 INSERT、再发事务消息"的 half message 与本地写入之间
+            // 不存在任何绑定，是伪事务消息（SPEC-16 §3）。
+            SeckillOrderMessage message = new SeckillOrderMessage(orderId, userId, voucherId);
+
+            TransactionSendResult txResult;
             try {
-                seckillOutboxMapper.insert(outbox);
+                txResult = seckillOrderProducer.sendSeckillOrderMessageInTransaction(message);
             } catch (Exception e) {
-                // 落库失败 = 无法对投递做持久承诺，必须回滚预扣并明确返回失败
+                // 发送阶段抛异常 ⇒ half message 未落盘 ⇒ executeLocalTransaction 根本没跑 ⇒ 无事件行。
+                // 因此这里直接回滚预扣，**不**做删行（对比下面那个分支）。
                 rollbackSeckillReservation(voucherId, userId, orderId);
+                seckillMetrics.incrementMqSendFail();
                 seckillMetrics.incrementSeckillFail();
-                log.error("秒杀事件行落库失败，已回滚Redis预扣: orderId={}, userId={}, voucherId={}",
+                log.error("秒杀事务消息发送异常，已回滚Redis预扣: orderId={}, userId={}, voucherId={}",
                         orderId, userId, voucherId, e);
                 return Result.fail(SeckillFailMessages.MQ_SEND_FAILED);
             }
 
-            SeckillOrderMessage message = new SeckillOrderMessage(orderId, userId, voucherId);
+            // 只有 broker 确认 half message 落盘（SEND_OK）**且**本地事务提交（COMMIT）才算成功。
+            // 其余一律走失败路径；不单列 UNKNOW 档 —— executeLocalTransaction 抛异常时 RocketMQ
+            // 客户端写死转 ROLLBACK，框架不会替我们产生 UNKNOW。
+            boolean committed = txResult != null
+                    && SendStatus.SEND_OK == txResult.getSendStatus()
+                    && LocalTransactionState.COMMIT_MESSAGE == txResult.getLocalTransactionState();
 
-            // 同步发送（SPEC-03 §5.2 方案 A）：asyncSend 的返回值只代表"提交成功"，
-            // 真正的失败被吞在回调里，用户会拿到一个永不兑现的 orderId
-            if (!seckillOrderProducer.sendSeckillOrderMessage(message)) {
+            if (!committed) {
                 // 【顺序即正确性】必须先删事件行、再回滚预扣。理由见本段上方注释与
-                // SeckillVoucherServiceTest#投递失败时先删事件行再回滚预扣 的论证：
+                // SeckillVoucherServiceTest#事务回滚时先删事件行再回滚预扣 的论证：
                 // 反过来会在"回滚完成但行未删"的崩溃点上留下一条待投递记录，
                 // 补投出去会在已释放的预扣上重新建单 —— 超卖方向。
                 if (deleteOutboxRow(orderId)) {
@@ -188,20 +189,21 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     // 行没删掉 → 该单仍会被补投器投递 → 预扣**必须保留**。
                     // 若此处照常回滚（INCR 库存 + 移出用户 + 删明细），补投出去的消息会在
                     // 一份已释放的预扣上重新建单：Redis 库存比 DB 多 1，即超卖方向。
-                    // 这是"先删后回滚"想防的同一类风险，只是触发方式从进程崩溃换成了删除抛异常。
                     // 取舍：宁可让用户先看到一次失败、稍后真的拿到订单（延迟/少卖），也不能超卖。
                     log.error("[需人工核对] 事件行删除失败，已保留预扣不回滚: orderId={}, userId={}, voucherId={}",
                             orderId, userId, voucherId);
                 }
                 seckillMetrics.incrementMqSendFail();
                 seckillMetrics.incrementSeckillFail();
-                log.error("秒杀订单消息发送失败: orderId={}, userId={}, voucherId={}",
-                        orderId, userId, voucherId);
+                log.error("秒杀本地事务未提交，已按失败处理: orderId={}, localTxState={}, sendStatus={}",
+                        orderId,
+                        txResult == null ? null : txResult.getLocalTransactionState(),
+                        txResult == null ? null : txResult.getSendStatus());
                 return Result.fail(SeckillFailMessages.MQ_SEND_FAILED);
             }
 
-            // 标记已投递。失败只记 warn、不影响返回：补投器下一轮会再投一次，
-            // 消费端以 orderId 为主键幂等，重复投递不会重复建单。
+            // broker 已确认提交，投递由 broker 负责；标记后补投器不再重复捞这一行。
+            // 标记失败只记 warn、不影响返回：补投器下一轮会再投一次，消费端以 orderId 为主键幂等。
             markOutboxDelivered(orderId);
 
             seckillMetrics.incrementMqSendSuccess();
