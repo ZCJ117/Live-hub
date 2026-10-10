@@ -35,6 +35,10 @@ public class SeckillMetrics {
     private Counter mqConsumeFailCounter;
     private Counter retryExhaustedCounter;
     private Counter dlqConsumedCounter;
+    private Counter compensateResendCounter;
+    private Counter compensateCleanupCounter;
+    private Counter compensateReleaseCounter;
+    private Counter compensateWrongReleaseCounter;
 
     @PostConstruct
     public void init() {
@@ -112,6 +116,26 @@ public class SeckillMetrics {
                 .tag("type", "dlq")
                 .register(meterRegistry);
 
+        compensateResendCounter = Counter.builder("seckill.compensate.resend")
+                .description("在途订单自动重投次数（SPEC-14 P0-2）")
+                .tag("reason", "compensate_resend")
+                .register(meterRegistry);
+
+        compensateCleanupCounter = Counter.builder("seckill.compensate.cleanup")
+                .description("在途明细清理次数（DB 已有单，仅删明细）")
+                .tag("reason", "compensate_cleanup")
+                .register(meterRegistry);
+
+        compensateReleaseCounter = Counter.builder("seckill.compensate.release")
+                .description("重投耗尽后的安全释放次数（回滚预扣）")
+                .tag("reason", "compensate_release")
+                .register(meterRegistry);
+
+        compensateWrongReleaseCounter = Counter.builder("seckill.compensate.wrong.release")
+                .description("误释放次数（释放后 DB 又出现该单）——必须恒为 0（SPEC-14 §6 验收 5）")
+                .tag("reason", "compensate_wrong_release")
+                .register(meterRegistry);
+
         log.info("秒杀监控指标初始化完成");
     }
 
@@ -177,6 +201,23 @@ public class SeckillMetrics {
 
     public void incrementDlqConsumed() {
         dlqConsumedCounter.increment();
+    }
+
+    public void incrementCompensateResend() {
+        compensateResendCounter.increment();
+    }
+
+    public void incrementCompensateCleanup() {
+        compensateCleanupCounter.increment();
+    }
+
+    public void incrementCompensateRelease() {
+        compensateReleaseCounter.increment();
+    }
+
+    /** 误释放：释放决策做出后 DB 又出现该 orderId。任何一次都说明释放前置条件判断有漏洞 */
+    public void incrementCompensateWrongRelease() {
+        compensateWrongReleaseCounter.increment();
     }
 
 }

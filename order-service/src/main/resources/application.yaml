@@ -137,6 +137,11 @@ hmdp:
     enabled: true # SPEC-10 §5.3：本服务使用 Redisson 分布式锁，显式开启
   internal-token: ${INTERNAL_TOKEN:}
   admin-user-ids: ${ADMIN_USER_IDS:}
+  # 在途订单补偿器（SPEC-14 P0-2）
+  seckill:
+    compensate:
+      timeout-seconds: 120   # 在途超时阈值：超过此时长仍未落库即触发补偿
+      max-resend: 2          # 单条订单最大重投次数；耗尽后安全释放预扣
 
 # Sa-Token 配置
 sa-token:
