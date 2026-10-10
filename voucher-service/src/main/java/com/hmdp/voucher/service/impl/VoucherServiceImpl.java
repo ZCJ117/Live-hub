@@ -8,6 +8,7 @@ import com.hmdp.voucher.mapper.VoucherMapper;
 import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.voucher.service.ISeckillVoucherService;
 import com.hmdp.voucher.service.IVoucherService;
+import com.hmdp.utils.RedisConstants;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -16,7 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 import jakarta.annotation.Resource;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 
 import static com.hmdp.utils.RedisConstants.SECKILL_DEDUCT_KEY;
 import static com.hmdp.utils.RedisConstants.SECKILL_STOCK_KEY;
@@ -65,7 +69,40 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         seckillVoucherService.save(seckillVoucher);
         //保存秒杀库存到redis中
         stringRedisTemplate.opsForValue().set(SECKILL_STOCK_KEY + voucher.getId(),voucher.getStock().toString());
+        // 写入活动时间窗（SPEC-14 P0-3）：秒杀入口据此在调用 Lua 前拒绝窗口外请求
+        writeSeckillWindow(voucher);
+    }
 
+    /**
+     * 写入秒杀活动时间窗 Hash（SPEC-14 P0-3 / §7 M2）。
+     *
+     * <p>时间窗由**创建方**（本方法）与**读取方**（order-service 秒杀入口）共享，两侧口径必须一致：
+     * 活跃 ⇔ {@code begin <= now <= end}，与 {@code listActiveSeckillVoucherIds()} 的
+     * {@code le(beginTime)} + {@code ge(endTime)} 严格对齐。
+     *
+     * <p>TTL 刻意长于活动周期（+{@value RedisConstants#SECKILL_WINDOW_RETAIN_HOURS} 小时）：
+     * 入口在 key 缺失时按「无窗口限制」放行，若 TTL 等于活动周期，结束后 key 过期反而放行。
+     *
+     * <p>注意：本方法与 DB 写入同处 {@code @Transactional}，但 Redis 写入**不参与** DB 事务回滚。
+     * 属可接受取舍——回滚后残留的 window key 只会在入口被判为「活动已结束」，
+     * 而该券本身已不存在（DB 已回滚），无实际副作用。
+     */
+    private void writeSeckillWindow(Voucher voucher) {
+        if (voucher.getBeginTime() == null || voucher.getEndTime() == null) {
+            // 非秒杀券 / 历史数据可能无时间窗：不写 key，入口按「无限制」放行（行为不变）
+            return;
+        }
+        long beginMs = voucher.getBeginTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long endMs = voucher.getEndTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long ttlSeconds = Math.max(60L,
+                ChronoUnit.SECONDS.between(LocalDateTime.now(), voucher.getEndTime())
+                        + RedisConstants.SECKILL_WINDOW_RETAIN_HOURS * 3600L);
+
+        String key = RedisConstants.windowKey(voucher.getId());
+        stringRedisTemplate.opsForHash().putAll(key, Map.of(
+                RedisConstants.SECKILL_WINDOW_FIELD_BEGIN, String.valueOf(beginMs),
+                RedisConstants.SECKILL_WINDOW_FIELD_END, String.valueOf(endMs)));
+        stringRedisTemplate.expire(key, Duration.ofSeconds(ttlSeconds));
     }
 
     /**

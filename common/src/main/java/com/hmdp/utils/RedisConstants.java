@@ -50,6 +50,25 @@ public class RedisConstants {
     public static final Long SECKILL_DETAIL_TTL_SECONDS = 3600L;
 
     /**
+     * 秒杀活动时间窗 Hash（字段 begin/end，值为 epoch millis）——SPEC-14 P0-3。
+     *
+     * <p>与 {@code seckill.lua} **无关**：脚本不读写这个 key，它由 voucher-service 写入、
+     * order-service 秒杀入口读取，用于在调用脚本**之前**拒绝时间窗外的请求。
+     */
+    public static final String SECKILL_WINDOW_KEY = "seckill:window:";
+    /** 时间窗 Hash 字段名：活动开始（epoch millis） */
+    public static final String SECKILL_WINDOW_FIELD_BEGIN = "begin";
+    /** 时间窗 Hash 字段名：活动结束（epoch millis） */
+    public static final String SECKILL_WINDOW_FIELD_END = "end";
+    /**
+     * 时间窗 key 在活动结束后仍保留的时长（小时）——SPEC-14 §7 M2。
+     *
+     * <p>入口在 key 缺失时按「无窗口限制」放行（向后兼容历史券）。若 TTL 恰好等于活动周期，
+     * 活动结束瞬间 key 过期 → 缺失 → **反而放行**，与 P0-3 要修的缺陷同构。必须长于活动周期。
+     */
+    public static final Long SECKILL_WINDOW_RETAIN_HOURS = 24L;
+
+    /**
      * 秒杀 key 工厂 —— 唯一事实源（SPEC-04 §5.2）。
      *
      * <p>三处拼法（写入端 {@code seckill.lua}、清理端 {@code SeckillOrderConsumer}、
@@ -67,6 +86,10 @@ public class RedisConstants {
 
     public static String detailKey(Long voucherId) {
         return SECKILL_ORDER_DETAIL_KEY + voucherId;
+    }
+
+    public static String windowKey(Long voucherId) {
+        return SECKILL_WINDOW_KEY + voucherId;
     }
     public static final String BLOG_LIKED_KEY = "blog:liked:";
     public static final String FEED_KEY = "feed:";
