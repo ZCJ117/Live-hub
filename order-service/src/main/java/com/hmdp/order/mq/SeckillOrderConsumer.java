@@ -7,6 +7,7 @@ import com.hmdp.dto.SeckillOrderMessage;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.order.feign.VoucherFeignClient;
 import com.hmdp.order.mapper.VoucherOrderMapper;
+import com.hmdp.order.metrics.FeignFailureRateMonitor;
 import com.hmdp.order.metrics.SeckillMetrics;
 import com.hmdp.utils.RedisConstants;
 import lombok.extern.slf4j.Slf4j;
@@ -62,6 +63,9 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
 
     @Resource
     private SeckillMetrics seckillMetrics;
+
+    @Resource
+    private FeignFailureRateMonitor feignFailureRateMonitor;
 
     private static final int MAX_RETRY_COUNT = 3;
 
@@ -156,8 +160,12 @@ public class SeckillOrderConsumer implements RocketMQListener<MessageExt> {
                 Result deductResult;
                 try {
                     deductResult = voucherFeignClient.deductStock(voucherId, orderId);
+                    // SPEC-15 P1-4：只做观测，不改变控制流——
+                    // 下面 catch 里的 throw 仍然是"应该重试"的正确语义（SPEC-03 §1.7）
+                    feignFailureRateMonitor.record(true);
                 } catch (Exception e) {
                     // 内部端点不可达/网络异常：属于"应该重试"，不能当作业务失败丢弃（SPEC-03 §1.7）
+                    feignFailureRateMonitor.record(false);
                     log.error("调用库存扣减失败，触发重试: voucherId={}, orderId={}", voucherId, orderId, e);
                     throw new RuntimeException("库存服务调用失败", e);
                 }

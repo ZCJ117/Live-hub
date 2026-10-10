@@ -6,6 +6,7 @@ import com.hmdp.dto.SeckillOrderMessage;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.order.feign.VoucherFeignClient;
 import com.hmdp.order.mapper.VoucherOrderMapper;
+import com.hmdp.order.metrics.FeignFailureRateMonitor;
 import com.hmdp.order.metrics.SeckillMetrics;
 import com.hmdp.utils.RedisConstants;
 import org.apache.rocketmq.common.message.MessageExt;
@@ -40,6 +41,7 @@ class SeckillOrderConsumerTest {
     @Mock private RedissonClient redissonClient;
     @Mock private RLock rLock;
     @Mock private SeckillMetrics seckillMetrics;
+    @Mock private FeignFailureRateMonitor feignFailureRateMonitor;
     @Mock private SetOperations<String, String> setOperations;
     @Mock private HashOperations<String, Object, Object> hashOperations;
     @Mock private ValueOperations<String, String> valueOperations;
@@ -211,5 +213,36 @@ class SeckillOrderConsumerTest {
 
         // 只有 MessageExt 能带来真实重试次数；若仍用业务字段，这里恒为 0、告警不触发
         verify(seckillMetrics).incrementRetryExhausted();
+    }
+
+    @Test
+    void 扣库存成功时记录Feign成功样本() throws Exception {
+        when(redissonClient.getLock(anyString())).thenReturn(rLock);
+        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(rLock.isHeldByCurrentThread()).thenReturn(true);
+        when(voucherOrderMapper.selectById(9001L)).thenReturn(null);
+        when(voucherOrderMapper.selectCount(any())).thenReturn(0L);
+        when(voucherOrderMapper.insert(any())).thenReturn(1);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+        when(voucherFeignClient.deductStock(1L, 9001L)).thenReturn(Result.ok());
+
+        consumer.handleOrder(msg, 0);
+
+        verify(feignFailureRateMonitor).record(true);
+    }
+
+    @Test
+    void 扣库存异常时记录Feign失败样本() throws Exception {
+        when(redissonClient.getLock(anyString())).thenReturn(rLock);
+        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(rLock.isHeldByCurrentThread()).thenReturn(true);
+        when(voucherOrderMapper.selectById(9001L)).thenReturn(null);
+        when(voucherOrderMapper.selectCount(any())).thenReturn(0L);
+        when(voucherFeignClient.deductStock(1L, 9001L))
+                .thenThrow(new RuntimeException("voucher-service 不可达"));
+
+        assertThrows(RuntimeException.class, () -> consumer.handleOrder(msg, 0));
+
+        verify(feignFailureRateMonitor).record(false);
     }
 }

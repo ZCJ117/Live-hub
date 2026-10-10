@@ -47,4 +47,15 @@ class PoolAndFeignConfigContractTest {
         assertEquals("50", loadApplicationYaml().getProperty("spring.data.redis.lettuce.pool.max-active"),
                 "SPEC-15 P1-1：原值 10 会在高并发下成为 Lettuce 排队点");
     }
+
+    @Test
+    void Feign对voucher服务收紧超时_不影响default() {
+        Properties p = loadApplicationYaml();
+        // SPEC-15 P1-4：内部扣库存是单条 UPDATE，ms 级；5s 超时会让消费线程逐个被占住
+        assertEquals("1000", p.getProperty("feign.client.config.voucher-service.connectTimeout"));
+        assertEquals("2000", p.getProperty("feign.client.config.voucher-service.readTimeout"));
+        // default 保持 5s：不收紧其它（未来新增的）Feign client，避免误伤
+        assertEquals("5000", p.getProperty("feign.client.config.default.connectTimeout"));
+        assertEquals("5000", p.getProperty("feign.client.config.default.readTimeout"));
+    }
 }

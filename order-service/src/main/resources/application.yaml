@@ -143,6 +143,15 @@ feign:
       default:
         connectTimeout: 5000
         readTimeout: 5000
+      # SPEC-15 P1-4：只收紧 voucher-service 这一个 client。
+      # 依据——order-service 对它的调用全部是内部端点（扣库存是单条 UPDATE、
+      # 查库存/查券是单条 SELECT），真实耗时 ms 级；5s 的超时意味着
+      # voucher-service 劣化时消费线程会被**逐个占满 5 秒**，吞吐崩塌而不是快速失败。
+      # 不用 default 收紧是因为 default 会影响未来新增的其它 client（如查用户），
+      # 那些调用的耗时特征不同，不该被一起改了。
+      voucher-service:
+        connectTimeout: 1000
+        readTimeout: 2000
 
 # 内部端点共享密钥（SPEC-06 §5.2）
 hmdp:
