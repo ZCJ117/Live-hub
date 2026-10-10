@@ -187,11 +187,20 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 // SeckillVoucherServiceTest#投递失败时先删事件行再回滚预扣 的论证：
                 // 反过来会在"回滚完成但行未删"的崩溃点上留下一条待投递记录，
                 // 补投出去会在已释放的预扣上重新建单 —— 超卖方向。
-                deleteOutboxRow(orderId);
-                rollbackSeckillReservation(voucherId, userId, orderId);
+                if (deleteOutboxRow(orderId)) {
+                    rollbackSeckillReservation(voucherId, userId, orderId);
+                } else {
+                    // 行没删掉 → 该单仍会被补投器投递 → 预扣**必须保留**。
+                    // 若此处照常回滚（INCR 库存 + 移出用户 + 删明细），补投出去的消息会在
+                    // 一份已释放的预扣上重新建单：Redis 库存比 DB 多 1，即超卖方向。
+                    // 这是"先删后回滚"想防的同一类风险，只是触发方式从进程崩溃换成了删除抛异常。
+                    // 取舍：宁可让用户先看到一次失败、稍后真的拿到订单（延迟/少卖），也不能超卖。
+                    log.error("[需人工核对] 事件行删除失败，已保留预扣不回滚: orderId={}, userId={}, voucherId={}",
+                            orderId, userId, voucherId);
+                }
                 seckillMetrics.incrementMqSendFail();
                 seckillMetrics.incrementSeckillFail();
-                log.error("秒杀订单消息发送失败，已回滚Redis预扣: orderId={}, userId={}, voucherId={}",
+                log.error("秒杀订单消息发送失败: orderId={}, userId={}, voucherId={}",
                         orderId, userId, voucherId);
                 return Result.fail(SeckillFailMessages.MQ_SEND_FAILED);
             }
@@ -323,12 +332,22 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
-    /** 投递失败且预扣已回滚：删除事件行，避免补投器在已释放的预扣上重新建单 */
-    private void deleteOutboxRow(Long orderId) {
+    /**
+     * 删除事件行。
+     *
+     * <p>刻意**不**检查 {@code deleteById} 的返回值：返回 0 只代表该行本就不存在
+     * （没有可投递的记录），与"删除成功"在业务上等价，都允许回滚预扣。
+     *
+     * @return true = 行已不存在（可以安全回滚预扣）；false = 删除抛异常
+     *         （调用方**不得**回滚预扣，否则补投出去就是超卖）
+     */
+    private boolean deleteOutboxRow(Long orderId) {
         try {
             seckillOutboxMapper.deleteById(orderId);
+            return true;
         } catch (Exception e) {
-            log.error("秒杀事件行删除失败，该单可能被补投，需人工核对: orderId={}", orderId, e);
+            log.error("秒杀事件行删除失败: orderId={}", orderId, e);
+            return false;
         }
     }
 

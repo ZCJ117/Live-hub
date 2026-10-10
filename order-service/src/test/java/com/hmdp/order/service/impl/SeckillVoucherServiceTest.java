@@ -373,7 +373,8 @@ class SeckillVoucherServiceTest {
         order.verify(seckillOrderProducer).sendSeckillOrderMessage(any());
 
         // 生产代码按 MP 惯例传 entity=null（条件全在 wrapper 里）。
-        // 这里必须用 any() 而非 isNull()：Mockito 4 的 any() 只匹配非 null，与 null 实参不匹配。
+        // 这里用 any()：Mockito 5 的 any() 同时匹配 null 与非 null，
+        // 正好覆盖本形态的 (null, wrapper) 实参（isNull() 则无法覆盖非 null 形态）。
         verify(seckillOutboxMapper).update(any(), any());
     }
 
@@ -414,5 +415,25 @@ class SeckillVoucherServiceTest {
         InOrder order = inOrder(seckillOutboxMapper, valueOperations);
         order.verify(seckillOutboxMapper).deleteById(9001L);
         order.verify(valueOperations).increment("seckill:stock:1");
+    }
+
+    @Test
+    void 事件行删除失败时保留预扣不回滚() {
+        scriptReturns(0L);
+        when(seckillOrderProducer.sendSeckillOrderMessage(any())).thenReturn(false);
+        when(seckillOutboxMapper.deleteById(9001L)).thenThrow(new RuntimeException("DB 不可用"));
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForSet()).thenReturn(setOperations);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
+
+        Result r = service.seckillVoucher(1L);
+
+        assertFalse(r.getSuccess());
+        // 行删不掉 → 该单仍会被补投器投递 → 预扣必须保留。
+        // 若这里回滚了，补投出去的消息会在已释放的预扣上重新建单，Redis 库存比 DB 多 1 = 超卖。
+        verify(valueOperations, never()).increment(anyString());
+        verify(setOperations, never()).remove(anyString(), anyString());
+        verify(hashOperations, never()).delete(anyString(), any());
+        verify(seckillMetrics, never()).incrementSeckillSuccess();
     }
 }
