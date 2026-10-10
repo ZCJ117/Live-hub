@@ -261,6 +261,12 @@ half topic（`RMQ_SYS_TRANS_HALF_TOPIC` / `RMQ_SYS_TRANS_OP_HALF_TOPIC`）靠既
 
 本场景一次同时验证**回查真的会触发**与**补投器兜底真的有意义**（即「叠加」形态的价值）。
 
+> **执行状态（2026-10-10）**：E10 **尚未实测**。执行时 Docker Desktop 守护进程未运行
+> （`docker info` → `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`），
+> 无法拉起 `hmdp-rocketmq-broker` 与 `hmdp-mysql`。上方步骤 1–7 已逐条备好，环境恢复后可直接执行。
+> 这与 [SPEC-15 §5.2](SPEC-15-秒杀P1P2优化与深度建设.md) 中 E4 / E6 / E7 / E8 / E9 的未实测状态同源。
+> 在此之前的全部结论均为**代码与单测层面**的，不含 broker 侧真实回查的运行证据，对外表述不得声称已实测。
+
 **如实标注**：回查的另一分支（行已提交、COMMIT 未发出 → 回查返回 COMMIT）窗口仅毫秒级，
 无法稳定复现，**降级为单测第 6 条覆盖判定逻辑**，不声称已实测。
 
