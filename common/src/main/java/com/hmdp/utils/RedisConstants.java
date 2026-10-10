@@ -51,7 +51,11 @@ public class RedisConstants {
     public static final String SECKILL_ORDER_DETAIL_KEY = "seckill:order:detail:";
     /** 扣减幂等 Set（SPEC-03 §5.4，键为 orderId） */
     public static final String SECKILL_DEDUCT_KEY = "seckill:deduct:";
-    /** 待处理订单列表（消费重试耗尽/死信落地，供人工处置；SPEC-04 §5.3） */
+    /**
+     * 需人工处置的订单列表 —— 仅由 {@code SeckillInFlightCompensator} 的
+     * 「重投耗尽 → 安全释放」分支写入（SPEC-14 P0-2 B3 起死信不再回写，改为合流进明细 Hash）。
+     * 稳态应为 0，非 0 即代表有订单需人工核对；长度已纳入指标 {@code seckill.pending.size}。
+     */
     public static final String SECKILL_PENDING_KEY = "seckill:order:pending";
     /** seckill.lua 的临时队列（SPEC-04 §1.6：曾无消费者且无界增长，现加 LTRIM + TTL 收敛） */
     public static final String SECKILL_ORDER_QUEUE_KEY = "seckill:order:queue";

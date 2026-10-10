@@ -1,6 +1,8 @@
 package com.hmdp.order.metrics;
 
+import com.hmdp.utils.RedisConstants;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
@@ -134,6 +136,17 @@ public class SeckillMetrics {
         compensateWrongReleaseCounter = Counter.builder("seckill.compensate.wrong.release")
                 .description("误释放次数（释放后 DB 又出现该单）——必须恒为 0（SPEC-14 §6 验收 5）")
                 .tag("reason", "compensate_wrong_release")
+                .register(meterRegistry);
+
+        // SPEC-14 P0-2 B4：待处置队列长度。它是「秒杀成功但无订单」泄漏的**唯一对外信号**
+        // ——既有对账等式会被在途订单一进一出抵消，看不见这条泄漏。
+        // 稳态应为 0；非 0 意味着有订单重投耗尽被安全释放，需要人工核对。
+        Gauge.builder("seckill.pending.size", stringRedisTemplate, t -> {
+                    Long size = t.opsForList().size(RedisConstants.SECKILL_PENDING_KEY);
+                    return size == null ? 0L : size;
+                })
+                .description("待人工处置的秒杀订单数（重投耗尽后安全释放；稳态应为 0）")
+                .tag("type", "pending")
                 .register(meterRegistry);
 
         log.info("秒杀监控指标初始化完成");
